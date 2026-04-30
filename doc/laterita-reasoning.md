@@ -136,6 +136,8 @@ We also considered relying entirely on body-driven inference — keep the signat
 
 The hard case prior versions of this design left ambiguous was the receiver-tied borrow (a method returning a slice of `this`). We tried elision rules ("if the body returns a field, tie it to `this`") and a `from this` annotation; both were unsatisfying. Elision hid the contract; `from this` was visually heavy. The chosen form — a single `bound` on the return type — collapses to one short token and makes the relationship explicit at the API boundary.
 
+`give` is also permitted as an optional declarative prefix on a return type, mirroring how `take` is permitted on LHS bindings (MOVE-02). Both are documentary: bare is the canonical form, and the explicit keyword adds nothing operational. The win is for tooling and readers — an IDE hover, generated documentation, or a deliberately verbose signature can show `give` to make the producer-side transfer obvious without changing semantics. The pattern is consistent: `take` on the consuming side, `give` on the producing side, both optional where the surrounding context already determines the operation.
+
 ### Why `bound` instead of `from` or apostrophe-letter
 
 Rust's `'a` notation is famously off-putting to newcomers — it looks like a syntax error and forces the reader to learn an entirely new sigil class. We rejected that early.

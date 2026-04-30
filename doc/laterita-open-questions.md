@@ -110,7 +110,7 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 **The issue.** STR-02 records that the compiler tracks per-binding whether a `String` is owned or borrowed. The alternative — Rust's two-type model with separate `String` and `&str` — was considered and rejected as too un-Java-like. But the chosen single-type model means the compiler must track significant per-binding state that doesn't appear in the source. We agreed on the direction; we didn't validate the implementation complexity.
 
-The introduction of mark-borrow at signature boundaries (LIFE-02, MOVE-03) tightens the picture: the public contract is now explicit (owned vs. `bound` on returns, bare vs. `^` on parameters), so cross-method tracking is no longer hidden. What remains is per-binding tracking *inside* a method body, where the compiler still has to thread owned/borrowed state through local flow.
+The introduction of mark-borrow at signature boundaries (LIFE-02, MOVE-03) tightens the picture: the public contract is now explicit (owned vs. `bound` on returns, bare vs. `take` on parameters), so cross-method tracking is no longer hidden. What remains is per-binding tracking *inside* a method body, where the compiler still has to thread owned/borrowed state through local flow.
 
 **The question.** Is per-binding owned/borrowed tracking inside method bodies clean enough to produce comprehensible error messages, or does intra-method confusion still push us toward the two-type model?
 

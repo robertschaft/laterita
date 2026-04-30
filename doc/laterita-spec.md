@@ -180,7 +180,7 @@ take String e = c;          // ERROR: bare RHS is a borrow per MOVE-01; take dem
 
 ### MOVE-03 — Parameter ownership is declared in the signature
 
-A parameter declares whether it takes a borrow or ownership of its argument:
+A parameter declares whether it receives a borrow or takes ownership of its argument:
 
 | Form | Meaning |
 |---|---|
@@ -263,13 +263,14 @@ The compiler must reject any program in which a borrow is used after the binding
 
 ### LIFE-02 — Returns are owned by default
 
-A bare return type denotes an owned value. To declare a borrowed return, the contributing source is marked with `bound`:
+A bare return type means the function gives the caller an owned value. The keyword `give` may be used as an optional declarative prefix on the return type, equivalent to the bare form; tooling and documentation may surface it for emphasis. To declare a borrowed return instead, the contributing source is marked with `bound`:
 
 - **Parameter source**: prefix the parameter type with `bound`. The return is bound to that parameter.
 - **Receiver source**: prefix the return type with `bound`. The return is bound to `this`.
 
 ```laterita
-String upperCase(String s);                    // owned return
+String upperCase(String s);                    // owned return (bare)
+give String upperCase(String s);        // owned return (explicit; equivalent)
 
 String firstWord(bound String s) {             // returned borrow bound to s
     return s.substring(0, s.indexOf(' '));
@@ -543,7 +544,7 @@ Per-field move state (DROP-04) is compiler-internal bookkeeping. Implementations
 
 The following names are introduced by this specification and must be provided by the standard library: `Shared`, `Atomic`, `Weak`, `Cell`, `Heap`. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
 
-The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also a declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `unsafe` (private method modifier). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
+The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; also an optional declarative prefix on return types per LIFE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `unsafe` (private method modifier). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
 The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
 
