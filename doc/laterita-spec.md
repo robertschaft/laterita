@@ -2,7 +2,7 @@
 
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
 
-Codes are grouped by area: `BIND` (bindings), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `STR` (strings), `ARR` (arrays), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `COMP` (compilation model).
+Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `STR` (strings), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `COMP` (compilation model).
 
 ---
 
@@ -142,7 +142,7 @@ When a binding of type `T?` leaves scope, the compiler-inserted `close()` call i
 
 ### NULL-10 — Move and borrow on `T?`
 
-`^expr` where `expr` has type `T?` transfers either the contained `T` (leaving the source as `null`) or transfers `null`. Borrow rules apply identically to `T?` and `T`. A borrow of a `T?` is itself a `T?`-borrow; null narrowing (NULL-06) on a borrowed binding narrows to a `T`-borrow.
+`give expr` where `expr` has type `T?` transfers either the contained `T` (leaving the source as `null`) or transfers `null`. Borrow rules apply identically to `T?` and `T`. A borrow of a `T?` is itself a `T?`-borrow; null narrowing (NULL-06) on a borrowed binding narrows to a `T`-borrow.
 
 ---
 
@@ -159,27 +159,53 @@ print(a);                   // OK
 print(b);                   // OK
 ```
 
-### MOVE-02 — `^` prefix marks a move at the use site
+### MOVE-02 — `give` marks a move at the use site
 
-A `^` prefix on a binding name in any expression position consumes the binding's ownership and transfers it to the destination. After a move, the source binding is no longer usable.
+A `give` prefix on a binding name in any expression position consumes the binding's ownership and transfers it to the destination. After a move, the source binding is no longer usable.
 
 ```laterita
-String a = makeString();
-String b = ^a;              // a is consumed
+let a = makeString();
+let b = give a;             // a is consumed
 // print(a);                // ERROR: use after move
 print(b);                   // OK
 ```
 
-### MOVE-03 — Function arguments use the same rules
-
-A bare argument is a borrow; a `^`-prefixed argument is a move. Function signatures do not declare borrow-vs-move; the caller decides at the call site.
+A binding declaration may use `take` as a declarative prefix on the type, asserting that the LHS receives ownership. `take` is documentary: it does not by itself trigger a move. The RHS must independently produce ownership (a `give` expression, or a producer expression such as a call, constructor, or literal). A `take` LHS paired with a bare-binding RHS is a compile error per MOVE-01 (the bare RHS is a borrow, which `take` rejects).
 
 ```laterita
-void store(String s, mut List<String> into);
+let c = makeString();
+take String d = give c;     // both sides explicit; same operation as `let d = give c`
+take String e = c;          // ERROR: bare RHS is a borrow per MOVE-01; take demands ownership
+```
 
-let name = "Alice";
-store(name, list);          // borrow of name
-store(^name, list);         // move of name
+### MOVE-03 — Parameter ownership is declared in the signature
+
+A parameter declares whether it takes a borrow or ownership of its argument:
+
+| Form | Meaning |
+|---|---|
+| `T name` | the parameter receives a shared borrow |
+| `mut T name` | the parameter receives a mutable borrow |
+| `take T name` | the parameter receives ownership (moved in) |
+| `take mut T name` | the parameter receives ownership and the slot is reassignable |
+
+The parameter declaration drives the call site. A bare argument that is a binding implicitly transfers ownership when the parameter is `take`; an explicit `give` is the same operation written for clarity. A temporary expression (call result, constructor, literal) is owned and fills either parameter form — moved into a `take` parameter, borrowed for the duration of the call by a bare parameter.
+
+The illegal cases:
+- A `give arg` to a bare parameter — the caller is asking to transfer; the function will not accept ownership.
+- A bare argument that is a borrow (e.g., the binding itself only holds a borrow) to a `take` parameter — there is no ownership to give.
+
+```laterita
+void inspect(String s);                              // borrows s
+void store(take String s, mut List<String> into);    // takes ownership of s
+
+let name = makeName();
+inspect(name);              // OK: borrow
+inspect(makeName());        // OK: borrow of a temporary
+store(name, list);          // OK: implicit give; name no longer usable
+store(give name, list);     // OK: explicit give; same operation
+store(makeName(), list);    // OK: temporary moved in
+inspect(give name);         // ERROR: inspect only borrows; do not transfer
 ```
 
 ### MOVE-04 — Borrow exclusivity
@@ -235,42 +261,55 @@ A type that needs to mutate its contents through an immutable receiver must hold
 
 The compiler must reject any program in which a borrow is used after the binding it borrows from has been dropped or moved.
 
-### LIFE-02 — Single-input elision
+### LIFE-02 — Returns are owned by default
 
-If a method takes exactly one borrowed parameter and returns a borrowed value, the returned borrow's lifetime is tied to that input. No annotation is required.
+A bare return type denotes an owned value. To declare a borrowed return, the contributing source is marked with `bound`:
+
+- **Parameter source**: prefix the parameter type with `bound`. The return is bound to that parameter.
+- **Receiver source**: prefix the return type with `bound`. The return is bound to `this`.
 
 ```laterita
-String firstWord(String s) {
-    return s.substring(0, s.indexOf(' '));   // returned borrow tied to s
+String upperCase(String s);                    // owned return
+
+String firstWord(bound String s) {             // returned borrow bound to s
+    return s.substring(0, s.indexOf(' '));
 }
-```
 
-### LIFE-03 — Receiver elision
-
-For an instance method that returns a borrowed value, if no explicit annotation is given, the returned borrow is tied to `this`.
-
-```laterita
 class Cache {
     Map<String, Entry> entries;
-    Entry get(String key) { return entries.get(key); }   // returned borrow tied to this
+    bound Entry get(String key) {              // returned borrow bound to this
+        return entries.get(key);
+    }
 }
 ```
 
-### LIFE-04 — Multiple-input ambiguity is conservative
+### LIFE-03 — Multiple `bound` sources intersect
 
-When a method has multiple borrowed inputs that could each contribute to a returned borrow and no annotation distinguishes them, the returned borrow's lifetime is the intersection (i.e., bounded by the shortest-lived input).
-
-### LIFE-05 — `from` keyword for explicit annotation
-
-When the conservative LIFE-04 result is wrong, the programmer annotates the contributing inputs with `from`. The returned borrow is tied only to inputs marked `from`.
+When more than one source is marked `bound` (any combination of parameters and the receiver), the returned borrow's lifetime is the intersection (i.e., bounded by the shortest-lived marked source).
 
 ```laterita
-String prefixOf(from text, String pattern) {
-    return text.substring(0, pattern.length());   // tied to text only
+bound String chooseLabel(bound String fallback) {
+    return prefer ? this.label : fallback;     // bound to min(this, fallback)
 }
 ```
 
-The compiler must produce an error suggesting `from` annotation when ambiguity prevents a successful borrow check.
+### LIFE-04 — Unmarked sources do not contribute
+
+Inputs that are not marked `bound` cannot contribute to the returned borrow. A method body that returns a borrow tied to an unmarked source is a compile error; the diagnostic suggests adding `bound` to the relevant source.
+
+```laterita
+String prefixOf(bound String text, String pattern) {
+    return text.substring(0, pattern.length());   // bound to text only; pattern unmarked
+}
+```
+
+### LIFE-05 — Owned/borrowed mismatches are diagnostics
+
+The compiler must report an error when:
+- the body returns a borrow but the signature declares no `bound` source, or
+- the body returns an owned value but the signature declares a `bound` source.
+
+The diagnostic identifies the contributing source the body actually uses, so the user can either add the appropriate `bound` marker or change the body to match the declared owned form.
 
 ---
 
@@ -299,11 +338,7 @@ Within a scope, bindings are closed in the reverse of their declaration order.
 
 When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `close()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant.
 
-### DROP-05 — `close()` is universal and automatic
-
-`close()` is invoked by the compiler at scope exit per DROP-01 through DROP-04. This specification does not address whether user code may invoke `close()` explicitly nor whether early cleanup is supported.
-
-### DROP-06 — `close()` follows Java override semantics
+### DROP-05 — `close()` follows Java override semantics
 
 When a class overrides `close()`, only the most-derived override runs at scope exit. The compiler does not automatically chain `super.close()`. Subclass overrides that need superclass cleanup must call `super.close()` explicitly, conventionally as the last statement of the override.
 
@@ -334,7 +369,14 @@ A `String` binding is either an owned heap allocation or a borrowed view into an
 
 ### STR-03 — Slice methods return borrows
 
-Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) return a borrowed `String` whose lifetime is tied to `this` per LIFE-03.
+Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) declare the borrow with `bound` on the return type per LIFE-02.
+
+```laterita
+class String {
+    bound String substring(int start, int end);
+    bound String trim();
+}
+```
 
 ### STR-04 — Allocating methods return owned strings
 
@@ -342,7 +384,7 @@ Methods that produce new storage (e.g., `toUpperCase`, `concat`) return an owned
 
 ### STR-05 — User-defined subclasses are owned
 
-Subclasses of `String` declared by user code are owned. They cannot be returned as borrows into other storage. (The conversation noted a possible opt-in for borrowable subclasses but did not specify one.)
+Subclasses of `String` declared by user code are owned. They cannot be returned as borrows into other storage.
 
 ---
 
@@ -440,12 +482,12 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 ### STD-01 — `Shared<T>`
 
 A reference-counted shared-ownership smart pointer for single-threaded use. Provides:
-- `new Shared<T>(T value)` — takes ownership of `value`, refcount 1.
-- `T-borrow read access` — returns a shared borrow of the contained value.
-- `Shared<T> share()` — produces a new handle to the same allocation, bumping the refcount.
+- `new Shared<T>(take T value)` — takes ownership of `value`, refcount 1.
+- `bound T read()` — returns a shared borrow of the contained value, bound to this handle.
+- `Shared<T> share()` — produces a new owned handle to the same allocation, bumping the refcount.
 - `close()` — decrements the refcount; drops the value at zero.
 
-A bare assignment of `Shared<T>` is a borrow per MOVE-01; a `^` move transfers the handle without bumping; `share()` is the only operation that bumps.
+A bare assignment of `Shared<T>` is a borrow per MOVE-01; a `give` move transfers the handle without bumping; `share()` is the only operation that bumps.
 
 A cycle of `Shared<T>` handles whose strong references form a closed loop is not reclaimed: no handle's refcount can reach zero, and the cycle leaks. Programs that may form cycles must use `Weak<T>` (STD-03) for the back-edge to break the cycle. This matches the behavior of Rust's `Rc<T>`/`Weak<T>`; Laterita does not provide a cycle collector.
 
@@ -501,8 +543,8 @@ Per-field move state (DROP-04) is compiler-internal bookkeeping. Implementations
 
 The following names are introduced by this specification and must be provided by the standard library: `Shared`, `Atomic`, `Weak`, `Cell`, `Heap`. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
 
-The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `from` (lifetime annotation), `unsafe` (private method modifier). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
+The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also a declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `unsafe` (private method modifier). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
-The `^` character is reserved as the move-prefix operator at use sites. The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
+The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
 
 Java's existing keywords and their meanings are preserved unless explicitly modified by this specification.

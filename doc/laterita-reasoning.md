@@ -82,22 +82,21 @@ With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `
 
 ### Why default assignment is a borrow (MOVE-01)
 
-Looking at real Java code, the overwhelming common case is "I want to read this, I don't want to take it away from where it lives." Defaulting to a borrow matches that intuition. The user writes ordinary Java-looking code; the compiler infers a borrow; both bindings remain usable. Making move the default would have been the Rust approach, but it would have meant `^` (or `move` keyword) on essentially every assignment — friction with no payoff.
+Looking at real Java code, the overwhelming common case is "I want to read this, I don't want to take it away from where it lives." Defaulting to a borrow matches that intuition. The user writes ordinary Java-looking code; the compiler infers a borrow; both bindings remain usable. Making move the default would have been the Rust approach, but it would have meant `give` (or `move` keyword) on essentially every assignment — friction with no payoff.
 
-### Why `^` at the use site, not in signatures (MOVE-02, MOVE-03)
+### Why `give` and `take` instead of one shared marker (MOVE-02, MOVE-03)
 
-Two arguments converged on this:
+Giving up ownership and taking ownership are different actions, even though they are two ends of the same transfer. Earlier drafts used a single sigil (`^`) in both positions on the theory that "ownership crosses this boundary" was a unifying meaning. That meaning is real but stretched — the sigil reads as "out of this binding" at a use site and as "into this slot" at a parameter, which are inverse roles.
 
-The first is locality. A `move` keyword in front of a whole statement (`move users.add(name)`) detaches visually from the variable being consumed. `^name` sits on the variable. You can grep for `^` and find every ownership transfer in your codebase.
+Two English verbs make the asymmetry first-class. `take T name` on a parameter declares "this slot receives ownership"; `give binding` at a use site declares "this source releases ownership." The pairing is symmetric in the sense any sender/receiver pair is symmetric: same operation, two named ends, neither overloaded with the other's job.
 
-The second is signature simplicity. Rust puts ownership in function signatures. We initially copied that and then realized: the *caller* knows whether they want to keep the value or hand it off. The same function — `void store(String s, List<String> into)` — should accept either pattern. With `^` at the call site, the function doesn't need two variants:
+We considered keeping ownership entirely at the call site (silent signatures) and rejected it. The function knows whether it needs ownership; that need is part of its public contract. A signature `void store(take String s, ...)` says "s is consumed" without forcing the caller to read the body. The signature is the API.
 
-```laterita
-store(name, list);    // borrow, name still usable
-store(^name, list);   // move, name consumed
-```
+The two markers also support different inference at different positions. At a call site, the parameter declaration is canonical, so `give` on the argument is optional — `store(name, list)` is unambiguous when `store`'s signature has `take String s`. At a binding assignment, both sides are local and we want the marker on the side that *acts*: the source binding releasing ownership. So `let b = give a` is the explicit form; `take String b = give a` is allowed for documentation but adds nothing operational; `take String b = a` (bare RHS) is rejected because the bare RHS is a borrow per MOVE-01 and `take` cannot infer a move from a borrowing source.
 
-This is more flexible than Rust and feels more Java-like, where callers in Java already make many decisions through what they pass.
+This asymmetry — `give` optional at call sites, mandatory at assignments — is deliberate. The call site has a published contract to lean on; the assignment doesn't. Quiet by default at the boundary that has more information; explicit at the one that doesn't.
+
+Producer/consumer asymmetry runs through the rest of the language as well: bindings default to borrow on the consumer side (MOVE-01), expressions default to owned on the producer side (return values, constructors, computed expressions). `give` and `take` only appear at genuine ownership transfers, and the surrounding code reads like Java.
 
 ### Why borrow exclusivity (MOVE-04)
 
@@ -113,7 +112,7 @@ Same principle as MOVE-05, applied to arrays. The compiler can prove disjointnes
 
 ### Why partial-move tracking (MOVE-07)
 
-Once you have moves out of fields, you need to know which fields are still alive at every point in the function. This is bookkeeping the compiler does silently, and it pays off both in normal control flow (use-after-move detection on partially-moved values) and during exception unwind (DROP-04, EXC-03). Skipping it would mean making `^` on a field illegal, which would make ownership transfer in real code far more painful.
+Once you have moves out of fields, you need to know which fields are still alive at every point in the function. This is bookkeeping the compiler does silently, and it pays off both in normal control flow (use-after-move detection on partially-moved values) and during exception unwind (DROP-04, EXC-03). Skipping it would mean making `give` on a field illegal, which would make ownership transfer in real code far more painful.
 
 ---
 
@@ -127,19 +126,31 @@ There are real cases where a class is logically immutable but has internal cachi
 
 ## Lifetimes (LIFE-01 through LIFE-05)
 
-### Why we kept lifetimes mostly invisible
+### Why mark-borrow on returns (LIFE-02)
 
-Rust requires explicit lifetime annotations because its inference rules are conservative and its syntax is older. A modern design can do better. The vast majority of method signatures fall into one of three patterns: no borrows in or out (no lifetime question), one borrow in and out (single-input elision), instance method returning a borrow (receiver elision). Together these cover most real signatures.
+A bare return type means owned. Borrowed returns are explicitly declared with `bound`. We considered the inverse — owned-marked, borrowed-default — and rejected it because owned dominates at API boundaries. Constructors, factories, computed values, query results, anything that mints fresh state all return owned values. Marking the common case adds visual noise to most signatures.
 
-In a 10,000-line codebase a developer might write `from` a few dozen times. Every other lifetime is inferred. This is a deliberate ergonomic stance: lifetime-as-thing-the-user-thinks-about is largely a Rust-specific choice that comes from valuing explicitness over inference. Java's culture values inference where it's safe, and lifetimes can mostly be inferred safely.
+The asymmetry mirrors the producer/consumer framing of the rest of the language. A function return is a producer position, and most production yields fresh ownership. The `bound` marker carves out the case where production is actually a view into an input.
 
-### Why `from` instead of apostrophe-letter (LIFE-05)
+We also considered relying entirely on body-driven inference — keep the signature silent, let the compiler look through to the implementation to decide owned vs. borrowed. That collapses under separate compilation and, more importantly, hides the contract from the caller: they would have to read the body or guess and let the compiler error. The signature is the API; what the caller can do with the return value belongs in the signature.
 
-Rust's `'a` notation is famously off-putting to newcomers. It looks like a syntax error. `from` reads naturally — "the result borrows *from* this argument" — and it doesn't introduce a new sigil. The information content is the same; the visual friction is much lower.
+The hard case prior versions of this design left ambiguous was the receiver-tied borrow (a method returning a slice of `this`). We tried elision rules ("if the body returns a field, tie it to `this`") and a `from this` annotation; both were unsatisfying. Elision hid the contract; `from this` was visually heavy. The chosen form — a single `bound` on the return type — collapses to one short token and makes the relationship explicit at the API boundary.
 
-### Why conservative ambiguity, not error (LIFE-04)
+### Why `bound` instead of `from` or apostrophe-letter
 
-When a method has multiple borrowed inputs and the compiler can't tell which contributes to the output, the conservative rule (output bounded by all of them) is usually fine. Errors only appear when the conservative bound is too tight for the caller — at which point the suggested fix is to add `from`. The compiler points the user at the solution rather than refusing to compile.
+Rust's `'a` notation is famously off-putting to newcomers — it looks like a syntax error and forces the reader to learn an entirely new sigil class. We rejected that early.
+
+The interesting alternative was `from`, which reads as "the result borrows from this argument." `bound` won for two reasons. First, it describes the relationship the compiler is enforcing — a lifetime constraint — rather than a data-flow source. The annotation isn't really about where the value came from; it's about what its lifetime is tied to. Second, `bound` collapses the receiver case into a single token. A method whose return is bound to `this` writes `bound T method(...)` — no second word, no awkward `from this` compound.
+
+The known cost is overlap with Java's "upper bound / lower bound" terminology in generics (`<T extends Number>`). We accept the cost: generics and lifetimes are different beasts, the syntactic positions don't overlap (generics-bounds appear in `<...>`, lifetime-bound appears in parameter and return positions), and a reader is unlikely to confuse them after the first encounter.
+
+### Why intersection on multiple bounds (LIFE-03)
+
+When a returned borrow is bound to several sources, its lifetime is the shortest of them. The intuition is the same as Rust's lifetime intersection: the borrow can only be valid while *all* of its sources are valid. The compiler enforces this; the user doesn't reason about it explicitly unless they want a tighter bound, in which case they remove a `bound` marker.
+
+### Why unmarked sources are an error (LIFE-04)
+
+Earlier drafts treated the receiver as a default contributor — an instance method returning a borrow was implicitly tied to `this`. That made signatures silent in a way that hid information from the caller. The current rule is stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from. The fix is always local to the signature, and the caller-visible contract is always complete.
 
 ---
 
@@ -169,11 +180,7 @@ This is RAII order. If you opened `A` then opened `B` that depends on `A`, you s
 
 Without per-field tracking, partial moves either have to be forbidden (severely limiting the language) or have to leak undefined behavior on cleanup (catastrophic). Drop flags are the proven solution. Rust uses them, the optimization story is well understood (most flags are statically constant and get optimized away), and the runtime cost in code that doesn't actually unwind is approximately zero.
 
-### Why universal close() is unrestricted (DROP-05)
-
-The conversation didn't fully settle the question of whether user code can call `close()` explicitly, or whether there should be a separate "consume" primitive for early cleanup. The spec deliberately leaves both questions open — see OQ-13.
-
-### Why `close()` overrides follow Java semantics (DROP-06)
+### Why `close()` overrides follow Java semantics (DROP-05)
 
 When a subclass overrides `close()`, only the override runs unless it explicitly calls `super.close()`. This matches Java's general override model — every other Java method behaves this way — and avoids surprising the reader with a special compiler-injected chain only for `close()`.
 
@@ -288,7 +295,7 @@ Single-threaded reference counting doesn't need atomic operations. Cross-thread 
 Three reasons:
 
 1. **Visibility.** A refcount bump is non-trivial work, possibly atomic, possibly contended. Hiding it behind implicit copy semantics (Rust's `Arc::clone`) means the cost is invisible in profiles. Making it explicit puts the cost where the reader can see it.
-2. **Composition with the binding rules.** `Shared<T> b = a` is a borrow (no work). `Shared<T> b = ^a` is a move (no work). `Shared<T> b = a.share()` is a refcount bump. Each does something different and each is sometimes the right choice. Rust forces `Arc::clone` even when a borrow or a move would do.
+2. **Composition with the binding rules.** `Shared<T> b = a` is a borrow (no work). `Shared<T> b = give a` is a move (no work). `Shared<T> b = a.share()` is a refcount bump. Each does something different and each is sometimes the right choice. Rust forces `Arc::clone` even when a borrow or a move would do.
 3. **No language feature needed.** `Shared<T>` becomes an ordinary class with an ordinary method. The compiler doesn't need to know anything about it.
 
 ### Why cycles leak (STD-01)

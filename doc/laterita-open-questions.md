@@ -110,7 +110,9 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 **The issue.** STR-02 records that the compiler tracks per-binding whether a `String` is owned or borrowed. The alternative — Rust's two-type model with separate `String` and `&str` — was considered and rejected as too un-Java-like. But the chosen single-type model means the compiler must track significant per-binding state that doesn't appear in the source. We agreed on the direction; we didn't validate the implementation complexity.
 
-**The question.** Is per-binding owned/borrowed tracking actually implementable cleanly, or does it produce error messages so confusing that we have to fall back to the two-type model?
+The introduction of mark-borrow at signature boundaries (LIFE-02, MOVE-03) tightens the picture: the public contract is now explicit (owned vs. `bound` on returns, bare vs. `^` on parameters), so cross-method tracking is no longer hidden. What remains is per-binding tracking *inside* a method body, where the compiler still has to thread owned/borrowed state through local flow.
+
+**The question.** Is per-binding owned/borrowed tracking inside method bodies clean enough to produce comprehensible error messages, or does intra-method confusion still push us toward the two-type model?
 
 **Why it matters.** Affects every string-handling API. Affects how confusing the type system is to users.
 
@@ -177,8 +179,8 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 1. Whether user code can call `close()` directly.
 2. Whether there is any mechanism for releasing a resource before its binding goes out of scope.
 
-The spec (DROP-05) leaves both unanswered.
+The spec leaves both unanswered.
 
 **Why it matters.** Affects the ergonomics of resource-heavy code where scope boundaries don't match resource lifetimes. Affects whether `close()` is idempotent or "consuming."
 
-**Related codes:** DROP-05.
+**Related codes:** DROP-01.
