@@ -112,11 +112,15 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 The introduction of mark-borrow at signature boundaries (LIFE-02, MOVE-03) tightens the picture: the public contract is now explicit (owned vs. `bound` on returns, bare vs. `take` on parameters), so cross-method tracking is no longer hidden. What remains is per-binding tracking *inside* a method body, where the compiler still has to thread owned/borrowed state through local flow.
 
-**The question.** Is per-binding owned/borrowed tracking inside method bodies clean enough to produce comprehensible error messages, or does intra-method confusion still push us toward the two-type model?
+**Largely resolved by `clone()` (OBJ-02).** The dominant intra-method pain point is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user has to pick the right conversion (`to_string`, `to_owned`, `String::from`, `clone`, etc.) depending on what they have. In Laterita, `clone()` is universal: every type carries it (unless `broken`), and it always returns an owned `give` value. So the fix for any owned/borrowed mismatch is uniform — `s.clone()` — and a diagnostic *"this position needs an owned String; binding is borrowed — try `.clone()`"* is always actionable.
 
-**Why it matters.** Affects every string-handling API. Affects how confusing the type system is to users.
+This significantly weakens the argument for the two-type model. The residual concern is diagnostic quality — making sure the compiler can localize and explain owned/borrowed mismatches — which is an implementation effort question, not a design question that pushes us back toward `String`/`&str`.
 
-**Related codes:** STR-02, STR-03, STR-04.
+**The remaining question.** Diagnostic quality only: can the compiler produce comprehensible owned/borrowed error messages with binding-position highlights and the suggested `.clone()` fix? This is no longer a design fork; it's a compiler-implementation requirement.
+
+**Why it matters.** Affects every string-handling API. Affects how confusing the type system is to users — but with `clone()` as a universal escape valve, the type system stays out of the way of the dominant case.
+
+**Related codes:** STR-02, STR-03, STR-04, OBJ-02.
 
 ---
 
@@ -168,19 +172,3 @@ The introduction of mark-borrow at signature boundaries (LIFE-02, MOVE-03) tight
 
 **Related codes:** STD-01, STD-03.
 
----
-
-## OQ-13 — User-invoked `close()` and early cleanup
-
-**Surfaced when:** specifying scope-exit semantics.
-
-**The issue.** DROP-01 mandates that the compiler invokes `close()` at scope exit. The conversation did not address two related questions:
-
-1. Whether user code can call `close()` directly.
-2. Whether there is any mechanism for releasing a resource before its binding goes out of scope.
-
-The spec leaves both unanswered.
-
-**Why it matters.** Affects the ergonomics of resource-heavy code where scope boundaries don't match resource lifetimes. Affects whether `close()` is idempotent or "consuming."
-
-**Related codes:** DROP-01.

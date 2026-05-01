@@ -68,9 +68,9 @@ Three approaches exist:
 
 Kotlin's model fits Laterita's other choices best. It preserves Java's surface (you write `String name`, not `Option<String> name`), it doesn't require importing pattern matching to be useful, and the `?.`/`?:`/`!!` operators are short, familiar from Kotlin and Swift, and visually localize null-handling decisions. Smart-cast narrowing (NULL-06) makes the common case — null-check then use — read like ordinary Java.
 
-### Why `close()` is null-aware
+### Why `onDrop()` is null-aware
 
-NULL-09 specifies that scope-exit `close()` on a `T?` skips `null` and dispatches on the contained value otherwise. This composes with DROP-04's drop-flag machinery — the compiler already had to track per-binding "still owned?" state; "is this `T?` non-null?" is the same shape of conditional cleanup. No new runtime mechanism is introduced.
+NULL-09 specifies that scope-exit `onDrop()` on a `T?` skips `null` and dispatches on the contained value otherwise. This composes with DROP-04's drop-flag machinery — the compiler already had to track per-binding "still owned?" state; "is this `T?` non-null?" is the same shape of conditional cleanup. No new runtime mechanism is introduced.
 
 ### Why no separate Optional<T>
 
@@ -156,41 +156,138 @@ Earlier drafts treated the receiver as a default contributor — an instance met
 
 ---
 
-## Cleanup (DROP-01 through DROP-05)
+## Cleanup (DROP-01 through DROP-07)
 
-### Why universal `close()`, not opt-in (DROP-01)
+### Why universal `onDrop()`, not opt-in (DROP-01)
 
 This is the big realization: try-with-resources in real Java is the right *mechanism* but the wrong *default*. The clutter you correctly identified — needing `try ()` for every stateful binding — comes from cleanup being opt-in. Laterita makes it the default. Every binding gets deterministic cleanup; no syntactic marker required.
 
-This is also why `close()` is the right name. Java already has `AutoCloseable`. We're not introducing a new concept; we're making AutoCloseable the universal contract. A user who already understands try-with-resources understands Laterita's cleanup model — they just don't have to write the `try`.
+### Why the name is `onDrop()` and not `close()`
 
-### Why not `finalize()` (rejected)
+Reusing `close()` was the first instinct — Java already has `AutoCloseable`, and it would have meant "no new concept, just universal." We rejected it because Java code that ports to Laterita already has `close()` methods on streams, sockets, JDBC connections, and a long tail of resource classes. Mixing a language-orchestrated `close()` with the user-defined ones creates ambiguity at every call site: is this a normal method call, a manual scope-exit invocation, or a leftover from try-with-resources thinking? A different name keeps the language hook visually separate from any user `close()` method that survives migration.
 
-Repurposing `finalize()` was tempting and turned out to be wrong. Three reasons:
+`onDrop()` reads as event-handler convention — *what runs when this is dropped* — and aligns with Rust's `Drop` trait without inheriting Rust's terminology wholesale (Rust's method is bare `drop`; the `on` prefix matches Java/Kotlin/Android event-handler naming the Java-derived audience already knows). The name says "the system invokes this; you specify the body."
 
+### Why not `finalize()` or `_dispose` (both rejected)
+
+`finalize()` was tempting and wrong. Three reasons:
 1. `finalize()` is being removed from Java. Building the language's core mechanism on a method the parent language is removing is fragile.
 2. Almost no class overrides `finalize()` today, so calling it at scope exit would mostly call no-ops. Useful only after every standard library class is updated.
 3. The semantic mismatch is bad signaling. `Object.finalize()` is the GC reclamation hook. Repurposing the name to mean "scope exit" would confuse every reader who knows Java.
 
-`close()` has none of these problems and aligns with the existing `AutoCloseable` story.
+An earlier draft used `_dispose()` with a leading-underscore convention to signal "do not call." That worked, but the visibility modifier `internal` (DROP-06) does the job more formally — type-system enforcement instead of naming convention — and lets us drop the visually awkward underscore. With `internal` carrying the "uncallable" property, `onDrop()` can read like a normal method name.
+
+### Why `internal` for compiler-only methods (DROP-06)
+
+Forbidden-by-convention versus forbidden-by-type-system is a real distinction. The earlier `_dispose` design relied on a reserved-name rule plus a code-review heuristic ("if you see this identifier outside an override, something's wrong"). The current design uses a visibility modifier the compiler enforces.
+
+Naming the modifier `internal` accepts a known cost: C# already uses `internal` to mean "assembly-scoped public," which is broader than what Laterita means by it. We accepted the clash because no other candidate was as natural at first reading. `lifecycle` was the cleanest narrow alternative but limits the keyword's future use; `intrinsic` connotes a compiler-provided body, not just a compiler-only call site; `hidden` reads informally. `internal` paired with a clear specification — *only the compiler invokes; user code may override but never call, including via `super`* — communicates the intent in one word, and the C# reader recovers the meaning after the first encounter.
+
+The keyword is reserved for future compiler-orchestrated hooks. It is deliberately *not* a general-purpose access level; ordinary visibility scoping continues to use `public`/`protected`/`private`/package-default. Adding `internal` to the visibility list would invite misuse — wrapping arbitrary methods to hide them from callers — which is not what the modifier is for.
 
 ### Why reverse declaration order (DROP-02)
 
-This is RAII order. If you opened `A` then opened `B` that depends on `A`, you should close `B` first then `A`. Reverse-declaration order matches the natural dependency order in almost every real case.
+This is RAII order. If you opened `A` then opened `B` that depends on `A`, you should drop `B` first then `A`. Reverse-declaration order matches the natural dependency order in almost every real case.
 
 ### Why drop flags (DROP-04)
 
 Without per-field tracking, partial moves either have to be forbidden (severely limiting the language) or have to leak undefined behavior on cleanup (catastrophic). Drop flags are the proven solution. Rust uses them, the optimization story is well understood (most flags are statically constant and get optimized away), and the runtime cost in code that doesn't actually unwind is approximately zero.
 
-### Why `close()` overrides follow Java semantics (DROP-05)
+### Why `super.onDrop()` is auto-chained (DROP-05)
 
-When a subclass overrides `close()`, only the override runs unless it explicitly calls `super.close()`. This matches Java's general override model — every other Java method behaves this way — and avoids surprising the reader with a special compiler-injected chain only for `close()`.
+For most Java methods, the user is responsible for calling `super.foo()` explicitly when an override needs the parent's behavior. This is the right default for ordinary methods because the user, not the language, decides whether super's behavior should run.
 
-The cost of this choice is that a forgotten `super.close()` is a silent leak the compiler does not catch. We accept the cost for two reasons: (1) it preserves consistency with how every other override in Java works, and (2) it is a tooling problem with a known solution — a lint that warns when an override does not call `super.close()`. The alternative — auto-chaining — is tempting but would make `close()` the one Java method whose override semantics are different from every other method, which is a worse trade-off than a lintable footgun.
+`onDrop()` is the exception. It's a compiler-orchestrated lifecycle hook — the user never invokes it directly (DROP-06), and forgetting `super.onDrop()` would silently leak the parent class's resources. There is no design decision to delegate to the user: cleanup of the inherited state is *always* needed when the subclass is being dropped. A "remember to chain" rule would be a pure footgun with no upside.
+
+Auto-chaining puts `onDrop()` on the same footing as the synthesized copy constructor (OBJ-01), which auto-inserts `super(source)`. Both are language-internal recursive backbones; both should not require the user to remember to participate. The user's role in an override is to specify *what* to clean up, not whether to chain.
+
+### Why explicit `onDrop()` calls are forbidden (DROP-06)
+
+Once the compiler emits all drop calls — at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), at the end of overrides (DROP-05) — there is no remaining use case for user-invoked drop. Allowing it would create a category of bugs (double-drop, mismatched lifetimes, drop-then-use) for no expressive gain.
+
+Forbidding it has two payoffs:
+
+1. **Double-drop can't be expressed.** Lifetime is exclusively scope-bound; the compiler emits exactly one drop per binding. A whole class of double-free-shaped bugs simply doesn't exist in Laterita source.
+2. **Type-system enforcement.** With `internal` as a visibility modifier, the compiler rejects every illegal call site. There is no "did the author mean to call this here?" question.
+
+The cost is no early-cleanup mechanism: a binding lives until its scope ends, period. We considered an opt-in early-cleanup keyword (a `drop x;` form, sugar for "consume `x` and run its `onDrop`") and chose not to specify one. Real cases for early cleanup are rare; structuring scopes — extracting an inner block or a helper function — covers the cases that matter; and adding any escape hatch reintroduces the double-drop surface we just closed. If a future need is convincing, the keyword can be added later without breaking existing code.
+
+### Why `onDrop()` aborts on throw (DROP-07)
+
+Without DROP-07, an exception escaping `onDrop()` would create real safe-code memory leaks:
+
+- Sibling bindings in the same scope: DROP-02 drops in reverse order, so an exception from the inner binding's `onDrop` skips the outer one's `onDrop`.
+- Auto-chained super (DROP-05): a throw from the override body skips the compiler-appended `super.onDrop()`, leaking the parent's resources.
+- Enclosing scope unwind (EXC-02): a throwing drop during exception unwind interrupts the unwind itself.
+
+Three options were considered: compile-time enforcement (forbid `throws` clauses on `onDrop`), runtime abort, or catch-and-continue (Java's try-with-resources `addSuppressed` model). Compile-time enforcement is too restrictive — it bans transitively any operation that *could* throw, which sweeps in legitimate flush/sync calls. Catch-and-continue brings back the try-with-resources complexity the language was meant to simplify away, and it keeps "throwing drops" as a normal control-flow shape that user code has to reason about.
+
+Abort-on-throw matches Rust's choice for the same reason: a drop hook is the wrong place to surface fallible operations. The override's role is best-effort cleanup. If a flush can fail meaningfully, the user calls a separate `flush()` method explicitly while the binding is still alive — somewhere a caller can handle the result. Anything that reaches `onDrop` and throws is, by definition, a cleanup contract violation; treating it as fatal makes the contract observable instead of silently corrupting subsequent execution.
+
+The runtime guard at each compiler-emitted call site is cheap (a try-catch wrapper on a code path that almost never executes). The diagnostic on abort identifies the throwing class and the originating exception, so cleanup-contract violations are debuggable.
 
 ---
 
-## Strings (STR-01 through STR-05)
+## Copying (OBJ-01, OBJ-02)
+
+### Why a copy constructor and a `clone()` method
+
+Ownership rules force the question: when a function needs an owned value but the caller has a borrow, *something* has to produce a duplicate. Without a defined story, every type author would invent their own — `User.copy()`, `Cart.duplicate()`, `Order.snapshot()` — with subtly different contracts. The clean answer is two layered mechanisms:
+
+- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where immutable fields can be initialized (BIND-04), so duplication composes with the rest of the language without special pleading.
+- **`clone()` method (OBJ-02).** A public wrapper that calls the copy constructor. This is the API generic and polymorphic code uses. `element.clone()` virtually dispatches to the actual class's `clone()`, which calls that class's copy constructor.
+
+### Why the synthesized copy constructor calls `field.clone()`, not `new FieldType(source.field)`
+
+The recursive step in OBJ-01 is `source.field.clone()`, not `new FieldType(source.field)`. Both would produce the same value when reachable, but the latter is not generally reachable: copy constructors are `protected`, and a class can only invoke another class's protected constructor from within a subclass relationship. A `User` class with a `Shared<Address>` field cannot call `new Shared<Address>(source.address)` — `Shared`'s copy constructor is not accessible from `User`.
+
+`clone()` sidesteps the visibility problem entirely. It's `public` (OBJ-02), uniformly callable from any context, and dispatches virtually so subtype duplication works correctly when a field is held at a supertype. The call chain is `clone() → copy constructor → field.clone() → field copy constructor → ...`, with the public/protected boundary alternating cleanly: every cross-class step goes through `clone()`, every within-class step uses the copy constructor for direct field access.
+
+This also makes opt-out clean: a class that can't be copied overrides `clone()` with a `broken` body, and the brokenness propagates transparently through any enclosing class's auto-generated copy constructor (which calls the field's `clone()`). No separate "this copy constructor is broken" channel is needed.
+
+We arrived at this two-layer design after walking through several alternatives.
+
+**Universal `Object.clone()`.** Java's model. The clone method lives on Object; classes opt in via `Cloneable`. The API is famously broken — bit-copy semantics, post-construction mutation, `CloneNotSupportedException`. Reimplementing it in Laterita reproduced most of the same complications, since `super.clone()` chaining doesn't fit BIND-04. Rejected.
+
+**Opt-in `Cloneable<T>` interface.** Rust's approach. Generic functions constrain `T extends Cloneable<T>` and types implement the interface. Type-safe but noisy: the bound has to appear on every generic that touches potentially-cloneable values, and makes the dominant case (yes, this is copyable) explicit when it should be implicit. Rejected.
+
+**Copy constructor only, no `clone()`.** We tried this. Generic code would have to write `new T(element)`, which has two problems: the syntax is unfamiliar (Java forbids it because of erasure; even with monomorphization it's an unusual construct), and it constructs the *static* type — slicing any subtype data when `T` is held at a supertype. Rejected for ergonomics and for the polymorphism loss.
+
+The chosen design avoids all three pitfalls. The copy constructor does the real work and stays `protected` so external code can't bypass class-level invariants. `clone()` provides the public, virtually-dispatched API generic code wants. The synthesized `clone()` body is one line — `return new Self(this);` — so there is essentially no implementation surface to get wrong.
+
+### Why no special-casing for `Shared` or `Atomic`
+
+Earlier drafts of OBJ-01 named `Shared` and `Atomic` explicitly: "primitives bitwise, `Shared`/`Atomic` via their refcount-bumping copy constructors, other objects recursively." The list was redundant. `Shared` and `Atomic` are just classes whose `clone()` happens to bump a refcount (using `unsafe` internals per UNS-01). The recursive rule "copy each field via its type's `clone()`" picks them up uniformly. Future ownership wrappers — `Cow<T>`, weak handles, anything else — slot in the same way without amending OBJ-01.
+
+If a field type's `clone()` is `broken` (as `Heap<T>.clone()` is, per STD-06), the enclosing class's auto-generated copy constructor inherits the brokenness through the call chain. The compile error appears at the actual call site, with a path through the field. Same mechanism that handles direct `broken`; no separate "synthesis fails" rule needed.
+
+---
+
+## Unreachability (UNR-01)
+
+### Why `broken` for opt-out
+
+A class that can't be copied (a file handle, a single-use resource, anything wrapping `Heap<T>`) needs a way to say so. Three options were on the table:
+
+1. **Throw at runtime.** Override the copy constructor to throw `UnsupportedOperationException`. Java's traditional approach. Fails late, surfaces at the wrong place, and bypasses any compile-time guarantee about which types are copyable.
+2. **Opt-in interface (`Cloneable<T>`).** Type-safe but adds bound-noise to every generic signature, and makes the dominant case ("yes I'm copyable") explicit when it should be implicit.
+3. **Compile-time opt-out via `broken`.** A statement that declares the path unreachable; the compiler rejects calls that can reach it. Failure is at the actual problem site (the instantiation that triggers it).
+
+The third option lets the dominant case (copyable) stay implicit while making the rare case (non-copyable) surface as a compile error rather than a runtime throw. Generic signatures stay clean — no `extends Cloneable<T>` bounds — and per-monomorphization checking (COMP-02) localizes the diagnostic.
+
+### Precedent
+
+`broken` is essentially C++'s `= delete` generalized to a statement position. C++ uses `= delete` for exactly this purpose — declaring a copy constructor (or any function) intentionally unavailable, with calls rejected at compile time. The C++ pattern has worked well for over a decade for the special-member-deletion use case (Rule of Zero/Three/Five).
+
+Adjacent ideas exist in other languages: Rust's `!` (never type) and `unreachable!()` macro for divergence; refinement types in Liquid Haskell, F\*, and Idris for conditional unreachability with static checking. The unconditional form specified here is closest to `= delete` in spirit.
+
+### Why not just throw
+
+A throw is a runtime contract; `broken` is a compile-time contract. The difference matters because generic code over a type parameter can't tell at definition time whether a particular instantiation will be valid — but with `broken` and per-monomorphization checking, the *user* of the generic with a non-copyable type sees the error at their call site, not in production. This is the same trade Rust makes with trait bounds, achieved here without the bound boilerplate.
+
+### Why a statement, not a method modifier
+
+C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered something equivalent at the method-signature level. A statement-form keyword turned out to compose better: it works for partial bodies (a function that's deleted only on certain paths, the conditional form), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case. The unconditional form is the only one in the spec for now; the conditional form is open (see open questions).
 
 ### Why `String` is no longer final (STR-01)
 
@@ -302,7 +399,7 @@ Three reasons:
 
 ### Why cycles leak (STD-01)
 
-`Shared<T>` is reference-counted: when the last handle's `close()` runs, the count reaches zero and the value is dropped. A cycle of strong handles never reaches zero — every handle is held up by another handle in the cycle, and none can decrement past one. The cycle leaks.
+`Shared<T>` is reference-counted: when the last handle's `onDrop()` runs, the count reaches zero and the value is dropped. A cycle of strong handles never reaches zero — every handle is held up by another handle in the cycle, and none can decrement past one. The cycle leaks.
 
 This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same answer: `Weak<T>` (STD-03) for the back-edge in any structure that may form a cycle. We considered adding a cycle collector (a partial tracing GC) and rejected it on Rust's grounds — the runtime cost and complexity exceed the value, given that `Weak<T>` solves the common cases and acyclic ownership is the dominant pattern. Laterita does not aim to be better than Rust at memory management; it aims to give Java developers the same safety properties Rust gives systems programmers, in syntax they already know.
 
@@ -334,7 +431,7 @@ Without GC, generic dispatch through type erasure (Java's current model) has now
 
 ### Why compiler-inserted cleanup is invisible (COMP-03)
 
-The user shouldn't see drop calls in their source. This is what makes `close()` feel like a language feature rather than a discipline. The compiler emits the calls, the user writes ordinary code.
+The user shouldn't see drop calls in their source. This is what makes `onDrop()` feel like a language feature rather than a discipline. The compiler emits the calls, the user writes ordinary code.
 
 ### Why drop flags are an optimization target (COMP-04)
 

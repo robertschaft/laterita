@@ -2,7 +2,7 @@
 
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
 
-Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `STR` (strings), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `COMP` (compilation model).
+Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `COMP` (compilation model).
 
 ---
 
@@ -136,9 +136,9 @@ class User {
 }
 ```
 
-### NULL-09 — `close()` skips null
+### NULL-09 — `onDrop()` skips null
 
-When a binding of type `T?` leaves scope, the compiler-inserted `close()` call is conditional: if the value is `null`, no call is made; otherwise `close()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment — the compiler already tracks per-binding "still live?" state.
+When a binding of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional: if the value is `null`, no call is made; otherwise `onDrop()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment — the compiler already tracks per-binding "still live?" state.
 
 ### NULL-10 — Move and borrow on `T?`
 
@@ -316,49 +316,175 @@ The diagnostic identifies the contributing source the body actually uses, so the
 
 ## 6. Scope-Exit Cleanup
 
-### DROP-01 — Universal `close()`
+### DROP-01 — Universal `onDrop()`
 
-Every binding triggers an invocation of its value's `close()` method when the binding leaves scope. `Object.close()` is a no-op by default; classes override it to perform cleanup. No syntactic opt-in is required at the call site.
+Every binding triggers an invocation of its value's `onDrop()` method when the binding leaves scope. `Object.onDrop()` is declared `internal void onDrop()` (see DROP-06 for the `internal` modifier) and is a no-op by default; classes override it to perform cleanup. No syntactic opt-in is required at the call site.
 
 ```laterita
 {
     Shared<File> f = openFile();
     f.read();
-}   // f.close() runs here
+}   // f.onDrop() runs here (compiler-emitted)
 ```
 
 ### DROP-02 — Reverse declaration order
 
-Within a scope, bindings are closed in the reverse of their declaration order.
+Within a scope, bindings are dropped in the reverse of their declaration order.
 
 ### DROP-03 — Cleanup on all exit paths
 
-`close()` must be invoked on every exit path from a scope: normal completion, return, break, continue, and exceptional unwind.
+`onDrop()` must be invoked on every exit path from a scope: normal completion, return, break, continue, and exceptional unwind.
 
 ### DROP-04 — Drop flags for partial moves
 
-When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `close()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant.
+When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant.
 
-### DROP-05 — `close()` follows Java override semantics
+### DROP-05 — Auto-chained `super.onDrop()`
 
-When a class overrides `close()`, only the most-derived override runs at scope exit. The compiler does not automatically chain `super.close()`. Subclass overrides that need superclass cleanup must call `super.close()` explicitly, conventionally as the last statement of the override.
+When a class overrides `onDrop()`, the compiler auto-inserts a call to `super.onDrop()` as the last statement of the override body. Users do not write the super-chain themselves; the compiler-emitted call guarantees the entire inheritance chain participates in cleanup, in conventional reverse-construction order (subclass first, then superclass).
 
 ```laterita
 class CachedFile extends File {
     Cache cache;
 
-    override void close() {
+    override void onDrop() {
         cache.flush();
-        super.close();   // required: closes the underlying File
+        // compiler appends: super.onDrop();
     }
 }
 ```
 
-> **Reminder.** A subclass override that omits `super.close()` will not clean up the superclass's owned state. This is a known footgun inherited from Java's override model. Implementations should warn when a `close()` override does not call `super.close()` on at least one path; programmers writing `close()` overrides should treat `super.close()` as part of the override's contract.
+This is a deliberate departure from Java's general override semantics, justified by `onDrop`'s position as a compiler-orchestrated lifecycle hook rather than a normal method (analogous to how the synthesized copy constructor auto-chains `super(source)` in OBJ-01). The user's role is to specify *what* to clean up; the recursive backbone is the language's responsibility.
+
+### DROP-06 — `internal` visibility forbids user invocation
+
+The visibility modifier `internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `internal` method directly (`x.onDrop()`) nor via super-chain (`super.onDrop()`); both are compile errors. Subclasses may `override` an `internal` method; the override inherits the modifier and does not need to repeat it.
+
+`onDrop()` is the only `internal` method introduced by this specification. The compiler emits all of its invocations: at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and at the end of override bodies (DROP-05). Lifetime control is exclusively scope-based. The single mechanical consequence — no double-drop can be expressed — eliminates a class of double-free-shaped bugs entirely.
+
+The `internal` modifier is reserved for future compiler-orchestrated hooks. It is not a general-purpose access-control level; ordinary visibility scoping continues to use `public`, `protected`, `private`, and package-default.
+
+### DROP-07 — `onDrop()` is no-throw; uncaught exceptions abort
+
+An `onDrop()` invocation must not propagate an exception to its compiler-emitted call site. Any exception that escapes the override body — directly thrown, or propagated from a transitively called method, or from the auto-chained `super.onDrop()` — causes the program to terminate immediately.
+
+This rule eliminates the leak shapes that exception-during-cleanup would otherwise create: skipped sibling-binding drops (DROP-02), skipped super-chain (DROP-05), and skipped enclosing-scope unwind (EXC-02). A throwing `onDrop()` is treated as a fatal program error rather than a recoverable condition, analogous to C++'s `std::terminate` for exceptions during stack unwinding and Rust's abort behavior for panics during drop.
+
+Implementations must insert a runtime guard at each compiler-emitted `onDrop()` call site that catches any exception and triggers termination with diagnostic output identifying the throwing class's `onDrop()` and the originating exception. `onDrop()` overrides that perform fallible operations (network flushes, file syncs) must catch and handle exceptions internally — typically by logging and continuing, since the operation has no caller to report failure to.
 
 ---
 
-## 7. Strings
+## 7. Copying
+
+### OBJ-01 — Auto-generated copy constructor
+
+Every class has a `protected ClassName(ClassName source)` copy constructor. The compiler synthesizes one when none is provided. The synthesized form chains `super(source)` and copies each field: primitives bitwise; owned object fields via the field's `clone()` method (`source.field.clone()`). A user-provided copy constructor with the same signature suppresses synthesis.
+
+The synthesized form uses `clone()` rather than the field type's copy constructor because the latter is `protected` and not accessible across class boundaries — only a class's own subclasses can invoke its protected constructor. `clone()` is public (OBJ-02), uniformly callable, and dispatches virtually to handle subtype duplication correctly.
+
+The rule is uniform — there is no special-casing for any field type. Whether a field's `clone()` allocates fresh storage, bumps a refcount, or does something else is that field type's own concern. If a field's `clone()` is `broken` (UNR-01), the enclosing class's auto-generated copy constructor reaches `broken` transitively and is rejected at compile time. The class author can opt out explicitly with their own `broken` clone (OBJ-02), provide a copy constructor that handles the field differently, or accept the inherited brokenness.
+
+```laterita
+class User {
+    String name;
+    int age;
+    Shared<Address> address;
+    // synthesized:
+    //   super(source);
+    //   name = source.name.clone();
+    //   age = source.age;                    // bitwise
+    //   address = source.address.clone();    // share-bump, via Shared's clone()
+}
+
+class CachedFile extends File {
+    Cache cache;
+    LogPolicy policy;
+
+    // User-provided; suppresses auto-gen.
+    protected CachedFile(CachedFile source) {
+        super(source);
+        this.cache = source.cache.clone();
+        this.policy = source.policy;          // share, not duplicate
+    }
+}
+
+class SecretKey {
+    byte[] material;
+    // Class-level opt-out via broken clone() (OBJ-02).
+    override give SecretKey clone() {
+        broken "secret keys must not be copied";
+    }
+}
+```
+
+The copy constructor is `protected` so subclasses can chain via `super(source)`; external code uses the public `clone()` method (OBJ-02).
+
+### OBJ-02 — Auto-generated `clone()` method
+
+Every class has a public `give Self clone()` method, synthesized as `return new Self(this);` when not provided by the user. `clone()` is the standard duplication API for code that does not statically know the concrete class — generic code over a type parameter, and polymorphic code holding a value at a supertype or interface — because the call dispatches virtually to the actual class's `clone()`.
+
+```laterita
+<T> List<T> deepCopy(List<T> source) {
+    let result = new List<T>();
+    for (T item : source) {
+        result.add(item.clone());
+    }
+    return give result;
+}
+
+deepCopy(users);       // OK
+deepCopy(secretKeys);  // ERROR: SecretKey.clone() is broken
+```
+
+The standard opt-out is a user-provided `clone()` override whose body is `broken`, as in `SecretKey` above. Marking `clone()` rather than the copy constructor is the natural place: the copy constructor is internal and reached only via `clone()`, while `clone()` is the public contract callers see.
+
+A user override of `clone()` is otherwise rare. The auto-generated form is the canonical implementation; overriding only makes sense for opting out (`broken`) or when polymorphic dispatch needs different semantics from the copy constructor (e.g., factory-method patterns).
+
+---
+
+## 8. Unreachability
+
+### UNR-01 — `broken` declares a path unreachable
+
+The statement `broken;` (or `broken "<reason>";`) declares that the enclosing path must not be reachable. The compiler must reject any program in which the statement can be reached on a path it cannot prove dead.
+
+`broken` is a divergence point: code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken`.
+
+Typical use is opting out of an operation that would otherwise be required by auto-synthesis or generic-context use — a copy constructor for a non-copyable type, a method whose contract cannot be honoured, etc.
+
+```laterita
+class File {
+    Heap<FileHandle> handle;
+    override give File clone() {
+        broken "files cannot be copied";
+    }
+}
+
+<T> List<T> deepCopy(List<T> source) {
+    let result = new List<T>();
+    for (T item : source) {
+        result.add(item.clone());
+    }
+    return give result;
+}
+
+deepCopy(users);   // OK: User.clone() is the synthesized form
+deepCopy(files);   // ERROR: File.clone() reaches `broken`
+```
+
+Diagnostics must identify the reachable path that leads to `broken` and report the reason string when one was provided.
+
+A conditional form is naturally expressible as an `if` guarding `broken`:
+
+```laterita
+if (n < 0) broken "n must be non-negative";
+```
+
+The compiler's standard dead-code analysis applies. If the condition is provably constant-false, the `broken` is dead and the program compiles. If not, `broken` is reachable on some path and the program is rejected. No additional rule or analysis machinery is required.
+
+---
+
+## 9. Strings
 
 ### STR-01 — `String` is a normal class
 
@@ -389,7 +515,7 @@ Subclasses of `String` declared by user code are owned. They cannot be returned 
 
 ---
 
-## 8. Closures
+## 10. Closures
 
 ### CLO-01 — Three capture modes
 
@@ -415,7 +541,7 @@ A closure's type carries the lifetimes of every binding it captures by borrow. T
 
 ---
 
-## 9. Exceptions
+## 11. Exceptions
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
@@ -423,7 +549,7 @@ This specification does not redefine Java's exception syntax. Functions declare 
 
 ### EXC-02 — Cleanup runs on exception unwind
 
-When an exception propagates out of a scope, all `close()` calls required by DROP-01 through DROP-04 must execute as part of the unwind, before the exception reaches the next handler.
+When an exception propagates out of a scope, all `onDrop()` calls required by DROP-01 through DROP-04 must execute as part of the unwind, before the exception reaches the next handler. If an `onDrop()` invocation throws, DROP-07 applies.
 
 ### EXC-03 — Drop flags participate in unwind
 
@@ -435,7 +561,7 @@ When an exception is thrown, the runtime must capture the current call stack as 
 
 ---
 
-## 10. Unsafe
+## 12. Unsafe
 
 ### UNS-01 — `unsafe` is a private method modifier
 
@@ -478,15 +604,16 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 
 ---
 
-## 11. Standard Library Types (Required)
+## 13. Standard Library Types (Required)
 
 ### STD-01 — `Shared<T>`
 
 A reference-counted shared-ownership smart pointer for single-threaded use. Provides:
 - `new Shared<T>(take T value)` — takes ownership of `value`, refcount 1.
+- `new Shared<T>(Shared<T> other)` — copy constructor; the new handle points to the same allocation, bumping the refcount. The contained value is not duplicated.
 - `bound T read()` — returns a shared borrow of the contained value, bound to this handle.
-- `Shared<T> share()` — produces a new owned handle to the same allocation, bumping the refcount.
-- `close()` — decrements the refcount; drops the value at zero.
+- `Shared<T> share()` — alias for the copy constructor; explicit refcount bump.
+- `onDrop()` — decrements the refcount; drops the value at zero. Declared `internal` like every `onDrop()` (DROP-06); compiler-emitted at scope exit, never called by user code.
 
 A bare assignment of `Shared<T>` is a borrow per MOVE-01; a `give` move transfers the handle without bumping; `share()` is the only operation that bumps.
 
@@ -494,7 +621,7 @@ A cycle of `Shared<T>` handles whose strong references form a closed loop is not
 
 ### STD-02 — `Atomic<T>`
 
-The cross-thread analog of `Shared<T>`. Reference count operations are atomic. `Atomic<T>` is `Send` (see STD-Send).
+The cross-thread analog of `Shared<T>`. Reference count operations are atomic. The copy constructor `new Atomic<T>(Atomic<T> other)` performs the atomic refcount bump. `Atomic<T>` is `Send` (see STD-Send).
 
 ### STD-03 — `Weak<T>`
 
@@ -512,7 +639,7 @@ Interior-mutability primitive. Permits mutation of contents through a non-`mut` 
 
 ### STD-06 — `Heap<T>`
 
-Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `unsafe` context per UNS-02.
+Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `unsafe` context per UNS-02. `Heap<T>.clone()` is `broken`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Shared<T>`, owned containers) define their own `clone()` with the appropriate semantics.
 
 ### STD-07 — Send marker
 
@@ -520,11 +647,11 @@ Types that are safe to move between threads carry the `Send` property. Types tha
 
 ---
 
-## 12. Compilation Model
+## 14. Compilation Model
 
 ### COMP-01 — Native compilation, no GC
 
-Laterita is intended to be compiled ahead-of-time to native code. There is no garbage collector at runtime. Memory management is determined by static ownership, borrow tracking, and `close()` insertion at scope exits. Reference-counted types (`Shared<T>`, `Atomic<T>`) introduce dynamic refcount-based reclamation; cycles among such handles leak per STD-01. No tracing collector is provided.
+Laterita is intended to be compiled ahead-of-time to native code. There is no garbage collector at runtime. Memory management is determined by static ownership, borrow tracking, and `onDrop()` insertion at scope exits. Reference-counted types (`Shared<T>`, `Atomic<T>`) introduce dynamic refcount-based reclamation; cycles among such handles leak per STD-01. No tracing collector is provided.
 
 ### COMP-02 — Generic monomorphization
 
@@ -532,7 +659,7 @@ Generic types and methods are monomorphized: each instantiation produces a speci
 
 ### COMP-03 — Compiler-inserted cleanup
 
-The compiler must emit `close()` calls at every scope-exit point per DROP-03 and unwind table entries per EXC-02. These insertions happen after all user-level analysis and are not visible in source.
+The compiler must emit `onDrop()` calls at every scope-exit point per DROP-03 and unwind table entries per EXC-02. These insertions happen after all user-level analysis and are not visible in source. Each emitted call site must include the runtime guard required by DROP-07.
 
 ### COMP-04 — Drop flags as compile-time state
 
@@ -540,11 +667,13 @@ Per-field move state (DROP-04) is compiler-internal bookkeeping. Implementations
 
 ---
 
-## 13. Reserved Names
+## 15. Reserved Names
 
 The following names are introduced by this specification and must be provided by the standard library: `Shared`, `Atomic`, `Weak`, `Cell`, `Heap`. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
 
-The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; also an optional declarative prefix on return types per LIFE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `unsafe` (private method modifier). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
+The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`. User code may declare `override` of an `internal` method but cannot invoke one in any form.
+
+The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; also an optional declarative prefix on return types per LIFE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
 The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
 
