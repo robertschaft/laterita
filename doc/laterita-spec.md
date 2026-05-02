@@ -665,6 +665,14 @@ The compiler must emit `onDrop()` calls at every scope-exit point per DROP-03 an
 
 Per-field move state (DROP-04) is compiler-internal bookkeeping. Implementations should optimize away flags whose values are statically determined.
 
+### COMP-05 — No reflection
+
+Laterita does not provide reflection. There is no runtime API for enumerating fields or methods, looking up members by name, instantiating types from a `Class` token, generating dynamic proxies, or loading classes at runtime. The compiler is not required to emit per-type metadata for these purposes, and standard-library APIs equivalent to `java.lang.reflect.*`, `java.lang.Class` member-access methods, `Proxy.newProxyInstance`, or `ServiceLoader`'s runtime classpath scan are not provided.
+
+Use cases traditionally served by reflection are served by compile-time code generation (annotation processors, compiler plugins): serializers, ORM mappers, dependency-injection wiring, validators, mocks, test discovery, and SPI registries are all generated at build time from the types and annotations that exist in source. Stack traces (EXC-04) and exception types remain available; this rule constrains type and member introspection, not error reporting.
+
+This rule is consistent with COMP-02 (monomorphization erases generic type identity) and is motivated by both the absence of runtime type metadata and the security exposure that unrestricted reflection creates.
+
 ---
 
 ## 15. Reserved Names

@@ -37,17 +37,17 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-03 — Reflection model
+## OQ-03 — Reflection model — **resolved**
 
-**Surfaced when:** verifying the standard library design (specifically when discussing what monomorphization implies for runtime type information).
+**Resolution.** Laterita has no reflection. See COMP-05 in the spec and the corresponding entry in the reasoning document.
 
-**The issue.** Java's reflection assumes runtime type information for every class, dynamic class loading, and that erased generics like `List<String>` and `List<Integer>` share runtime representation. Laterita's monomorphization (COMP-02) erases the opposite: each instantiation is a distinct compiled type with no runtime generic information. Field offsets are baked in at compile time.
+The decision was driven by two factors: monomorphization (COMP-02) erases the runtime type identity that reflection would need, so any reflection API would have to either defeat monomorphization or lie about what it sees; and unrestricted reflection has been a recurring source of security vulnerabilities in Java (deserialization gadget chains, sandbox escapes). Removing it forecloses that class of attacks.
 
-**The question.** What reflection capabilities, if any, does Laterita support? Full reflection would defeat monomorphization; no reflection breaks much of the Java ecosystem (JSON serializers, ORM frameworks, mocking libraries). A middle ground exists but hasn't been specified.
+Use cases historically served by reflection — serialization, ORM, DI, validation, mocks, test discovery, SPI — are served by compile-time code generation, following the model already proven by Dagger, Micronaut, Quarkus, and kotlinx.serialization. What is genuinely lost: loading arbitrary user-supplied bytecode at runtime (intentional), JRebel-style hot reload (mitigated by fast incremental compilation), and `Proxy.newProxyInstance` over interfaces unknown at compile time (rare outside mocking and dynamic RPC stubs, both codegen-able when the interface is known).
 
-**Why it matters.** Determines what fraction of the Java ecosystem ports to Laterita. Affects whether libraries like Jackson, Hibernate, Mockito have a path forward.
+**Original issue, retained for context.** Java's reflection assumes runtime type information for every class, dynamic class loading, and that erased generics like `List<String>` and `List<Integer>` share runtime representation. Laterita's monomorphization (COMP-02) erases the opposite: each instantiation is a distinct compiled type with no runtime generic information. Field offsets are baked in at compile time.
 
-**Related codes:** COMP-02.
+**Related codes:** COMP-02, COMP-05.
 
 ---
 

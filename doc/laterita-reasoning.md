@@ -419,11 +419,11 @@ Cross-thread move safety needs to be tracked. We agreed it does, but never settl
 
 ---
 
-## Compilation Model (COMP-01 through COMP-04)
+## Compilation Model (COMP-01 through COMP-05)
 
 ### Why AOT and no GC (COMP-01)
 
-The whole point of the exercise. Java's GC papers over ownership. Removing it forces every ownership question to be answered statically, which is what gives Laterita its safety properties. AOT compilation is the natural target — the language has no runtime that benefits from a JIT, no dynamic class loading that benefits from interpretation, no reflection (or much reduced reflection) that benefits from full runtime type info.
+The whole point of the exercise. Java's GC papers over ownership. Removing it forces every ownership question to be answered statically, which is what gives Laterita its safety properties. AOT compilation is the natural target — the language has no runtime that benefits from a JIT, no dynamic class loading that benefits from interpretation, and no reflection (COMP-05) that benefits from full runtime type info.
 
 ### Why monomorphization (COMP-02)
 
@@ -437,16 +437,28 @@ The user shouldn't see drop calls in their source. This is what makes `onDrop()`
 
 Most drop flags are statically determined — the compiler can prove a field is always moved by a certain point, or never moved. In those cases, the flag becomes a constant and gets optimized away. The runtime overhead in real code is near zero. This isn't critical to specify, but it matters for implementers worried that drop flags will slow things down. They won't, in practice.
 
+### Why no reflection (COMP-05)
+
+Two reasons, one structural and one about exposure.
+
+The structural reason: monomorphization (COMP-02) erases generic identity at runtime. `List<String>` and `List<Integer>` are distinct compiled types with no shared metadata describing them as "the same generic." Field offsets are baked in. A reflection API that pretended otherwise would either have to defeat monomorphization (re-introducing the runtime type information we deliberately erased) or lie about what it's looking at. Both are bad outcomes; neither is worth the compatibility win.
+
+The exposure reason: unrestricted reflection has been a recurring source of vulnerabilities in the Java ecosystem (deserialization gadget chains, sandbox escapes, library tampering). Removing it forecloses an entire class of attacks. The cost is paid by libraries that previously did at runtime what they can now do at compile time. That cost is real but bounded — the techniques are proven (Dagger, Micronaut, Quarkus, kotlinx.serialization, Quarkus/AspectJ compile-time weaving). The benefit accrues to every Laterita program for free.
+
+What is genuinely lost: loading arbitrary user-supplied bytecode at runtime (intentional — that's the security hazard), JRebel-style hot reload (mitigated by fast incremental rebuilds), and `Proxy.newProxyInstance` over interfaces unknown at compile time. The first is a feature, not a regression. The second is a developer-experience cost worth investing in fast compilation to offset. The third is rare in real codebases outside mocking and dynamic RPC stubs, both of which are codegen-able when the interface is known.
+
+The reflection question was OQ-03 in the open-questions document; it is now settled in favor of "none."
+
 ---
 
 ## What Laterita Is Not
 
 It's worth being explicit about a few things this design deliberately doesn't do.
 
-**Not a JVM language.** Laterita compiles to native code. It doesn't run on the JVM. The Java compatibility is at the source level — the syntax looks like Java, the standard library looks like Java's, but under the hood there's no GC, no class loader, no reflection (or much less of it). Existing Java bytecode does not run in Laterita.
+**Not a JVM language.** Laterita compiles to native code. It doesn't run on the JVM. The Java compatibility is at the source level — the syntax looks like Java, the standard library looks like Java's, but under the hood there's no GC, no class loader, and no reflection (COMP-05). Existing Java bytecode does not run in Laterita.
 
 **Not a Rust replacement.** Rust is more permissive in some ways (raw `unsafe { }` blocks, multiple smart-pointer styles, no inheritance) and more disciplined in others (no exceptions, lifetimes always visible, no implicit conversions). Laterita makes different tradeoffs because its target audience is Java developers, not systems programmers coming from C++.
 
 **Not a fork of Java's standard library.** Most of Java's `java.util` would need to be reimplemented for Laterita's ownership rules. `ArrayList`, `HashMap`, `TreeMap`, `String`, `StringBuilder` — all have different semantics under ownership. The names are preserved; the implementations are new.
 
-**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Several of those questions are load-bearing — particularly around exceptions, reflection, and Spring-style frameworks. Real implementations will need to make those choices.
+**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Several of those questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.
