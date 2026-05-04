@@ -53,7 +53,7 @@ Use cases historically served by reflection — serialization, ORM, DI, validati
 
 ## OQ-04 — `Send` declaration syntax — **resolved**
 
-**Resolution.** The Send/non-Send distinction is inverted into a `local` marker on the small set of stdlib primitives that are not safe to cross thread boundaries (`Shared<T>`, `Cell<T>`, `Heap<T>`). A class is `local` by inference if any field in its transitive hierarchy is `local`; otherwise it is non-local and may be moved or borrowed across thread boundaries. Hand-synchronized stdlib types (`Atomic<T>`, `Mutex<T>`, `RwLock<T>`, `Thread`) override the inferred property by declaring `unsafe nonlocal`. User classes may opt in to `local` for thread-affine resources whose affinity is invisible to the type system. See STD-07 in the spec and the corresponding entry in the reasoning document.
+**Resolution.** The Send/non-Send distinction is inverted into a `local` marker on the small set of stdlib primitives that are not safe to cross thread boundaries (`Rc<T>`, `Cell<T>`, `Heap<T>`). A class is `local` by inference if any field in its transitive hierarchy is `local`; otherwise it is non-local and may be moved or borrowed across thread boundaries. Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inferred property by declaring `unsafe nonlocal`. User classes may opt in to `local` for thread-affine resources whose affinity is invisible to the type system. See STD-07 in the spec and the corresponding entry in the reasoning document.
 
 The decision was driven by Java-target ergonomics: under inverted marking, the default for ordinary user classes is "sendable," which matches Java programmers' expectations and requires no annotation in the common case. The escape hatches (`unsafe nonlocal`, explicit `local`) are concentrated in the stdlib and the rare thread-affine class.
 
@@ -83,7 +83,7 @@ The decision was driven by Java-target ergonomics: under inverted marking, the d
 
 **The question.** This was an *implications* discussion, not a language-spec discussion. None of it appears in the spec because it's library-and-tooling territory. But several pieces remain unresolved:
 - How conditional beans whose conditions depend on runtime config are handled.
-- Whether `ContextLocal<T>` should be a standard library type or framework-specific.
+- Whether `ContextLocal<T>` should be a standard library type or framework-specific. The first candidates to evaluate are Java's existing `ThreadLocal<T>` and `ScopedValue<T>` (JEP 446) — `ScopedValue<T>` in particular is dynamically scoped and integrates cleanly with structured concurrency, which fits Laterita's ownership-bound thread model. A new `ContextLocal<T>` should only be introduced if these prove insufficient.
 - How proxy generation interacts with `final` and `private` access.
 
 **Why it matters.** Determines whether the Spring ecosystem can port to Laterita with reasonable effort.
@@ -154,7 +154,7 @@ This significantly weakens the argument for the two-type model. The residual con
 
 **Surfaced when:** discussing Spring DI implications.
 
-**The issue.** Singleton beans map to `Atomic<T>`. Prototype beans are method calls. Request scope and session scope require per-request storage that we sketched as `ContextLocal<T>`. We agreed deterministic cleanup of request-scoped resources is a real win compared to Spring's GC-dependent model. We didn't specify the API.
+**The issue.** Singleton beans map to `Arc<T>`. Prototype beans are method calls. Request scope and session scope require per-request storage that we sketched as `ContextLocal<T>`. We agreed deterministic cleanup of request-scoped resources is a real win compared to Spring's GC-dependent model. We didn't specify the API.
 
 **Why it matters.** Determines whether web frameworks like Spring MVC port cleanly.
 
@@ -166,29 +166,28 @@ This significantly weakens the argument for the two-type model. The residual con
 
 **Surfaced when:** discussing what Java code is hard to port.
 
-**The issue.** Cyclic data structures (doubly-linked lists, parent-pointer trees) are genuinely harder under ownership than under GC. We agreed the answer is `Shared<T>` for forward references plus `Weak<T>` for back references, with the caveat that this is more code than the GC version.
+**The issue.** Cyclic data structures (doubly-linked lists, parent-pointer trees) are genuinely harder under ownership than under GC. We agreed the answer is `Rc<T>` for forward references plus `WeakReference<T>` for back references, with the caveat that this is more code than the GC version.
 
-**Why it matters.** Affects how textbook data structures get taught and used in Laterita. The example I sketched (Node<T> with Shared next and Weak parent) is a real implementation pattern, but no broader migration story for graph-shaped Java code was developed.
+**Why it matters.** Affects how textbook data structures get taught and used in Laterita. The example I sketched (Node<T> with Rc next and WeakReference parent) is a real implementation pattern, but no broader migration story for graph-shaped Java code was developed.
 
 **Related codes:** STD-01, STD-03.
 
 ---
 
-## OQ-13 — `onDrop()` no-blocking rule scope
+## OQ-13 — `onDrop()` no-blocking rule scope — **resolved**
 
-**Surfaced when:** specifying THR-05.
+**Resolution.** THR-05 holds as written for every user-defined and stdlib `onDrop()`. `Thread.onDrop()` (THR-06) is exempt because it runs in the parent's stack as the cancellation orchestrator, not in a body subject to interruption. THR-05's wording was tightened to call this out explicitly. No `unsafe onDrop()` escape hatch is introduced.
 
-**The issue.** THR-05 forbids safe points (blocking stdlib calls) inside `onDrop()` bodies, on the grounds that an interrupt observed mid-cleanup could leave locks held or memory leaked. The rule is stated for general `onDrop()`, but it has not been validated against every standard-library `onDrop()` that needs to perform potentially-blocking work.
+The decision was driven by surveying the cases that motivated the original concern:
 
-**The question.** Does the no-blocking rule hold for every `onDrop()` in the standard library, or are there primitives whose cleanup legitimately needs to block?
+- `Mutex<T>.onDrop()` is non-blocking — releasing the lock state and signalling poisoning are flag updates, not waits.
+- A queue-like primitive's `onDrop()` (e.g. a Laterita `BlockingQueue<T>`) is non-blocking — waking blocked endpoints with an error is a notification, not a wait.
+- `Thread.onDrop()` blocks, but THR-06 already makes it privileged/internal; it is the orchestrator of cancellation, not a target. The exemption is now spelled out in THR-05.
+- Buffered IO appeared to need blocking in `onDrop()` for flush-on-close, but `close()` and `onDrop()` are intentionally distinct in Laterita (DROP-01 vs. an explicit `close()` invoked via try-with-resources). Flush belongs in `close()`. A user who skips `close()` and relies on `onDrop()` gets an unflushed buffer — the same `Closeable` hazard Java already has, and not `onDrop`'s job to solve.
 
-Concrete cases to validate:
-- `Mutex<T>.onDrop()` — does it need to wait for a poisoned-but-still-locked state to resolve?
-- `Channel<T>.onDrop()` — should it drain queued senders/receivers, and is that a blocking operation?
-- `Thread.onDrop()` itself (THR-06) blocks waiting for the worker — but it is the orchestrator of cancellation, not a target of it. The rule may need to be scoped to "bodies that can themselves be interrupted."
-- Buffered IO `onDrop()` — flushing on close is a blocking IO call.
+The survey shows no user-facing `onDrop()` legitimately needs interruption points. Keeping the strict rule preserves the integrity guarantee (cleanup completes atomically with respect to interruption) without costing ergonomics.
 
-**Why it matters.** If the rule is too strict, common cleanup patterns (flush-on-close) become unimplementable as `onDrop()` and require explicit `close()` calls — losing one of the language's safety guarantees. If the rule is too loose, the integrity hazard it was meant to prevent reappears.
+**Original issue, retained for context.** THR-05 forbids interruption points inside `onDrop()` bodies, on the grounds that an interrupt observed mid-cleanup could leave locks held or memory leaked. The rule was stated for general `onDrop()` but not validated against every stdlib type whose cleanup *might* need to block (`Mutex`, queue-like primitives, buffered IO, `Thread` itself).
 
 **Related codes:** THR-05, THR-06, THR-10, DROP-01.
 

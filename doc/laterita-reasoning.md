@@ -74,7 +74,7 @@ NULL-09 specifies that scope-exit `onDrop()` on a `T?` skips `null` and dispatch
 
 ### Why no separate Optional<T>
 
-With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `T?` is shorter, more idiomatic, and avoids `Optional<Optional<T>>` confusion when generics nest. STD-03's `Weak<T>::upgrade()` returns `Shared<T>?` rather than `Optional<Shared<T>>` for this reason.
+With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `T?` is shorter, more idiomatic, and avoids `Optional<Optional<T>>` confusion when generics nest. STD-03's `WeakReference<T>::upgrade()` returns `Rc<T>?` rather than `Optional<Rc<T>>` for this reason.
 
 ---
 
@@ -239,7 +239,7 @@ Ownership rules force the question: when a function needs an owned value but the
 
 ### Why the synthesized copy constructor calls `field.clone()`, not `new FieldType(source.field)`
 
-The recursive step in OBJ-01 is `source.field.clone()`, not `new FieldType(source.field)`. Both would produce the same value when reachable, but the latter is not generally reachable: copy constructors are `protected`, and a class can only invoke another class's protected constructor from within a subclass relationship. A `User` class with a `Shared<Address>` field cannot call `new Shared<Address>(source.address)` — `Shared`'s copy constructor is not accessible from `User`.
+The recursive step in OBJ-01 is `source.field.clone()`, not `new FieldType(source.field)`. Both would produce the same value when reachable, but the latter is not generally reachable: copy constructors are `protected`, and a class can only invoke another class's protected constructor from within a subclass relationship. A `User` class with an `Rc<Address>` field cannot call `new Rc<Address>(source.address)` — `Rc`'s copy constructor is not accessible from `User`.
 
 `clone()` sidesteps the visibility problem entirely. It's `public` (OBJ-02), uniformly callable from any context, and dispatches virtually so subtype duplication works correctly when a field is held at a supertype. The call chain is `clone() → copy constructor → field.clone() → field copy constructor → ...`, with the public/protected boundary alternating cleanly: every cross-class step goes through `clone()`, every within-class step uses the copy constructor for direct field access.
 
@@ -255,9 +255,9 @@ We arrived at this two-layer design after walking through several alternatives.
 
 The chosen design avoids all three pitfalls. The copy constructor does the real work and stays `protected` so external code can't bypass class-level invariants. `clone()` provides the public, virtually-dispatched API generic code wants. The synthesized `clone()` body is one line — `return new Self(this);` — so there is essentially no implementation surface to get wrong.
 
-### Why no special-casing for `Shared` or `Atomic`
+### Why no special-casing for `Rc` or `Arc`
 
-Earlier drafts of OBJ-01 named `Shared` and `Atomic` explicitly: "primitives bitwise, `Shared`/`Atomic` via their refcount-bumping copy constructors, other objects recursively." The list was redundant. `Shared` and `Atomic` are just classes whose `clone()` happens to bump a refcount (using `unsafe` internals per UNS-01). The recursive rule "copy each field via its type's `clone()`" picks them up uniformly. Future ownership wrappers — `Cow<T>`, weak handles, anything else — slot in the same way without amending OBJ-01.
+Earlier drafts of OBJ-01 named `Rc` and `Arc` explicitly: "primitives bitwise, `Rc`/`Arc` via their refcount-bumping copy constructors, other objects recursively." The list was redundant. `Rc` and `Arc` are just classes whose `clone()` happens to bump a refcount (using `unsafe` internals per UNS-01). The recursive rule "copy each field via its type's `clone()`" picks them up uniformly. Future ownership wrappers — `Cow<T>`, weak handles, anything else — slot in the same way without amending OBJ-01.
 
 If a field type's `clone()` is `broken` (as `Heap<T>.clone()` is, per STD-06), the enclosing class's auto-generated copy constructor inherits the brokenness through the call chain. The compile error appears at the actual call site, with a path through the field. Same mechanism that handles direct `broken`; no separate "synthesis fails" rule needed.
 
@@ -385,7 +385,7 @@ A class that holds a `Heap<T>` field has invariants the compiler can't check (th
 
 ## Standard Library (STD-01 through STD-07)
 
-### Why `Shared` and `Atomic` are split
+### Why `Rc` and `Arc` are split
 
 Single-threaded reference counting doesn't need atomic operations. Cross-thread sharing does. Splitting them lets single-threaded code skip the synchronization cost entirely, which is significant in tight loops. Rust does the same with `Rc<T>` vs. `Arc<T>`. The cost is a slight conceptual overhead — two types instead of one — but the performance and correctness gains are worth it.
 
@@ -394,34 +394,34 @@ Single-threaded reference counting doesn't need atomic operations. Cross-thread 
 Three reasons:
 
 1. **Visibility.** A refcount bump is non-trivial work, possibly atomic, possibly contended. Hiding it behind implicit copy semantics (Rust's `Arc::clone`) means the cost is invisible in profiles. Making it explicit puts the cost where the reader can see it.
-2. **Composition with the binding rules.** `Shared<T> b = a` is a borrow (no work). `Shared<T> b = give a` is a move (no work). `Shared<T> b = a.share()` is a refcount bump. Each does something different and each is sometimes the right choice. Rust forces `Arc::clone` even when a borrow or a move would do.
-3. **No language feature needed.** `Shared<T>` becomes an ordinary class with an ordinary method. The compiler doesn't need to know anything about it.
+2. **Composition with the binding rules.** `Rc<T> b = a` is a borrow (no work). `Rc<T> b = give a` is a move (no work). `Rc<T> b = a.share()` is a refcount bump. Each does something different and each is sometimes the right choice. Rust forces `Arc::clone` even when a borrow or a move would do.
+3. **No language feature needed.** `Rc<T>` becomes an ordinary class with an ordinary method. The compiler doesn't need to know anything about it.
 
 ### Why cycles leak (STD-01)
 
-`Shared<T>` is reference-counted: when the last handle's `onDrop()` runs, the count reaches zero and the value is dropped. A cycle of strong handles never reaches zero — every handle is held up by another handle in the cycle, and none can decrement past one. The cycle leaks.
+`Rc<T>` is reference-counted: when the last handle's `onDrop()` runs, the count reaches zero and the value is dropped. A cycle of strong handles never reaches zero — every handle is held up by another handle in the cycle, and none can decrement past one. The cycle leaks.
 
-This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same answer: `Weak<T>` (STD-03) for the back-edge in any structure that may form a cycle. We considered adding a cycle collector (a partial tracing GC) and rejected it on Rust's grounds — the runtime cost and complexity exceed the value, given that `Weak<T>` solves the common cases and acyclic ownership is the dominant pattern. Laterita does not aim to be better than Rust at memory management; it aims to give Java developers the same safety properties Rust gives systems programmers, in syntax they already know.
+This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same answer: `WeakReference<T>` (STD-03) for the back-edge in any structure that may form a cycle. We considered adding a cycle collector (a partial tracing GC) and rejected it on Rust's grounds — the runtime cost and complexity exceed the value, given that `WeakReference<T>` solves the common cases and acyclic ownership is the dominant pattern. Laterita does not aim to be better than Rust at memory management; it aims to give Java developers the same safety properties Rust gives systems programmers, in syntax they already know.
 
 The implication for COMP-01 is that "memory management determined statically" is not literally true for refcounted types — refcount reclamation is dynamic, and cycles are an unrecoverable leak. The spec acknowledges this explicitly rather than masking it.
 
 ### Why race-safe upgrade (STD-04)
 
-You spotted this during the verification phase. A naïve `Weak::upgrade` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory. Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it. Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
+You spotted this during the verification phase. A naïve `WeakReference::upgrade` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory. Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it. Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
 
 ### Why `Cell<T>` and `Heap<T>` are unsafe primitives (STD-05, STD-06)
 
-These are the irreducible escape hatches. `Cell<T>` is the documented hole in MUT-01. `Heap<T>` is the only way to allocate without compiler-tracked ownership. Everything else in the standard library — `Shared`, `Atomic`, `Mutex`, lazy initializers, growable collections — is built on top of them in `private unsafe` methods. The unsafe surface is small, concentrated, and auditable.
+These are the irreducible escape hatches. `Cell<T>` is the documented hole in MUT-01. `Heap<T>` is the only way to allocate without compiler-tracked ownership. Everything else in the standard library — `Rc`, `Arc`, `Mutex`, lazy initializers, growable collections — is built on top of them in `private unsafe` methods. The unsafe surface is small, concentrated, and auditable.
 
 ### Why `local`, not `Send` (STD-07)
 
-Cross-thread move and borrow safety needs to be tracked. Rust uses two positive auto-traits (`Send` and `Sync`); Laterita inverts the marker and uses one negative property: `local`. The few stdlib primitives that are not safe to cross thread boundaries (`Shared<T>`, `Cell<T>`, `Heap<T>`) are declared `local`; everything else is non-local by default and may cross threads.
+Cross-thread move and borrow safety needs to be tracked. Rust uses two positive auto-traits (`Send` and `Sync`); Laterita inverts the marker and uses one negative property: `local`. The few stdlib primitives that are not safe to cross thread boundaries (`Rc<T>`, `Cell<T>`, `Heap<T>`) are declared `local`; everything else is non-local by default and may cross threads.
 
 The reason for inverting is Java-target ergonomics. With a positive marker, every user class would have to declare `implements Send` (or be silently inferred via auto-trait machinery) to be usable in concurrent code. With the inverted marker, the *default* for ordinary user classes is "sendable," which is what Java programmers expect. The annotation surface is concentrated in the small set of stdlib primitives plus the rare thread-affine class.
 
 Send and Sync are collapsed into one property because the distinction (Send-but-not-Sync, e.g., Rust's `Cell<T>`) is rare and unusable without the kind of fine-grained borrow reasoning Java programmers don't expect. The single `local` marker covers both move and borrow restrictions.
 
-Hand-synchronized stdlib types (`Atomic<T>`, `Mutex<T>`, `RwLock<T>`, `Thread`) override the inferred `local` property by declaring `unsafe nonlocal`. The unsafe declaration is the same admission of proof obligation as every other `unsafe` in the language: the author is asserting a property the compiler cannot verify, and UNS-04 still applies.
+Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inferred `local` property by declaring `unsafe nonlocal`. The unsafe declaration is the same admission of proof obligation as every other `unsafe` in the language: the author is asserting a property the compiler cannot verify, and UNS-04 still applies.
 
 ---
 
@@ -467,7 +467,9 @@ In Laterita, where the cancellation flag is sticky and unwind happens via the st
 
 `onDrop()` runs on the unwind path. If a blocking call inside `onDrop()` itself throws `InterruptedException`, cleanup is abandoned mid-flight: locks held, files unflushed, memory leaked. The simplest rule that prevents this is "no blocking calls in `onDrop()`." It is checked statically at `onDrop()` definition.
 
-The rule may need scope adjustment for legitimate cases (flush-on-close in buffered IO, drain-on-close in channels). That validation is left as OQ-13.
+The rule survives a survey of stdlib types whose cleanup *appears* to need blocking. `Mutex<T>.onDrop()` is a flag update — not a wait. Buffered IO needs `flush()`, but `flush()` belongs in `close()`, which Laterita keeps distinct from `onDrop()` (the same Closeable model Java has): a user who skips `close()` and falls back on `onDrop()` gets an unflushed buffer, just as in Java today. `Thread.onDrop()` does block — but it runs in the *parent's* stack as the cancellation orchestrator (THR-06), not in a body subject to interruption, so THR-05 explicitly exempts it.
+
+So the rule is universal for user-facing `onDrop` bodies, with one privileged exemption (`Thread.onDrop`) that is named in the spec rather than gestured at. No `unsafe onDrop` escape hatch is needed; the integrity guarantee — cleanup completes atomically with respect to interruption — holds without erosion.
 
 ### Why no `cancel()`, no `tryJoin()`, no `parallelFirst()` (THR-09, by omission)
 

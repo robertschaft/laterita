@@ -333,7 +333,7 @@ Every binding triggers an invocation of its value's `onDrop()` method when the b
 
 ```laterita
 {
-    Shared<File> f = openFile();
+    Rc<File> f = openFile();
     f.read();
 }   // f.onDrop() runs here (compiler-emitted)
 ```
@@ -399,12 +399,12 @@ The rule is uniform — there is no special-casing for any field type. Whether a
 class User {
     String name;
     int age;
-    Shared<Address> address;
+    Rc<Address> address;
     // synthesized:
     //   super(source);
     //   name = source.name.clone();
     //   age = source.age;                    // bitwise
-    //   address = source.address.clone();    // share-bump, via Shared's clone()
+    //   address = source.address.clone();    // share-bump, via Rc's clone()
 }
 
 class CachedFile extends File {
@@ -579,16 +579,16 @@ When an exception is thrown, the runtime must capture the current call stack as 
 Unsafe operations are permitted only inside methods declared `private unsafe`. There is no `unsafe` modifier on classes and no `unsafe { }` block form. Public APIs are always safe; safety contracts are upheld inside private unsafe methods.
 
 ```laterita
-public class Shared<T> {
+public class Rc<T> {
     Heap<ControlBlock<T>> ctrl;
 
-    public Shared<T> share() {
+    public Rc<T> share() {
         bumpRefcount();
         return makeHandle();
     }
 
     private unsafe void bumpRefcount() { /* ... */ }
-    private unsafe Shared<T> makeHandle() { /* ... */ }
+    private unsafe Rc<T> makeHandle() { /* ... */ }
 }
 ```
 
@@ -617,53 +617,55 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 
 ## 13. Standard Library Types (Required)
 
-### STD-01 — `Shared<T>`
+### STD-01 — `Rc<T>`
 
 A reference-counted shared-ownership smart pointer for single-threaded use. Provides:
-- `new Shared<T>(take T value)` — takes ownership of `value`, refcount 1.
-- `new Shared<T>(Shared<T> other)` — copy constructor; the new handle points to the same allocation, bumping the refcount. The contained value is not duplicated.
+- `new Rc<T>(take T value)` — takes ownership of `value`, refcount 1.
+- `new Rc<T>(Rc<T> other)` — copy constructor; the new handle points to the same allocation, bumping the refcount. The contained value is not duplicated.
 - `bound T read()` — returns a shared borrow of the contained value, bound to this handle.
-- `Shared<T> share()` — alias for the copy constructor; explicit refcount bump.
+- `Rc<T> share()` — alias for the copy constructor; explicit refcount bump.
 - `onDrop()` — decrements the refcount; drops the value at zero. Declared `internal` like every `onDrop()` (DROP-06); compiler-emitted at scope exit, never called by user code.
 
-A bare assignment of `Shared<T>` is a borrow per MOVE-01; a `give` move transfers the handle without bumping; `share()` is the only operation that bumps.
+A bare assignment of `Rc<T>` is a borrow per MOVE-01; a `give` move transfers the handle without bumping; `share()` is the only operation that bumps.
 
-A cycle of `Shared<T>` handles whose strong references form a closed loop is not reclaimed: no handle's refcount can reach zero, and the cycle leaks. Programs that may form cycles must use `Weak<T>` (STD-03) for the back-edge to break the cycle. This matches the behavior of Rust's `Rc<T>`/`Weak<T>`; Laterita does not provide a cycle collector.
+A cycle of `Rc<T>` handles whose strong references form a closed loop is not reclaimed: no handle's refcount can reach zero, and the cycle leaks. Programs that may form cycles must use `WeakReference<T>` (STD-03) for the back-edge to break the cycle. This matches the behavior of Rust's `Rc<T>`/`Weak<T>`; Laterita does not provide a cycle collector.
 
-### STD-02 — `Atomic<T>`
+### STD-02 — `Arc<T>`
 
-The cross-thread analog of `Shared<T>`. Reference count operations are atomic. The copy constructor `new Atomic<T>(Atomic<T> other)` performs the atomic refcount bump. `Atomic<T>` is `Send` (see STD-Send).
+The cross-thread analog of `Rc<T>`. Reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is non-`local` per STD-07 and may be moved or borrowed across thread boundaries. The name follows Rust's `Arc<T>` ("atomically reference counted") to avoid collision with `java.util.concurrent.atomic.*`.
 
-### STD-03 — `Weak<T>`
+### STD-03 — `WeakReference<T>`
 
 A non-owning back-reference. Provides:
-- `Weak<T>` produced from `Shared<T>::downgrade()`.
-- `Shared<T>? upgrade()` — returns a strong handle if the value is still alive, otherwise `null`. Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap upgrade per STD-04).
+- `WeakReference<T>` produced from `Rc<T>::downgrade()` or `Arc<T>::downgrade()`.
+- `Rc<T>? upgrade()` (or `Arc<T>? upgrade()`, depending on flavor) — returns a strong handle if the value is still alive, otherwise `null`. Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap upgrade per STD-04).
 
-### STD-04 — Race-safe `Atomic<T>` upgrade
+The name parallels `java.lang.ref.WeakReference<T>`. The mechanism differs (refcount-tied here, GC-tied there), but the user-visible API is the same: a handle that does not keep its target alive and may report the target as gone.
 
-`Weak<T>::upgrade()` on an `Atomic`-flavored weak handle must use compare-and-swap to atomically check the strong count is non-zero and bump it. A simple read-then-bump is unsound.
+### STD-04 — Race-safe `Arc<T>` upgrade
+
+`WeakReference<T>::upgrade()` on an `Arc`-flavored weak handle must use compare-and-swap to atomically check the strong count is non-zero and bump it. A simple read-then-bump is unsound.
 
 ### STD-05 — `Cell<T>`
 
-Interior-mutability primitive. Permits mutation of contents through a non-`mut` binding. Construction and content mutation require `unsafe` context per UNS-02. Used as a building block for `Atomic<T>`, `Mutex<T>`, lazy initializers, etc.
+Interior-mutability primitive. Permits mutation of contents through a non-`mut` binding. Construction and content mutation require `unsafe` context per UNS-02. Used as a building block for `Arc<T>`, `Mutex<T>`, lazy initializers, etc.
 
 ### STD-06 — `Heap<T>`
 
-Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `unsafe` context per UNS-02. `Heap<T>.clone()` is `broken`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Shared<T>`, owned containers) define their own `clone()` with the appropriate semantics.
+Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `unsafe` context per UNS-02. `Heap<T>.clone()` is `broken`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()` with the appropriate semantics.
 
 ### STD-07 — `local` marker
 
 A type carries the `local` property if its instances cannot safely cross thread boundaries.
 
 The standard library declares `local`:
-- `Shared<T>` (STD-01)
+- `Rc<T>` (STD-01)
 - `Cell<T>` (STD-05)
 - `Heap<T>` (STD-06)
 
 A class is `local` by inference if any field in its transitive field hierarchy is of a `local` type. A class is **non-local** otherwise. A class may be declared `local` to opt in despite having no `local` fields (used for thread-affine resources whose affinity is not visible to the type system: OS handles, GPU contexts, etc.).
 
-A class may be declared `unsafe nonlocal` to override inferred `local`-ness despite containing `local` fields. This declaration asserts that the class internally synchronizes access to those fields per UNS-04. The compiler does not verify the assertion. The stdlib types `Atomic<T>` (STD-02), `Mutex<T>`, `RwLock<T>`, and `Thread` (THR-01) are declared `unsafe nonlocal`.
+A class may be declared `unsafe nonlocal` to override inferred `local`-ness despite containing `local` fields. This declaration asserts that the class internally synchronizes access to those fields per UNS-04. The compiler does not verify the assertion. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are declared `unsafe nonlocal`.
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-03) of a binding whose type is `local`.
@@ -700,26 +702,36 @@ Each `Thread` carries an interrupt flag observable via `Thread.isInterrupted()`.
 
 The static `Thread.interrupted()` is synonymous with `Thread.currentThread().isInterrupted()` and does **not** clear the flag. The Java semantics in which `Thread.interrupted()` clears the flag are not provided.
 
-Any safe point reached after the flag is set raises `InterruptedException` (THR-08).
+Any interruption point reached after the flag is set throws `InterruptedException` (THR-08).
 
-### THR-04 — Safe points
+### THR-04 — Interruption points
 
-A **safe point** is a program location at which the running thread observes its own interrupt flag and, if set, raises `InterruptedException`. Safe points are the bodies of stdlib operations declared as blocking the calling thread (`Thread.join`, `Thread.sleep`, `Object.wait`, `Channel.recv`, `Mutex.lock`, IO read/write, and others marked as such in their stdlib definitions).
+An **interruption point** is a program location at which the running thread reacts to its own interrupt flag. The standard reaction is to throw `InterruptedException` from a stdlib blocking operation (`Thread.join`, `Thread.sleep`, `Object.wait`, `BlockingQueue.take`, IO read/write, and others marked as such in their stdlib definitions).
 
-Code outside these locations does not observe the flag. CPU-bound code remains cancellable only by reaching a stdlib blocking primitive.
+User code may also create an interruption point by polling `Thread.currentThread().isInterrupted()` or the static `Thread.interrupted()` (THR-03) and using the result to alter control flow — for example, exiting an otherwise non-terminating loop.
+
+Reading another thread's flag via `otherThread.isInterrupted()` is **not** an interruption point: neither thread is reacting to its own state. Reading the running thread's flag without using the result for control flow (e.g. logging it) is likewise not an interruption point.
+
+CPU-bound code that does not reach a stdlib blocking primitive and does not poll its own flag is uncancellable.
 
 ### THR-05 — `onDrop()` must not block
 
-An `onDrop()` body (DROP-01) must not contain a safe point (THR-04). The compiler must reject any `onDrop()` definition whose body transitively reaches a stdlib blocking operation.
+A user-defined or stdlib `onDrop()` body (DROP-01) must not contain an interruption point (THR-04). The compiler must reject any `onDrop()` definition whose body transitively reaches a stdlib blocking operation.
+
+To enforce the user-code half of THR-04 conservatively, the compiler must additionally reject `Thread.currentThread().isInterrupted()` and the static `Thread.interrupted()` calls inside an `onDrop()` body. Calls of the form `otherThread.isInterrupted()` (reading another thread's flag) remain permitted, since they are observations and cannot react to the running thread's own state.
+
+`Thread.onDrop()` (THR-06) is exempt: it is the cancellation orchestrator and runs in the parent's stack, not in a body subject to interruption. The rule applies to every other `onDrop`.
 
 Rationale: cleanup paths must complete to maintain memory and resource invariants. A blocking call inside `onDrop()` could observe an interrupt and unwind partway through cleanup, leaving locks held permanently or memory leaked.
+
+Resources whose cleanup legitimately needs to block (flush-on-close for buffered IO, drain on channel teardown) belong in an explicit `close()` method invoked via try-with-resources or its Laterita equivalent — not in `onDrop()`. `onDrop()` reclaims; `close()` finalizes.
 
 ### THR-06 — `Thread.onDrop()`
 
 `Thread.onDrop()` is `internal` (DROP-06) and is compiler-emitted at scope exit per DROP-03. It performs, in order:
 
 1. Set the interrupt flag (idempotent per THR-03).
-2. Wait for the worker to terminate. Termination is bounded by the worker reaching its next safe point and unwinding via `InterruptedException`; the worker's own `onDrop` chain runs frame-by-frame during the unwind (DROP-03).
+2. Wait for the worker to terminate. Termination is bounded by the worker reaching its next interruption point and unwinding via `InterruptedException`; the worker's own `onDrop` chain runs frame-by-frame during the unwind (DROP-03).
 3. Reclaim the thread's resources.
 
 To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per MOVE-08 (`give worker;`).
@@ -730,13 +742,13 @@ To trigger `Thread.onDrop()` before natural scope exit, give the binding to the 
 
 ### THR-08 — `InterruptedException`
 
-`InterruptedException` is the exception raised at a safe point (THR-04) when the running thread's interrupt flag is set. It propagates through the standard exception unwind path (EXC-02). Catching `InterruptedException` does not clear the interrupt flag (THR-03); the next safe point in the same thread raises it again.
+`InterruptedException` is the exception thrown at an interruption point (THR-04) when the running thread's interrupt flag is set. It propagates through the standard exception unwind path (EXC-02). Catching `InterruptedException` does not clear the interrupt flag (THR-03); the next interruption point in the same thread throws it again.
 
-In Laterita, `InterruptedException` is a `RuntimeException`. Methods that contain safe points are not required to declare it in their signatures.
+In Laterita, `InterruptedException` is a `RuntimeException`. Methods that contain interruption points are not required to declare it in their signatures.
 
 ### THR-09 — `Thread.join()`
 
-`Thread.join()` blocks the calling thread until the receiver terminates. It is a safe point per THR-04: if the calling thread's interrupt flag is set while it is blocked in `join()`, it raises `InterruptedException`.
+`Thread.join()` blocks the calling thread until the receiver terminates. It is an interruption point per THR-04: if the calling thread's interrupt flag is set while it is blocked in `join()`, it throws `InterruptedException`.
 
 `join()` does not interrupt the receiver. To cancel and observe, call `worker.interrupt()` and then `worker.join()`.
 
@@ -752,7 +764,7 @@ Poisoning is per-mutex, sticky, and not cleared by lock release or by reading.
 
 ### COMP-01 — Native compilation, no GC
 
-Laterita is intended to be compiled ahead-of-time to native code. There is no garbage collector at runtime. Memory management is determined by static ownership, borrow tracking, and `onDrop()` insertion at scope exits. Reference-counted types (`Shared<T>`, `Atomic<T>`) introduce dynamic refcount-based reclamation; cycles among such handles leak per STD-01. No tracing collector is provided.
+Laterita is intended to be compiled ahead-of-time to native code. There is no garbage collector at runtime. Memory management is determined by static ownership, borrow tracking, and `onDrop()` insertion at scope exits. Reference-counted types (`Rc<T>`, `Arc<T>`) introduce dynamic refcount-based reclamation; cycles among such handles leak per STD-01. No tracing collector is provided.
 
 ### COMP-02 — Generic monomorphization
 
@@ -778,7 +790,7 @@ This rule is consistent with COMP-02 (monomorphization erases generic type ident
 
 ## 16. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Shared`, `Atomic`, `Weak`, `Cell`, `Heap`, `Mutex`, `RwLock`, `Channel`. The `Thread` type is reused from the Java standard library per THR-01. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`. User code may declare `override` of an `internal` method but cannot invoke one in any form.
 
