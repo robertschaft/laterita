@@ -2,7 +2,7 @@
 
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
 
-Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `COMP` (compilation model).
+Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model).
 
 ---
 
@@ -240,6 +240,17 @@ mut int[] right = data.slice(50, 100);   // OK: provably disjoint
 ### MOVE-07 — Partial moves are tracked per field
 
 Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04).
+
+### MOVE-08 — `give` to void
+
+A `give` expression with no destination, written as the statement `give x;`, consumes the binding `x` and invokes its `onDrop()` immediately. Equivalent in effect to passing `x` to a function whose only act is to receive ownership and let the parameter go out of scope. After `give x;`, the binding `x` is consumed; subsequent uses are rejected per MOVE-04.
+
+```laterita
+let worker = Thread.ofVirtual().start(() -> task());
+if (changedMyMind()) { give worker; }   // run Thread.onDrop() now; binding consumed
+```
+
+Applies to any owning binding. For `Thread`, it is the standard mechanism for early termination per THR-06.
 
 ---
 
@@ -641,13 +652,103 @@ Interior-mutability primitive. Permits mutation of contents through a non-`mut` 
 
 Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `unsafe` context per UNS-02. `Heap<T>.clone()` is `broken`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Shared<T>`, owned containers) define their own `clone()` with the appropriate semantics.
 
-### STD-07 — Send marker
+### STD-07 — `local` marker
 
-Types that are safe to move between threads carry the `Send` property. Types that are not (such as a single-threaded `Shared<T>`) are not `Send`. The compiler must reject moves of non-`Send` values across thread boundaries except inside `unsafe` methods. (Syntax for declaring `Send` is not fixed by this specification — see open questions.)
+A type carries the `local` property if its instances cannot safely cross thread boundaries.
+
+The standard library declares `local`:
+- `Shared<T>` (STD-01)
+- `Cell<T>` (STD-05)
+- `Heap<T>` (STD-06)
+
+A class is `local` by inference if any field in its transitive field hierarchy is of a `local` type. A class is **non-local** otherwise. A class may be declared `local` to opt in despite having no `local` fields (used for thread-affine resources whose affinity is not visible to the type system: OS handles, GPU contexts, etc.).
+
+A class may be declared `unsafe nonlocal` to override inferred `local`-ness despite containing `local` fields. This declaration asserts that the class internally synchronizes access to those fields per UNS-04. The compiler does not verify the assertion. The stdlib types `Atomic<T>` (STD-02), `Mutex<T>`, `RwLock<T>`, and `Thread` (THR-01) are declared `unsafe nonlocal`.
+
+The compiler must reject:
+- A cross-thread closure capture (CLO-03) of a binding whose type is `local`.
+- A move (MOVE-02) of a `local` value across a thread boundary outside `unsafe` (UNS-02 already gates this).
 
 ---
 
-## 14. Compilation Model
+## 14. Threads
+
+### THR-01 — `Thread` type
+
+`Thread` is the standard `java.lang.Thread` class reused minus the deprecated methods (`stop()`, `suspend()`, `resume()`, `destroy()`, etc.) and with two changes per THR-03 and THR-06.
+
+A `Thread`'s lifetime is bound to the owner of its reference: when the owning binding goes out of scope, `Thread.onDrop()` runs (DROP-03), interrupting the worker and waiting for it to terminate. Long-lived threads (server accept loops, background flushers) must be owned by bindings whose lifetime matches — typically a top-level binding in `main` or a field of an object that is itself owned at top level.
+
+`Thread` is declared `unsafe nonlocal` per STD-07 and may be moved or borrowed across thread boundaries.
+
+### THR-02 — Thread creation
+
+Threads are created using the standard Java `Thread` constructor and `start()` method, or via the fluent factory methods on `Thread.ofVirtual()` and `Thread.ofPlatform()`. No new keyword is introduced.
+
+```laterita
+mut worker = new Thread(() -> body);
+worker.start();
+
+let other = Thread.ofVirtual().start(() -> body);   // factory returns started Thread
+```
+
+Captures within the closure body follow CLO-03 closure capture rules with the additional restrictions of STD-07: each captured binding's referenced type must be non-`local`.
+
+### THR-03 — Interrupt flag
+
+Each `Thread` carries an interrupt flag observable via `Thread.isInterrupted()`. The flag is initially clear. `Thread.interrupt()` sets it; no operation clears it. The flag is **sticky and idempotent**: subsequent `interrupt()` calls are no-ops, and no exception, control-flow construct, or scope exit clears the flag once set.
+
+The static `Thread.interrupted()` is synonymous with `Thread.currentThread().isInterrupted()` and does **not** clear the flag. The Java semantics in which `Thread.interrupted()` clears the flag are not provided.
+
+Any safe point reached after the flag is set raises `InterruptedException` (THR-08).
+
+### THR-04 — Safe points
+
+A **safe point** is a program location at which the running thread observes its own interrupt flag and, if set, raises `InterruptedException`. Safe points are the bodies of stdlib operations declared as blocking the calling thread (`Thread.join`, `Thread.sleep`, `Object.wait`, `Channel.recv`, `Mutex.lock`, IO read/write, and others marked as such in their stdlib definitions).
+
+Code outside these locations does not observe the flag. CPU-bound code remains cancellable only by reaching a stdlib blocking primitive.
+
+### THR-05 — `onDrop()` must not block
+
+An `onDrop()` body (DROP-01) must not contain a safe point (THR-04). The compiler must reject any `onDrop()` definition whose body transitively reaches a stdlib blocking operation.
+
+Rationale: cleanup paths must complete to maintain memory and resource invariants. A blocking call inside `onDrop()` could observe an interrupt and unwind partway through cleanup, leaving locks held permanently or memory leaked.
+
+### THR-06 — `Thread.onDrop()`
+
+`Thread.onDrop()` is `internal` (DROP-06) and is compiler-emitted at scope exit per DROP-03. It performs, in order:
+
+1. Set the interrupt flag (idempotent per THR-03).
+2. Wait for the worker to terminate. Termination is bounded by the worker reaching its next safe point and unwinding via `InterruptedException`; the worker's own `onDrop` chain runs frame-by-frame during the unwind (DROP-03).
+3. Reclaim the thread's resources.
+
+To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per MOVE-08 (`give worker;`).
+
+### THR-07 — `Thread.interrupt()`
+
+`Thread.interrupt()` sets the interrupt flag on the receiver per THR-03 and returns immediately. It does not wait for the worker to unwind. May be called from any thread holding a reference to the receiver.
+
+### THR-08 — `InterruptedException`
+
+`InterruptedException` is the exception raised at a safe point (THR-04) when the running thread's interrupt flag is set. It propagates through the standard exception unwind path (EXC-02). Catching `InterruptedException` does not clear the interrupt flag (THR-03); the next safe point in the same thread raises it again.
+
+In Laterita, `InterruptedException` is a `RuntimeException`. Methods that contain safe points are not required to declare it in their signatures.
+
+### THR-09 — `Thread.join()`
+
+`Thread.join()` blocks the calling thread until the receiver terminates. It is a safe point per THR-04: if the calling thread's interrupt flag is set while it is blocked in `join()`, it raises `InterruptedException`.
+
+`join()` does not interrupt the receiver. To cancel and observe, call `worker.interrupt()` and then `worker.join()`.
+
+### THR-10 — `Mutex<T>` poisoning
+
+A `Mutex<T>` whose holder unwinds (via `InterruptedException` or any other thrown exception) before exiting its critical section is **poisoned**. The standard `lock()` method on a poisoned mutex throws `PoisonedException`. The alternative `lockPoisoned()` returns the lock guard without throwing; the caller acknowledges that the protected data may be in an inconsistent state.
+
+Poisoning is per-mutex, sticky, and not cleared by lock release or by reading.
+
+---
+
+## 15. Compilation Model
 
 ### COMP-01 — Native compilation, no GC
 
@@ -675,13 +776,13 @@ This rule is consistent with COMP-02 (monomorphization erases generic type ident
 
 ---
 
-## 15. Reserved Names
+## 16. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Shared`, `Atomic`, `Weak`, `Cell`, `Heap`. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
+The following names are introduced by this specification and must be provided by the standard library: `Shared`, `Atomic`, `Weak`, `Cell`, `Heap`, `Mutex`, `RwLock`, `Channel`. The `Thread` type is reused from the Java standard library per THR-01. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`. User code may declare `override` of an `internal` method but cannot invoke one in any form.
 
-The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; also an optional declarative prefix on return types per LIFE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
+The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; bare-statement form `give x;` per MOVE-08; also an optional declarative prefix on return types per LIFE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06), `local` (class-body declaration marking the class as `local` per STD-07), `nonlocal` (class-body declaration paired with `unsafe` overriding inferred `local`-ness per STD-07). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
 The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
 

@@ -413,9 +413,71 @@ You spotted this during the verification phase. A naïve `Weak::upgrade` that re
 
 These are the irreducible escape hatches. `Cell<T>` is the documented hole in MUT-01. `Heap<T>` is the only way to allocate without compiler-tracked ownership. Everything else in the standard library — `Shared`, `Atomic`, `Mutex`, lazy initializers, growable collections — is built on top of them in `private unsafe` methods. The unsafe surface is small, concentrated, and auditable.
 
-### Why `Send` is mentioned but underspecified (STD-07)
+### Why `local`, not `Send` (STD-07)
 
-Cross-thread move safety needs to be tracked. We agreed it does, but never settled on the syntax for declaring `Send`-ness. Rust uses an auto-trait; Laterita could use an interface, an annotation, or compile-time inference. The spec records the requirement; the open questions document records the missing decision.
+Cross-thread move and borrow safety needs to be tracked. Rust uses two positive auto-traits (`Send` and `Sync`); Laterita inverts the marker and uses one negative property: `local`. The few stdlib primitives that are not safe to cross thread boundaries (`Shared<T>`, `Cell<T>`, `Heap<T>`) are declared `local`; everything else is non-local by default and may cross threads.
+
+The reason for inverting is Java-target ergonomics. With a positive marker, every user class would have to declare `implements Send` (or be silently inferred via auto-trait machinery) to be usable in concurrent code. With the inverted marker, the *default* for ordinary user classes is "sendable," which is what Java programmers expect. The annotation surface is concentrated in the small set of stdlib primitives plus the rare thread-affine class.
+
+Send and Sync are collapsed into one property because the distinction (Send-but-not-Sync, e.g., Rust's `Cell<T>`) is rare and unusable without the kind of fine-grained borrow reasoning Java programmers don't expect. The single `local` marker covers both move and borrow restrictions.
+
+Hand-synchronized stdlib types (`Atomic<T>`, `Mutex<T>`, `RwLock<T>`, `Thread`) override the inferred `local` property by declaring `unsafe nonlocal`. The unsafe declaration is the same admission of proof obligation as every other `unsafe` in the language: the author is asserting a property the compiler cannot verify, and UNS-04 still applies.
+
+---
+
+## Threads (THR-01 through THR-10)
+
+### Why reuse `java.lang.Thread` (THR-01, THR-02)
+
+The goal is that Java programmers can read and write Laterita without learning new concurrency vocabulary. `new Thread(() -> body).start()` is the canonical Java spawn; reusing it directly means the surface looks identical. The two changes (`onDrop()` semantics, sticky interrupt flag) are behind the API, not on it.
+
+The deprecated methods (`stop`, `suspend`, `resume`, `destroy`) are dropped because they are unsafe under any memory model — Java itself deprecated them — and the unsafety is worse without a GC to paper over the resulting state corruption.
+
+### Why ownership-bound thread lifetime (THR-01, THR-06)
+
+Without a GC, a thread that outlives the data it borrows is a use-after-free. With a GC, Java handles this transparently — the thread keeps the borrowed objects alive. Laterita can't rely on that, so the lifetime relationship has to be explicit.
+
+The cleanest expression of "this thread cannot outlive its owner" is to bind the thread to a variable and have `onDrop()` interrupt-and-join. Variable scope already exists; reusing it for thread lifetime requires no new construct (no `scope { }` block, no structured-task helpers in the language). The borrow checker already enforces "borrows don't outlive their source" — applying that to spawn captures gives cross-thread borrow safety for free.
+
+### Why no detach (THR-01, by omission)
+
+Detached threads are zombie processes by another name. Every real-world use case (long-running servers, background flushers, async loggers) is better expressed as "owned by a top-level binding or by an object the user keeps alive deliberately." Modern systems push genuine fire-and-forget work to queues, schedulers, or container infrastructure — not to in-process detached threads. Erlang's hierarchical supervisor model is the precedent: every process is owned, no zombies.
+
+The cost is that libraries can no longer quietly spawn background threads — they must expose a client object whose lifetime the user manages. This is a feature: it surfaces the resource.
+
+### Why sticky interrupt flag (THR-03)
+
+Java's `Thread.interrupted()` clears the flag on read, and `InterruptedException` clears it on throw. This was modeled on signal-handler semantics in 1995 and made sense when threads were expensive enough to pool and re-run. It has produced thirty years of cancellation bugs: code catches `InterruptedException`, "handles" it, and silently escapes cancellation because the flag is now clear. The standard advice — "always re-set the flag in the catch block" — is the user manually patching around the language default, the tell that the design is wrong.
+
+Modern Java (virtual threads, structured concurrency) has no remaining use case for clear-on-read. Threads are cheap, not pooled-and-re-run; cancellation is a final state, not a consumable signal. Sticky flag is what every modern user actually wants.
+
+### Why interrupt is exposed but the flag operations are restricted (THR-07, THR-09)
+
+`Thread.interrupt()` is fine to expose because, with a sticky flag, it can't be silently lost. The flag is observable but not clearable; an external interrupt request cannot be "consumed" by code that catches the wrong exception. The bug class that motivated hiding `interrupt()` in earlier drafts is foreclosed by the flag semantics, not by API restrictions.
+
+`Thread.interrupted()` is kept (Java compatibility) but redefined as a synonym of `isInterrupted()` — the clear-on-read behavior is the bug, not a feature worth preserving.
+
+### Why `InterruptedException` is unchecked (THR-08)
+
+In Java, `InterruptedException` is checked, which means every method that calls a blocking primitive must declare it. The signature contagion is severe — large parts of the standard library declare `throws InterruptedException` for plumbing reasons, and users learn to write `throws Exception` to escape. The checkedness has not improved cancellation handling in practice; it has just produced verbose signatures.
+
+In Laterita, where the cancellation flag is sticky and unwind happens via the standard exception path, there's no recoverable handling that the checked-exception ceremony enables. Making it unchecked removes the ceremony without losing safety.
+
+### Why `onDrop()` cannot block (THR-05)
+
+`onDrop()` runs on the unwind path. If a blocking call inside `onDrop()` itself throws `InterruptedException`, cleanup is abandoned mid-flight: locks held, files unflushed, memory leaked. The simplest rule that prevents this is "no blocking calls in `onDrop()`." It is checked statically at `onDrop()` definition.
+
+The rule may need scope adjustment for legitimate cases (flush-on-close in buffered IO, drain-on-close in channels). That validation is left as OQ-13.
+
+### Why no `cancel()`, no `tryJoin()`, no `parallelFirst()` (THR-09, by omission)
+
+The model deliberately keeps the public surface to what Java already exposes plus `onDrop()`. Higher-level orchestration primitives (timeout-aware joining, fork-join helpers, structured task scopes) belong in libraries, not in the language spec. The minimal surface — `start()`, `interrupt()`, `join()`, `isInterrupted()`, plus `onDrop()` and `give x;` — is sufficient to express every cancellation pattern. Library authors compose those into higher-level primitives as needed.
+
+### Why mutex poisoning (THR-10)
+
+A thread that unwinds while holding a mutex leaves the protected data in an unknown state — possibly mid-write, possibly inconsistent. Silently releasing the lock and letting the next acquirer proceed is the bug pattern. Throwing on next acquire makes the integrity hazard visible; an explicit `lockPoisoned()` lets users acknowledge the hazard when they have application-level reason to believe the data is recoverable.
+
+This is Rust's model; it's the only model that has been validated at scale for non-GC concurrent code.
 
 ---
 

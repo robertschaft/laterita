@@ -51,15 +51,15 @@ Use cases historically served by reflection — serialization, ORM, DI, validati
 
 ---
 
-## OQ-04 — `Send` declaration syntax
+## OQ-04 — `Send` declaration syntax — **resolved**
 
-**Surfaced when:** specifying what types are safe to move across thread boundaries.
+**Resolution.** The Send/non-Send distinction is inverted into a `local` marker on the small set of stdlib primitives that are not safe to cross thread boundaries (`Shared<T>`, `Cell<T>`, `Heap<T>`). A class is `local` by inference if any field in its transitive hierarchy is `local`; otherwise it is non-local and may be moved or borrowed across thread boundaries. Hand-synchronized stdlib types (`Atomic<T>`, `Mutex<T>`, `RwLock<T>`, `Thread`) override the inferred property by declaring `unsafe nonlocal`. User classes may opt in to `local` for thread-affine resources whose affinity is invisible to the type system. See STD-07 in the spec and the corresponding entry in the reasoning document.
 
-**The issue.** STD-07 records that the language must distinguish `Send` from non-`Send` types. The conversation never settled on how a class declares its `Send`-ness. Possibilities discussed implicitly: an interface (`implements Send`), an annotation, automatic inference based on field types.
+The decision was driven by Java-target ergonomics: under inverted marking, the default for ordinary user classes is "sendable," which matches Java programmers' expectations and requires no annotation in the common case. The escape hatches (`unsafe nonlocal`, explicit `local`) are concentrated in the stdlib and the rare thread-affine class.
 
-**Why it matters.** Affects every concurrency primitive's signature. Affects how user code declares whether their types are thread-safe.
+**Original issue, retained for context.** STD-07 records that the language must distinguish `Send` from non-`Send` types. The conversation never settled on how a class declares its `Send`-ness. Possibilities discussed implicitly: an interface (`implements Send`), an annotation, automatic inference based on field types.
 
-**Related codes:** STD-07, UNS-02 (item 3).
+**Related codes:** STD-07, UNS-02 (item 3), THR-01.
 
 ---
 
@@ -171,4 +171,24 @@ This significantly weakens the argument for the two-type model. The residual con
 **Why it matters.** Affects how textbook data structures get taught and used in Laterita. The example I sketched (Node<T> with Shared next and Weak parent) is a real implementation pattern, but no broader migration story for graph-shaped Java code was developed.
 
 **Related codes:** STD-01, STD-03.
+
+---
+
+## OQ-13 — `onDrop()` no-blocking rule scope
+
+**Surfaced when:** specifying THR-05.
+
+**The issue.** THR-05 forbids safe points (blocking stdlib calls) inside `onDrop()` bodies, on the grounds that an interrupt observed mid-cleanup could leave locks held or memory leaked. The rule is stated for general `onDrop()`, but it has not been validated against every standard-library `onDrop()` that needs to perform potentially-blocking work.
+
+**The question.** Does the no-blocking rule hold for every `onDrop()` in the standard library, or are there primitives whose cleanup legitimately needs to block?
+
+Concrete cases to validate:
+- `Mutex<T>.onDrop()` — does it need to wait for a poisoned-but-still-locked state to resolve?
+- `Channel<T>.onDrop()` — should it drain queued senders/receivers, and is that a blocking operation?
+- `Thread.onDrop()` itself (THR-06) blocks waiting for the worker — but it is the orchestrator of cancellation, not a target of it. The rule may need to be scoped to "bodies that can themselves be interrupted."
+- Buffered IO `onDrop()` — flushing on close is a blocking IO call.
+
+**Why it matters.** If the rule is too strict, common cleanup patterns (flush-on-close) become unimplementable as `onDrop()` and require explicit `close()` calls — losing one of the language's safety guarantees. If the rule is too loose, the integrity hazard it was meant to prevent reappears.
+
+**Related codes:** THR-05, THR-06, THR-10, DROP-01.
 
