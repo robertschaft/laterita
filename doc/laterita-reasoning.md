@@ -78,7 +78,7 @@ With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `
 
 ---
 
-## Move and Borrow (MOVE-01 through MOVE-07)
+## Move and Borrow (MOVE-01 through MOVE-08)
 
 ### Why default assignment is a borrow (MOVE-01)
 
@@ -287,7 +287,11 @@ A throw is a runtime contract; `broken` is a compile-time contract. The differen
 
 ### Why a statement, not a method modifier
 
-C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered something equivalent at the method-signature level. A statement-form keyword turned out to compose better: it works for partial bodies (a function that's deleted only on certain paths, the conditional form), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case. The unconditional form is the only one in the spec for now; the conditional form is open (see open questions).
+C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered something equivalent at the method-signature level. A statement-form keyword turned out to compose better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken ...`), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case.
+
+---
+
+## Strings (STR-01 through STR-05)
 
 ### Why `String` is no longer final (STR-01)
 
