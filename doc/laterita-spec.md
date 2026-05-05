@@ -634,13 +634,15 @@ The cross-thread analog of `Rc<T>`. Reference count operations are atomic. The c
 
 ### STD-03 — `WeakReference<T>`
 
-A non-owning back-reference. Provides:
-- `WeakReference<T>` produced from `Rc<T>::downgrade()` or `Arc<T>::downgrade()`.
-- `Rc<T>? upgrade()` (or `Arc<T>? upgrade()`, depending on flavor) — returns a strong handle if the value is still alive, otherwise `null`. Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap upgrade per STD-04).
+A non-owning back-reference. The class name and method names follow `java.lang.ref.WeakReference`. Provides:
+- `new WeakReference<T>(Rc<T> source)` / `new WeakReference<T>(Arc<T> source)` — constructs a weak handle from a strong one. Mirrors Java's `new WeakReference<T>(referent)` shape but takes the strong handle, because the weak handle is bound to a refcount, not to a GC-tracked referent.
+- `Rc<T>? get()` (or `Arc<T>? get()`, matching the source flavor) — returns a strong handle if the value is still alive, otherwise `null`. Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap per STD-04).
+
+The return type of `get()` differs from `java.lang.ref.WeakReference.get()`: Java returns the bare referent `T` because the GC keeps it alive across the call site; Laterita returns a fresh strong handle `Rc<T>?` / `Arc<T>?` because liveness during use must be carried by an owning handle, not by a collector. Once the caller drops the returned handle, the value may be reclaimed at the next refcount-zero.
 
 ### STD-04 — Race-safe `Arc<T>` upgrade
 
-`WeakReference<T>::upgrade()` on an `Arc`-flavored weak handle must use compare-and-swap to atomically check the strong count is non-zero and bump it. A simple read-then-bump is unsound.
+`WeakReference<T>::get()` on an `Arc`-flavored weak handle must use compare-and-swap to atomically check the strong count is non-zero and bump it. A simple read-then-bump is unsound.
 
 ### STD-05 — `Cell<T>`
 

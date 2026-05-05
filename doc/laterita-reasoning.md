@@ -82,7 +82,7 @@ NULL-09 specifies that scope-exit `onDrop()` on a `T?` skips `null` and dispatch
 
 ### Why no separate Optional<T>
 
-With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `T?` is shorter, more idiomatic, and avoids `Optional<Optional<T>>` confusion when generics nest. STD-03's `WeakReference<T>::upgrade()` returns `Rc<T>?` rather than `Optional<Rc<T>>` for this reason.
+With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `T?` is shorter, more idiomatic, and avoids `Optional<Optional<T>>` confusion when generics nest. STD-03's `WeakReference<T>::get()` returns `Rc<T>?` rather than `Optional<Rc<T>>` for this reason.
 
 ---
 
@@ -441,9 +441,11 @@ This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same ans
 
 The implication for COMP-01 is that "memory management determined statically" is not literally true for refcounted types — refcount reclamation is dynamic, and cycles are an unrecoverable leak. The spec acknowledges this explicitly rather than masking it.
 
+Doubly-linked structures and graph-shaped data (the concern surfaced as OQ-12) port using exactly these primitives: `Rc<T>` / `Arc<T>` on forward edges, `WeakReference<T>` on back edges. No additional standard-library type for graphs is introduced. The verbosity over a GC-tracked back-pointer is the deliberate cost of deterministic, refcount-based reclamation. Migration of doubly-linked lists, parent-pointer trees, and adjacency-list graphs is mechanical: each back-pointer becomes a `WeakReference<T>::get()` at use sites.
+
 ### Why race-safe upgrade (STD-04)
 
-You spotted this during the verification phase. A naïve `WeakReference::upgrade` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory. Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it. Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
+You spotted this during the verification phase. A naïve `WeakReference::get` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory. Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it. Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
 
 ### Why `Cell<T>` and `Heap<T>` are unsafe primitives (STD-05, STD-06)
 

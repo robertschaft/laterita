@@ -75,12 +75,4 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-12 — Doubly-linked structures and graph data
-
-**Surfaced when:** discussing what Java code is hard to port.
-
-**The issue.** Cyclic data structures (doubly-linked lists, parent-pointer trees) are genuinely harder under ownership than under GC. We agreed the answer is `Rc<T>` for forward references plus `WeakReference<T>` for back references, with the caveat that this is more code than the GC version.
-
-**Why it matters.** Affects how textbook data structures get taught and used in Laterita. The example I sketched (Node<T> with Rc next and WeakReference parent) is a real implementation pattern, but no broader migration story for graph-shaped Java code was developed.
-
-**Related codes:** STD-01, STD-03.
+## OQ-12 — Doubly-linked structures and graph data — resolved
