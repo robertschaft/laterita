@@ -51,7 +51,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 A method marked `mut` may mutate `this` (i.e., reassign or mutate-through `mut` fields, and call other `mut` methods on `this`). A method without `mut` cannot.
 
-In a method declaration, `mut` occupies the slot immediately after the visibility modifiers (`public`, `protected`, `private`, `internal`) and before every other modifier. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a `mut` method is only callable on receivers whose binding is itself `mut`, so the marker narrows the method's visible API surface to mutable receivers. Other modifiers (`static`, `final`, `override`, `unsafe`, and Java's `synchronized`/`native`/`strictfp`) follow `mut` in their conventional Java positions.
+In a method declaration, `mut` occupies the slot immediately after the visibility modifiers (`public`, `protected`, `private`, `internal`) and before every other modifier. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a `mut` method is only callable on receivers whose binding is itself `mut`, so the marker narrows the method's visible API surface to mutable receivers. Other modifiers (`static`, `final`, `override`, `unsafe`, and Java's `native`/`strictfp`) follow `mut` in their conventional Java positions.
 
 ```laterita
 class Counter {
@@ -784,4 +784,6 @@ The following keywords are introduced or repurposed by this specification: `let`
 
 The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
 
-Java's existing keywords and their meanings are preserved unless explicitly modified by this specification.
+Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
+
+Java's existing keywords and their meanings are otherwise preserved unless explicitly modified by this specification.

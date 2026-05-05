@@ -487,6 +487,20 @@ So the rule is universal for user-facing `onDrop` bodies, with one privileged ex
 
 The model deliberately keeps the public surface to what Java already exposes plus `onDrop()`. Higher-level orchestration primitives (timeout-aware joining, fork-join helpers, structured task scopes) belong in libraries, not in the language spec. The minimal surface — `start()`, `interrupt()`, `join()`, `isInterrupted()`, plus `onDrop()` and `give x;` — is sufficient to express every cancellation pattern. Library authors compose those into higher-level primitives as needed.
 
+### Why `synchronized` is removed
+
+Java's `synchronized` keyword is dropped — both the method modifier and the `synchronized(obj) { ... }` block — and so are `Object.wait`/`notify`/`notifyAll`. Mutual exclusion is provided exclusively by `Mutex<T>` (and related stdlib primitives). Four reasons.
+
+**The intrinsic monitor isn't free.** Java's `synchronized` works because every `Object` carries a hidden header word the JVM materializes into a monitor on first contention. In a JVM with a GC and an object header already present for other reasons, the marginal cost is small. In an AOT-compiled language with no GC (COMP-01), giving every allocation an intrinsic-lock slot is a per-object cost paid by code that never locks anything. Concentrating mutual exclusion in a stdlib type means only the objects that need a lock pay for one.
+
+**It doesn't compose with ownership.** `synchronized` locks *beside* data: holding a monitor doesn't restrict what fields the compiler lets you touch, and unsynchronized access to the same fields elsewhere is a normal compile success. `Mutex<T>` is shaped the opposite way — the lock *owns* the data, and the only path to the protected state is through the guard. In an ownership-typed language this is strictly the better primitive: the compiler proves that every access to the protected state happens under the lock, which `synchronized` cannot.
+
+**Reentrancy collides with borrow exclusivity.** Java monitors are reentrant; the same thread can re-enter its own `synchronized` block freely. `Mutex<T>` is not, because re-acquiring its guard would mean handing out a second mutable borrow of the protected `T` while the first is still live, which MOVE-04 forbids. Preserving `synchronized` would mean either keeping reentrancy (and carving out a hole in MOVE-04) or silently making `synchronized` non-reentrant (and breaking the compatibility argument that justified keeping the keyword in the first place). Neither is acceptable; dropping the keyword is.
+
+**`wait`/`notify` aren't separable from intrinsic monitors.** They are defined on `Object` and only meaningful while holding that object's monitor. Without intrinsic monitors there is nothing for them to attach to. They are also blocking interruption points (THR-04), which means they would have to participate in the cancellation model, and they would have to not appear in `onDrop` bodies (THR-05). All of that is better expressed by a stdlib condition-variable type sitting next to `Mutex<T>` when the need actually arises.
+
+The migration cost is small: a `synchronized` method becomes a method on a class whose mutable state lives behind a `Mutex<T>` field; a `synchronized(obj)` block becomes a `mutex.lock()` scope. The translation is mechanical and the result is more honest about what the lock protects.
+
 ### Why mutex poisoning (THR-10)
 
 A thread that unwinds while holding a mutex leaves the protected data in an unknown state — possibly mid-write, possibly inconsistent. Silently releasing the lock and letting the next acquirer proceed is the bug pattern. Throwing on next acquire makes the integrity hazard visible; an explicit `lockPoisoned()` lets users acknowledge the hazard when they have application-level reason to believe the data is recoverable.
