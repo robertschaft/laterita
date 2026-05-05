@@ -60,17 +60,7 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-09 — Iterator.remove and ConcurrentModificationException
-
-**Surfaced when:** verifying the iterator pattern.
-
-**The issue.** Real Java's `ConcurrentModificationException` is the runtime version of "you mutated the collection while iterating." Laterita's borrow rules check this at compile time. We agreed CME-requiring code is essentially nonexistent in real codebases, but didn't enumerate the few places it does exist (mostly inside library implementations of `removeIf`).
-
-**The question.** Is there a cleaner pattern for in-iteration modification than dropping into `private unsafe`? Standard library methods like `removeIf` need *some* implementation strategy.
-
-**Why it matters.** Determines whether common collection-mutation idioms are ergonomic or painful.
-
-**Related codes:** UNS-01.
+## OQ-09 — Iterator.remove and ConcurrentModificationException — resolved
 
 ---
 

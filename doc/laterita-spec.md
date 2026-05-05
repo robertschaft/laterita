@@ -667,6 +667,20 @@ The compiler must reject:
 - A cross-thread closure capture (CLO-03) of a binding whose type is `local`.
 - A move (MOVE-02) of a `local` value across a thread boundary outside `unsafe` (UNS-02 already gates this).
 
+### STD-08 — Borrow-checked mutable iteration
+
+Three operations support in-place modification of collections under the borrow rules:
+
+- **`Collection<T>.removeIf(Predicate<T> p)`** — bulk removal of every element matching `p`. Same name and meaning as `java.util.Collection.removeIf` (Java 8+).
+- **`Iterator<T>` and `ListIterator<T>`** — Java's existing iterator types, reused by name and by method set (`hasNext`, `next`, `hasPrevious`, `previous`, `nextIndex`, `previousIndex`, `remove`, `set`, `add`).
+- **`next()` and `previous()` return `bound T`** — a borrow into the underlying collection's storage, bound to the iterator. Any iterator-mutating call (`remove`, `set`, `add`) invalidates the borrow at the type level via MOVE-04.
+
+The one signature deviation from Java: **`Iterator<T>.remove()` and `ListIterator<T>.remove()` return `give T`** rather than `void`. The removed element is yielded to the caller as an owned value. Statement-form `it.remove();` (ignoring the return) drops the value via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+
+Holding a `mut Iterator<T>` or `mut ListIterator<T>` is a mutable borrow of the underlying collection per MOVE-04. Concurrent modification through any other path is rejected at compile time; `ConcurrentModificationException` is not part of Laterita's runtime semantics, and `modCount`-style runtime guards are not required.
+
+Implementations of these operations are permitted (and expected) to use `private unsafe` (UNS-01) for the internal aliasing they require. User code remains safe.
+
 ---
 
 ## 14. Threads

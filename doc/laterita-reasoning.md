@@ -419,7 +419,7 @@ A class that holds a `Heap<T>` field has invariants the compiler can't check (th
 
 ---
 
-## Standard Library (STD-01 through STD-07)
+## Standard Library (STD-01 through STD-08)
 
 ### Why `Rc` and `Arc` are split
 
@@ -458,6 +458,18 @@ The reason for inverting is Java-target ergonomics. With a positive marker, ever
 Send and Sync are collapsed into one property because the distinction (Send-but-not-Sync, e.g., Rust's `Cell<T>`) is rare and unusable without the kind of fine-grained borrow reasoning Java programmers don't expect. The single `local` marker covers both move and borrow restrictions.
 
 Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inferred `local` property by declaring `unsafe nonlocal`. The unsafe declaration is the same admission of proof obligation as every other `unsafe` in the language: the author is asserting a property the compiler cannot verify, and UNS-04 still applies.
+
+### Why borrow-checked iteration reuses Java's API (STD-08)
+
+The cursor-that-mutates-its-container is one of the canonical patterns where ownership type systems reach for internal `unsafe`. Generative lifetimes, region typing, and similar academic devices can defeat the issue but at a cost (proliferating type parameters, separate inference machinery) out of proportion for the use case. Rust shipped `Vec::retain`, `Vec::drain`, `extract_if`, and `LinkedList::cursor_mut` — all backed by `unsafe`. Laterita follows the same shape: a small stdlib API implemented with `private unsafe`, with the audit boundary the four or five method bodies that compose it.
+
+The design choice that took the most thought was whether to introduce a new `Cursor<T>` type or reuse Java's existing `Iterator<T>` and `ListIterator<T>`. The case for a new type was that the borrow-checked semantics are a real change from Java; a new name would warn the reader. The case for reuse won: every method on `ListIterator` already has the right meaning, the loop shapes are identical, and inventing new vocabulary would force every Java reader to learn which iterator class to reach for in which situation. The borrow rules replace `modCount` and `ConcurrentModificationException` underneath, but the API surface above is the one Java developers already use.
+
+The single signature deviation — `Iterator.remove()` and `ListIterator.remove()` returning `give T` rather than `void` — is forced by the ownership model. Java's void return reflects an assumption Laterita can't carry: that the caller "still has" the element from the prior `next()` call as a reference into the collection. In Laterita, `next()` returns a `bound T` borrow tied to the iterator's position, and any mutating call on the iterator invalidates that borrow at the type level. Returning the removed element by `give` is what restores the user's access to the value after the borrow is gone, and it incidentally folds Rust's separate `drain`/`extract_if` API into a one-liner over `remove()`. Statement-form `it.remove();` (ignoring the return) still compiles — the result drops via `onDrop`, matching Java's observable behavior.
+
+`ConcurrentModificationException` doesn't carry over. Its job — detecting "you mutated the collection while iterating" — is exactly what MOVE-04 enforces statically. The runtime category exists in Java because the language can't express the constraint at compile time. Laterita can, so the runtime exception becomes a compile error, and the `modCount` field can leave the standard library entirely.
+
+We considered keeping a separate `Cursor<T>` type for the cursor case anyway, on the theory that "iterator" connotes read-only iteration in many readers' heads. Decided against: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it. Two iterator types in Java's vocabulary, two iterator types in Laterita's — same names, sharper guarantees.
 
 ---
 
