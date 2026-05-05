@@ -262,7 +262,11 @@ Applies to any owning binding. For `Thread`, it is the standard mechanism for ea
 
 Two methods in the same scope may have signatures that differ only in the `take` marker on one or more parameters; they are distinct overloads. The `mut` marker is **not** part of the overload signature: two methods that differ only in `mut` on a parameter are the same method, and declaring both in the same scope is a compile error.
 
-Standard Java overload resolution applies, extended along the ownership axis as follows. When more than one overload is applicable to a call, the compiler selects the one with the least restrictive caller requirement: a borrow form is preferred over a `take` form on the same argument position. The caller opts in to a `take` overload by writing `give arg` at the call site — a `give` argument is applicable only to a `take` parameter (per MOVE-03), removing the borrow form from the candidate set on that argument position.
+Java's standard overload resolution applies first: candidates are filtered by applicability, type specificity, boxing, and varargs as today. The ownership axis enters only as a tie-breaker, and only when Java's procedure leaves more than one applicable overload.
+
+The tie-breaker rule: among overloads remaining after Java's procedure, prefer the overload that uses borrow on every parameter position where another candidate uses `take` (agreeing on all other positions). Equivalently, the overload that demands the least from the caller on the ownership axis wins. If no uniquely most-permissive overload exists — for example, two overloads each borrow one parameter and consume a different one — the call is ambiguous and the caller must disambiguate with `give` on the parameter(s) intended for consumption.
+
+The caller opts in to a `take` overload by writing `give arg` at the call site. A `give` argument is applicable only to a `take` parameter (per MOVE-03), so writing `give` removes the borrow form from the candidate set on that argument position.
 
 ```laterita
 void put(take K key, take V value);    // (a) consumes both
@@ -270,13 +274,17 @@ void put(K key, take V value);         // (b) borrows the key, consumes the valu
 
 let k = makeKey();
 let v = makeValue();
-put(k, v);          // resolves to (b): k borrowed; v moved (implicit give per MOVE-03)
-put(give k, v);     // resolves to (a): explicit give removes (b) from candidates
+put(k, v);          // (a) and (b) tie on Java specificity → tie-breaker → (b) wins
+put(give k, v);     // give removes (b) → (a) wins
 ```
 
-The implicit transfer described in MOVE-03 ("a bare argument that is a binding implicitly transfers ownership when the parameter is `take`") happens only when the take form is the sole applicable overload on that argument. When a borrow overload is also applicable, borrow wins and ownership is retained.
+The implicit transfer described in MOVE-03 ("a bare argument that is a binding implicitly transfers ownership when the parameter is `take`") applies whenever the resolved overload is a `take` form. Whether resolution lands there depends on the overloads in scope and on Java's specificity rules: when type specificity is decisive — e.g., `f(Animal)` borrow vs. `f(take Dog)` consume on a `Dog` argument — the ownership tie-breaker does not run, the more-specific overload wins as in standard Java, and a bare `Dog` argument is consumed by `f(take Dog)`.
 
-A consequence for interface evolution: adding a borrow overload alongside an existing `take` overload silently shifts existing bare call sites from consume to borrow. Such callers continue to compile but retain ownership of the argument, and its drop point may move past the call. For arguments where the drop point is observable (large buffers, lock guards, files), authors should write `give` explicitly at sites that need to be pinned to the consuming form.
+Two consequences for interface evolution:
+- Adding a same-type borrow overload alongside an existing `take` shifts bare call sites from consume to borrow on the tie-breaker.
+- Adding a more-specific `take` overload alongside an existing less-specific borrow shifts bare call sites at the more-specific type from borrow to consume on Java specificity.
+
+For arguments where the drop point is observable (large buffers, lock guards, files), authors should write `give` explicitly at sites that need to be pinned to the consuming form, even when only one overload exists today.
 
 ### MOVE-10 — Override variance for `take` and `mut`
 
