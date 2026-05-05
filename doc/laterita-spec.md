@@ -8,17 +8,18 @@ Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move
 
 ## 1. Bindings
 
-### BIND-01 — Three binding forms
+### BIND-01 — Four binding forms
 
-The language provides exactly three local binding forms:
+The language provides exactly four local binding forms:
 
 | Form | Meaning |
 |---|---|
-| `Type name = expr` | immutable, owned, type explicit |
-| `let name = expr` | immutable, owned, type inferred |
+| `Type name = expr` | immutable, type explicit |
+| `let name = expr` | immutable, type inferred |
+| `mut Type name = expr` | mutable, type explicit |
 | `mut name = expr` | mutable, type inferred |
 
-A mutable binding with explicit type is written `mut Type name = expr`.
+Whether the binding holds an owned value or a borrow is determined by the RHS expression per MOVE-01 and MOVE-02.
 
 ```laterita
 String greeting = "hello";
