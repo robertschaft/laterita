@@ -37,32 +37,6 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-03 — Reflection model — **resolved**
-
-**Resolution.** Laterita has no reflection. See COMP-05 in the spec and the corresponding entry in the reasoning document.
-
-The decision was driven by two factors: monomorphization (COMP-02) erases the runtime type identity that reflection would need, so any reflection API would have to either defeat monomorphization or lie about what it sees; and unrestricted reflection has been a recurring source of security vulnerabilities in Java (deserialization gadget chains, sandbox escapes). Removing it forecloses that class of attacks.
-
-Use cases historically served by reflection — serialization, ORM, DI, validation, mocks, test discovery, SPI — are served by compile-time code generation, following the model already proven by Dagger, Micronaut, Quarkus, and kotlinx.serialization. What is genuinely lost: loading arbitrary user-supplied bytecode at runtime (intentional), JRebel-style hot reload (mitigated by fast incremental compilation), and `Proxy.newProxyInstance` over interfaces unknown at compile time (rare outside mocking and dynamic RPC stubs, both codegen-able when the interface is known).
-
-**Original issue, retained for context.** Java's reflection assumes runtime type information for every class, dynamic class loading, and that erased generics like `List<String>` and `List<Integer>` share runtime representation. Laterita's monomorphization (COMP-02) erases the opposite: each instantiation is a distinct compiled type with no runtime generic information. Field offsets are baked in at compile time.
-
-**Related codes:** COMP-02, COMP-05.
-
----
-
-## OQ-04 — `Send` declaration syntax — **resolved**
-
-**Resolution.** The Send/non-Send distinction is inverted into a `local` marker on the small set of stdlib primitives that are not safe to cross thread boundaries (`Rc<T>`, `Cell<T>`, `Heap<T>`). A class is `local` by inference if any field in its transitive hierarchy is `local`; otherwise it is non-local and may be moved or borrowed across thread boundaries. Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inferred property by declaring `unsafe nonlocal`. User classes may opt in to `local` for thread-affine resources whose affinity is invisible to the type system. See STD-07 in the spec and the corresponding entry in the reasoning document.
-
-The decision was driven by Java-target ergonomics: under inverted marking, the default for ordinary user classes is "sendable," which matches Java programmers' expectations and requires no annotation in the common case. The escape hatches (`unsafe nonlocal`, explicit `local`) are concentrated in the stdlib and the rare thread-affine class.
-
-**Original issue, retained for context.** STD-07 records that the language must distinguish `Send` from non-`Send` types. The conversation never settled on how a class declares its `Send`-ness. Possibilities discussed implicitly: an interface (`implements Send`), an annotation, automatic inference based on field types.
-
-**Related codes:** STD-07, UNS-02 (item 3), THR-01.
-
----
-
 ## OQ-05 — Closure interface names
 
 **Surfaced when:** specifying the three closure types.
@@ -171,23 +145,3 @@ This significantly weakens the argument for the two-type model. The residual con
 **Why it matters.** Affects how textbook data structures get taught and used in Laterita. The example I sketched (Node<T> with Rc next and WeakReference parent) is a real implementation pattern, but no broader migration story for graph-shaped Java code was developed.
 
 **Related codes:** STD-01, STD-03.
-
----
-
-## OQ-13 — `onDrop()` no-blocking rule scope — **resolved**
-
-**Resolution.** THR-05 holds as written for every user-defined and stdlib `onDrop()`. `Thread.onDrop()` (THR-06) is exempt because it runs in the parent's stack as the cancellation orchestrator, not in a body subject to interruption. THR-05's wording was tightened to call this out explicitly. No `unsafe onDrop()` escape hatch is introduced.
-
-The decision was driven by surveying the cases that motivated the original concern:
-
-- `Mutex<T>.onDrop()` is non-blocking — releasing the lock state and signalling poisoning are flag updates, not waits.
-- A queue-like primitive's `onDrop()` (e.g. a Laterita `BlockingQueue<T>`) is non-blocking — waking blocked endpoints with an error is a notification, not a wait.
-- `Thread.onDrop()` blocks, but THR-06 already makes it privileged/internal; it is the orchestrator of cancellation, not a target. The exemption is now spelled out in THR-05.
-- Buffered IO appeared to need blocking in `onDrop()` for flush-on-close, but `close()` and `onDrop()` are intentionally distinct in Laterita (DROP-01 vs. an explicit `close()` invoked via try-with-resources). Flush belongs in `close()`. A user who skips `close()` and relies on `onDrop()` gets an unflushed buffer — the same `Closeable` hazard Java already has, and not `onDrop`'s job to solve.
-
-The survey shows no user-facing `onDrop()` legitimately needs interruption points. Keeping the strict rule preserves the integrity guarantee (cleanup completes atomically with respect to interruption) without costing ergonomics.
-
-**Original issue, retained for context.** THR-05 forbids interruption points inside `onDrop()` bodies, on the grounds that an interrupt observed mid-cleanup could leave locks held or memory leaked. The rule was stated for general `onDrop()` but not validated against every stdlib type whose cleanup *might* need to block (`Mutex`, queue-like primitives, buffered IO, `Thread` itself).
-
-**Related codes:** THR-05, THR-06, THR-10, DROP-01.
-
