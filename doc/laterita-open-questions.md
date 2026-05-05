@@ -6,20 +6,7 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-01 — Panic safety and lock poisoning
-
-**Surfaced when:** working through `Mutex<T>` during the standard-library verification pass.
-
-**The issue.** If a thread holding a `Mutex<T>` panics mid-operation, the data inside might be in an inconsistent state. Rust's `Mutex` returns a `PoisonError` from subsequent locks; the user must explicitly opt in to recovery. Laterita has not chosen a policy.
-
-**Options identified in the conversation:**
-- Implicit poisoning that throws on next access (simplest).
-- Explicit `Result`-returning API (most Rust-like, but Laterita doesn't have `Result` as a settled concept either — see OQ-02).
-- Some hybrid where some types poison and others don't.
-
-**Why it matters.** Affects the API of every synchronization primitive. Affects whether exceptions in `mut` methods can be safely caught and continued from.
-
-**Related codes:** STD (no specific code yet), EXC-01.
+## OQ-01 — Panic safety and lock poisoning — resolved
 
 ---
 

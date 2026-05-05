@@ -681,6 +681,22 @@ Holding a `mut Iterator<T>` or `mut ListIterator<T>` is a mutable borrow of the 
 
 Implementations of these operations are permitted (and expected) to use `private unsafe` (UNS-01) for the internal aliasing they require. User code remains safe.
 
+### STD-09 — `Mutex<T>`
+
+A mutual-exclusion primitive wrapping an owned value. The API mirrors `java.util.concurrent.locks.Lock` for blocking, fairness, and timed acquisition; what follows specifies the differences.
+
+**Constructor.** `new Mutex<T>(take T value)` — wraps `value`, initially unlocked and unpoisoned.
+
+**Acquisition returns a guard.** `lock()` and `tryLock()` (including timed variants) return `bound mut MutexGuard<T>` rather than `void`/`boolean`. The guard *is* the critical section: its `onDrop` releases the lock, and there is no `unlock()` method. `MutexGuard<T>.value()` returns a `bound mut T` borrow of the protected value.
+
+**Acquisition can throw.** `lock()` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked. `tryLock()` throws `PoisonedException` only.
+
+**Drop semantics.** `MutexGuard<T>.onDrop()` releases the lock; if the guard is being dropped on an exception unwind (EXC-02), the mutex is marked poisoned (THR-10) before release. `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no guard can be outstanding when the mutex itself is dropped, so cleanup is independent of lock or poison state.
+
+**Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
+
+`Mutex<T>` is declared `unsafe nonlocal` per STD-07.
+
 ---
 
 ## 14. Threads
@@ -762,9 +778,11 @@ To trigger `Thread.onDrop()` before natural scope exit, give the binding to the 
 
 ### THR-10 — `Mutex<T>` poisoning
 
-A `Mutex<T>` whose holder unwinds (via `InterruptedException` or any other thrown exception) before exiting its critical section is **poisoned**. The standard `lock()` method on a poisoned mutex throws `PoisonedException`. The alternative `lockPoisoned()` returns the lock guard without throwing; the caller acknowledges that the protected data may be in an inconsistent state.
+A `Mutex<T>` whose holder unwinds (via `InterruptedException` or any other thrown exception) before exiting its critical section is **poisoned**. The outstanding `MutexGuard`'s `onDrop` on the unwind path (EXC-02) sets the mutex's poison flag before releasing the lock.
 
-Poisoning is per-mutex, sticky, and not cleared by lock release or by reading.
+`Mutex<T>.lock()` and `tryLock()` throw `PoisonedException` on a poisoned mutex. There is no bypass: a poisoned mutex's contents are no longer reachable through the locking API. Programs that need to recover from poisoning replace the entire `Mutex<T>` (typically the surrounding `Arc<Mutex<T>>`); the replaced instance is dropped along with its protected value through the standard `onDrop` path (STD-09).
+
+Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection. `isPoisoned()` reads the flag without acquiring the lock.
 
 ---
 
@@ -796,7 +814,7 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 ## 16. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`.
 

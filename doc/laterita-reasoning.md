@@ -419,7 +419,7 @@ A class that holds a `Heap<T>` field has invariants the compiler can't check (th
 
 ---
 
-## Standard Library (STD-01 through STD-08)
+## Standard Library (STD-01 through STD-09)
 
 ### Why `Rc` and `Arc` are split
 
@@ -470,6 +470,12 @@ The single signature deviation — `Iterator.remove()` and `ListIterator.remove(
 `ConcurrentModificationException` doesn't carry over. Its job — detecting "you mutated the collection while iterating" — is exactly what MOVE-04 enforces statically. The runtime category exists in Java because the language can't express the constraint at compile time. Laterita can, so the runtime exception becomes a compile error, and the `modCount` field can leave the standard library entirely.
 
 We considered keeping a separate `Cursor<T>` type for the cursor case anyway, on the theory that "iterator" connotes read-only iteration in many readers' heads. Decided against: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it. Two iterator types in Java's vocabulary, two iterator types in Laterita's — same names, sharper guarantees.
+
+### Why `Mutex<T>` returns a guard, not a `void` `lock()` (STD-09)
+
+Java's `Lock` interface separates `lock()` from `unlock()`, which means the unlock can be skipped on an exception path. The defensive idiom is `try { lock.lock(); ... } finally { lock.unlock(); }` — a try/finally ceremony for what should be a syntactic invariant. Laterita has no need for the ceremony: `lock()` returns a borrowed `MutexGuard<T>` whose `onDrop` releases the lock, scope exits run `onDrop` automatically (DROP-01), and exception unwind triggers `onDrop` along the way (EXC-02). Forgetting to unlock isn't expressible.
+
+This is the same pattern as Rust's `MutexGuard`, C++'s `std::lock_guard`/`std::unique_lock`, and the try-with-resources shape Java itself documents for `Lock` users. The change Laterita makes is to elevate the discipline from "remember to use it" to unconditional: every `Mutex<T>` user gets the guard, whether they thought to want it or not.
 
 ---
 
@@ -535,11 +541,23 @@ Java's `synchronized` keyword is dropped — both the method modifier and the `s
 
 The migration cost is small: a `synchronized` method becomes a method on a class whose mutable state lives behind a `Mutex<T>` field; a `synchronized(obj)` block becomes a `mutex.lock()` scope. The translation is mechanical and the result is more honest about what the lock protects.
 
-### Why mutex poisoning (THR-10)
+### Why mutex poisoning, no bypass (THR-10)
 
-A thread that unwinds while holding a mutex leaves the protected data in an unknown state — possibly mid-write, possibly inconsistent. Silently releasing the lock and letting the next acquirer proceed is the bug pattern. Throwing on next acquire makes the integrity hazard visible; an explicit `lockPoisoned()` lets users acknowledge the hazard when they have application-level reason to believe the data is recoverable.
+A thread that unwinds while holding a mutex leaves the protected data in an unknown state — possibly mid-write, possibly with broken invariants. Silently releasing the lock and letting the next acquirer proceed (Java's `synchronized` default, `parking_lot::Mutex`'s choice) means the bug in the unwound critical section produces silent wrong behavior in every subsequent acquirer — exactly the bug class hardest to track down. Poisoning makes the integrity hazard observable.
 
-This is Rust's model; it's the only model that has been validated at scale for non-GC concurrent code.
+The remaining design choice was whether to provide a bypass for callers who want the guard regardless of poison state. Rust's `std::sync::Mutex` does (`unwrap_or_else(|p| p.into_inner())`); Laterita does not. The cases that motivated bypasses in Rust mostly turned out not to need poisoning at all — counters, best-effort caches, emergency logging are "I don't care if it's poisoned" cases, where the cleaner answer is no poisoning, not poisoning-with-escape. The cases where the bypass would correctly enable repair (recompute a cached aggregate, rebuild a derived index) typically collapse under reordering: defensive code that mutates locals first and the struct last leaves invariants intact even when intermediate steps panic. The cases where reordering doesn't help — a panicking user callback inside a generic-container's critical section — usually shouldn't be repaired anyway, because the structure itself may be broken.
+
+Removing the bypass also closes a cargo-cult risk. Once `lockPoisoned()` exists, the path of least resistance for "this throws sometimes" is to call the bypass and ignore the issue, which negates the safety signal poisoning was introduced to provide. The pattern aligns with Laterita's broader stance: take Rust's safety guarantees, give them Java's surface, remove escape hatches that don't carry their weight.
+
+If a future need proves real, a more targeted API — a destructive `Mutex<T>.take()` that consumes the mutex, or `Mutex<T>.replace(give T)` that swaps the protected value on a poisoned mutex — is a smaller and less abusable addition than `lockPoisoned()`. The current spec leaves both unaddressed; either can be added later without breaking existing code.
+
+The result is a fourth point in the design space — poisoning yes, bypass no — stricter than Rust's `std::sync::Mutex`, more signaling than `parking_lot::Mutex` or Java's intrinsic locks. The unique combination is consistent with the rest of the language.
+
+| | Poisoning | Bypass |
+|---|---|---|
+| Java `synchronized`, `parking_lot::Mutex` | no | n/a |
+| Rust `std::sync::Mutex` | yes | yes (`into_inner`) |
+| Laterita `Mutex<T>` | yes | no |
 
 ---
 
