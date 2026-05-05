@@ -4,16 +4,6 @@ This document records questions and issues that surfaced during the design conve
 
 Resolving any of these requires a separate decision; the spec deliberately leaves them open.
 
----
-
-## OQ-01 — Panic safety and lock poisoning — resolved
-
----
-
-## OQ-02 — Exception ergonomics beyond what ownership forces — resolved
-
----
-
 ## OQ-05 — Closure interface names
 
 **Surfaced when:** specifying the three closure types.
@@ -23,8 +13,6 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 **Why it matters.** These names appear in every higher-order method signature. Picking them is a public-API decision.
 
 **Related codes:** CLO-03.
-
----
 
 ## OQ-06 — Spring DI and compile-time annotation processing details
 
@@ -41,16 +29,6 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 **Related codes:** none directly; touches COMP-02.
 
----
-
-## OQ-08 — Owned-vs-borrowed strings: one type or two — resolved
-
----
-
-## OQ-09 — Iterator.remove and ConcurrentModificationException — resolved
-
----
-
 ## OQ-10 — JavaBean migration story
 
 **Surfaced when:** enumerating what Java code requires rewriting.
@@ -60,8 +38,6 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 **Why it matters.** Determines the migration effort for existing Spring/Jakarta EE applications.
 
 **Related codes:** BIND-04.
-
----
 
 ## OQ-11 — Bean scopes beyond singleton
 
@@ -73,6 +49,11 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 **Related codes:** OQ-06.
 
----
+# Resolved Questions
 
-## OQ-12 — Doubly-linked structures and graph data — resolved
+* OQ-01 — Panic safety and lock poisoning
+* OQ-02 — Exception ergonomics beyond what ownership forces
+* OQ-08 — Owned-vs-borrowed strings: one type or two
+* OQ-09 — Iterator.remove and ConcurrentModificationException
+* OQ-12 — Doubly-linked structures and graph data
+
