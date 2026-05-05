@@ -353,9 +353,29 @@ A closure that borrows `name` cannot outlive `name`. This is the same lifetime-b
 
 ### Why preserve Java's exception syntax (EXC-01)
 
-Earlier in the design I sneaked in a Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching in catch. You correctly pushed back: those are nice ideas, but they aren't *forced* by ownership. They're orthogonal language improvements.
+Earlier in the design I sneaked in a Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching in catch. The pushback was correct: those are nice ideas, but they aren't *forced* by ownership — they're orthogonal language improvements with their own costs. Sealed error types want a pattern-matching story Java doesn't have; mandatory `try` at call sites is a substantial syntactic change for marginal gain; exhaustive catch makes wide-net handlers (logging frameworks, top-level fallbacks) more awkward, not less. Each is defensible in isolation; none clears the bar of "introducing an unfamiliar shape pays for itself."
 
-The actually-ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04). Everything else is regular Java exceptions, including checked exceptions, the type hierarchy, and the syntax. Whether to *also* fix Java's exception ergonomics is left as an open question rather than baked into the spec.
+The ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04). The syntax — `try`/`catch`/`finally`, the `Throwable` hierarchy, the `throw` keyword — survives unchanged. The one Java-ergonomics fix that does make it into the spec is dropping the checked/unchecked distinction (EXC-05), where the consensus against checked exceptions is unusually strong and the feature actively fights other choices in the design (closure interop, lambda-friendly stdlib).
+
+### Why no checked exceptions (EXC-05)
+
+Java's checked-exception model — methods declare every checked exception they may throw, callers must catch or re-declare — was meant to force callers to think about recoverable failures. Three decades in, the consensus is that it didn't work and is more burden than benefit. Laterita drops the checking entirely, keeping `throws` only as documentation.
+
+The strongest evidence is consensus across both language designers and the Java ecosystem itself.
+
+- **No mainstream language designed after Java has adopted the model.** Anders Hejlsberg refused it in C# — his 2003 interview is the canonical critique: versioning brittleness (adding a thrown type is a binary-incompatible API change), the `throws Exception` escape valve, scaling failures across deep call stacks. Kotlin, Scala, and Swift each declined. The case is unusually one-sided for a language design question.
+
+- **The Java ecosystem routes around the feature.** Spring's data-access layer wraps `SQLException` into the unchecked `DataAccessException` hierarchy on principle. Hibernate, Jackson, and modern Jakarta EE APIs are unchecked-by-default. Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism, and is widely used. When the most popular ecosystem in the language is built on top of escape hatches from a language feature, that feature is not paying its rent.
+
+- **Lambdas broke the remaining case.** The functional interfaces introduced in Java 8 — `Function`, `Consumer`, `Supplier` — don't declare exceptions, so any checked throw inside a stream pipeline forces wrapping into `RuntimeException` or a custom `CheckedFunction` shim. Laterita wants closures (CLO-01 through CLO-04) to be ordinary; carrying forward a feature that fights closure interop is incoherent.
+
+- **The signature-contagion problem is real.** It was already the rationale for THR-08 making `InterruptedException` unchecked. The argument generalizes: every checked exception that propagates through a deep call stack pollutes every signature on the path, the path inevitably reaches a method whose author didn't want to think about that exception, and the author writes `throws Exception` to escape — losing the precision the model was trying to deliver.
+
+The misuse pattern of "exceptions for control flow" (parsing-by-throw, `NumberFormatException` as a question) is real but separate. It is a stdlib-API problem (use `T?` or a parsed-result type for expected absence), not a checking problem; dropping the checked discipline does not encourage it and dropping it does not solve it.
+
+The cost of the change is small. `throws` clauses remain legal as documentation, so existing Java method signatures translate without syntactic edits. Tools that surface declared exception types continue to work. The language merely stops enforcing the declaration. What is gained: clean lambda interop, no signature contagion, no `@SneakyThrows`-shaped workaround culture, and consistency with Laterita's other modern-Java-friendly choices (sticky interrupt flag, ownership-bound thread lifetime, no reflection).
+
+We considered going further — replacing exceptions with a `Result<T, E>` type, or adopting Swift's `try`-at-call-site model — and rejected both for the EXC-01 reason. They are improvements with merit, but they require importing pattern-matching infrastructure Java doesn't have, and they impose a much larger surface change than dropping a single piece of enforcement. Drop the checking, keep the syntax. The minimal change captures most of the win.
 
 ### Why cleanup runs on unwind (EXC-02)
 
@@ -475,9 +495,7 @@ Modern Java (virtual threads, structured concurrency) has no remaining use case 
 
 ### Why `InterruptedException` is unchecked (THR-08)
 
-In Java, `InterruptedException` is checked, which means every method that calls a blocking primitive must declare it. The signature contagion is severe — large parts of the standard library declare `throws InterruptedException` for plumbing reasons, and users learn to write `throws Exception` to escape. The checkedness has not improved cancellation handling in practice; it has just produced verbose signatures.
-
-In Laterita, where the cancellation flag is sticky and unwind happens via the standard exception path, there's no recoverable handling that the checked-exception ceremony enables. Making it unchecked removes the ceremony without losing safety.
+A special case of EXC-05: all exceptions are unchecked. The cancellation-specific argument — sticky-flag semantics make recoverable handling moot, and the signature contagion was severe in Java — was originally local to `InterruptedException` and is what motivated the eventual generalization to every exception type.
 
 ### Why `onDrop()` cannot block (THR-05)
 

@@ -548,7 +548,7 @@ A closure's type carries the lifetimes of every binding it captures by borrow. T
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
-This specification does not redefine Java's exception syntax. Functions declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack.
+This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
 
 ### EXC-02 — Cleanup runs on exception unwind
 
@@ -561,6 +561,12 @@ DROP-04's drop flags must be consulted during exception unwind, not only on norm
 ### EXC-04 — Lazy stack-trace resolution
 
 When an exception is thrown, the runtime must capture the current call stack as raw return addresses. Symbol resolution (mapping addresses to source locations) must be deferred until the trace is inspected. The captured trace is owned by the exception object and freed with it.
+
+### EXC-05 — All exceptions are unchecked
+
+The compiler performs no checked-exception analysis. Any throwable type may be thrown from any method without a corresponding declaration, and callers are never required to catch a particular exception type or re-declare it on their own signatures. Java's distinction between `Exception` and `RuntimeException` carries no language-level significance in Laterita; the entire `Throwable` hierarchy is uniformly unchecked.
+
+The `throws` clause is permitted as documentation. A method may list the exception types it expects to propagate, and tooling (IDEs, generated documentation) may surface that list. The list is not enforced: declaring `throws X` does not commit the method to throwing only `X`, and omitting the clause does not prevent any exception from propagating.
 
 ---
 
@@ -732,7 +738,7 @@ To trigger `Thread.onDrop()` before natural scope exit, give the binding to the 
 
 `InterruptedException` is the exception thrown at an interruption point (THR-04) when the running thread's interrupt flag is set. It propagates through the standard exception unwind path (EXC-02). Catching `InterruptedException` does not clear the interrupt flag (THR-03); the next interruption point in the same thread throws it again.
 
-In Laterita, `InterruptedException` is a `RuntimeException`. Methods that contain interruption points are not required to declare it in their signatures.
+`InterruptedException` is unchecked per EXC-05; methods containing interruption points are not required to declare it.
 
 ### THR-09 — `Thread.join()`
 

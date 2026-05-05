@@ -23,17 +23,7 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-02 — Exception ergonomics beyond what ownership forces
-
-**Surfaced when:** designing exception handling, then explicitly walking back the over-reach.
-
-**The issue.** I initially proposed sealed error types, mandatory `try` at call sites, exhaustive pattern matching in catch, no checked-vs-unchecked split, and a Rust-style panic distinction. Then I correctly noted these are *not* forced by ownership — they are independent improvements to Java's exception story. The spec preserves Java's existing exception syntax (EXC-01) and leaves the question of whether to *also* fix exception ergonomics open.
-
-**The actual question.** Should Laterita ship with regular Java exceptions (current spec), or take this opportunity to redesign exception handling? If the latter, which of the proposed improvements get adopted?
-
-**Why it matters.** Affects the look and feel of essentially all error-handling code. Affects whether Laterita has a `Result<T, E>` type. Affects whether checked exceptions exist.
-
-**Related codes:** EXC-01.
+## OQ-02 — Exception ergonomics beyond what ownership forces — resolved
 
 ---
 
