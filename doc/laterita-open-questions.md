@@ -54,7 +54,7 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 * OQ-01 — Panic safety and lock poisoning
 * OQ-02 — Exception ergonomics beyond what ownership forces
 * OQ-03 — Reflection model
-* OQ-04 — `Send` declaration syntax
+* OQ-04 — Cross-thread safety marker (resolved as `local`, STD-07)
 * OQ-07 — Method-level `mut` syntax
 * OQ-08 — Owned-vs-borrowed strings: one type or two
 * OQ-09 — Iterator.remove and ConcurrentModificationException

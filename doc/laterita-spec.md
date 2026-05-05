@@ -524,7 +524,7 @@ Subclasses of `String` declared by user code are owned. They cannot be returned 
 
 Closures are classified by how they use captured bindings:
 
-- **Read** — captured bindings are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to STD-Send rules).
+- **Read** — captured bindings are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `local` rules of STD-07).
 - **Mutate** — captured bindings include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
 - **Consume** — captured bindings include a moved value; closure may be invoked exactly once.
 
@@ -596,7 +596,7 @@ Only the following operations require `unsafe` context:
 
 1. Constructing or dereferencing `Heap<T>`.
 2. Constructing `Cell<T>` or mutating its contents through a non-`mut` binding.
-3. Cross-thread move of a non-`Send` type.
+3. Cross-thread move of a `local` type (STD-07).
 4. Lifetime extension or transmute.
 5. Foreign function calls (FFI / native).
 6. Unchecked array indexing.
@@ -653,6 +653,8 @@ Interior-mutability primitive. Permits mutation of contents through a non-`mut` 
 Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `unsafe` context per UNS-02. `Heap<T>.clone()` is `broken`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()` with the appropriate semantics.
 
 ### STD-07 — `local` marker
+
+Cross-thread safety in Laterita is expressed by a single negative marker, `local`. The language does **not** provide `Send` or `Sync` traits; that vocabulary belongs to Rust and has no analog here. Inter-thread communication uses `Mutex<T>` (STD-09) for shared mutable state and the existing `java.util.concurrent` channel-like classes (e.g., `BlockingQueue`) for hand-off — no auto-trait machinery is involved.
 
 A type carries the `local` property if its instances cannot safely cross thread boundaries.
 
