@@ -86,7 +86,7 @@ With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `
 
 ---
 
-## Move and Borrow (MOVE-01 through MOVE-08)
+## Move and Borrow (MOVE-01 through MOVE-10)
 
 ### Why default assignment is a borrow (MOVE-01)
 
@@ -121,6 +121,36 @@ Same principle as MOVE-05, applied to arrays. The compiler can prove disjointnes
 ### Why partial-move tracking (MOVE-07)
 
 Once you have moves out of fields, you need to know which fields are still alive at every point in the function. This is bookkeeping the compiler does silently, and it pays off both in normal control flow (use-after-move detection on partially-moved values) and during exception unwind (DROP-04, EXC-03). Skipping it would mean making `give` on a field illegal, which would make ownership transfer in real code far more painful.
+
+### Why `take` participates in overload resolution but `mut` does not (MOVE-09)
+
+Java is an overloading language; we accept that and extend overload resolution along the ownership axis. The asymmetry between `take` and `mut` is deliberate.
+
+`take` and borrow are different *operations*. A consuming `put(take K, take V)` and a borrowing `put(K, take V)` are two reasonable APIs on the same Map: the first lets the caller donate the key, the second lets the caller keep it. Same name, same effect on the receiver, different ownership contract — exactly the situation overloading is for.
+
+`mut` and immutable borrow are not different operations; `mut` is a *strength* on borrow. Two same-named methods that differed only in `mut` on a parameter would be saying "I write to this argument" vs. "I don't" — and that distinction wants different names, not the same name with different access strengths. There is also no caller-side opt-in syntax for `mut` parallel to `give` for `take`: a caller has no way to disambiguate `f(x)` between `f(T)` and `f(mut T)` even if both existed. The combination — no useful semantic distinction, no caller-side disambiguator — makes `mut` a poor fit for the overload axis. We exclude it.
+
+`final` on Java parameters is excluded from the signature for a different but related reason: it is callee-internal entirely, the caller doesn't care, and there is nothing observable to overload on. `take` is observable at the call site, so it earns its place in the signature; `mut` is observable at the call site too but provides no useful overload distinction, so it does not.
+
+Borrow wins among applicable `take`-vs-borrow overloads because moving is observable and shouldn't happen by accident. A caller writing `f(x)` expects `x` to remain usable afterward; if a `take` overload silently won, the expectation would break invisibly at the call site. Requiring `give` to opt in to consume keeps the surprise local to the sites where it matters, and matches the producer/consumer asymmetry already established in MOVE-01 (consumer-side default is borrow).
+
+The interface-evolution case is worth naming explicitly. Adding a borrow overload to a method that previously only had a `take` form changes the resolution outcome at every existing bare call site. For most types this is harmless: the argument is dropped a little later (when the calling scope ends, rather than at the call), and the observable behavior is unchanged. For types where the drop point matters — a multi-megabyte buffer the caller wanted released promptly, a lock guard whose timing is load-bearing, a file the caller wanted closed before the next operation — the original `f(x)` should have been `f(give x)` from the start. The opt-in `give` is the place that intent gets recorded.
+
+#### Recommendation: `mut` and `take` are caller-side work
+
+When a method's body needs `mut` access to a parameter or needs to consume it, the signature should declare `mut` or `take` and the caller does the work of providing it — by holding `mut`, by surrendering ownership with `give`, or by cloning before the call. A method whose signature is `f(K)` should not internally clone or take a temporary `mut` lock to do something the signature didn't ask for; if the body needs mut or ownership, the signature should say so.
+
+This is non-normative — methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`. The default mental model is what we are after: *the cost the caller can read from the signature is the cost the caller bears*. Rust's `HashMap::insert(k: K, v: V)` consumes both arguments and lets callers `.clone()` if they want to keep them; that is the idiom Laterita inherits, expressed in Java's overload-aware vocabulary rather than Rust's overload-free one.
+
+### Why override variance differs for `take` and `mut` (MOVE-10)
+
+Once `take` is part of the signature and `mut` is not, the override rule for each falls out almost automatically.
+
+`take` is invariant for overrides because it is part of the overload identity. An override of `f(take T)` must carry `take`; otherwise it is overriding a different method (or not overriding any inherited method, depending on what else exists in the supertype). There is no soundness room here — `take` invariance is a structural consequence of MOVE-09.
+
+`mut` is contravariant: an override may drop `mut` but not add it. The intuition is the same as Java's `throws` rule. An interface that promises "I might mutate your argument" can be implemented by a class that doesn't actually mutate — the body simply asks for less than the contract granted, and any caller satisfying the interface's `mut` requirement automatically satisfies the implementation's bare requirement. The reverse is unsound: a class that demands `mut` cannot stand in for an interface that promised only a borrow, because callers passing through the interface type would supply only an immutable borrow and the implementation would have nothing to mutate.
+
+The Java parallel — `throws` clauses contract on overrides, parameter types stay invariant — guides the shape of this rule. Modifier strength relaxes; identity does not. `mut` is a strength; `take` is identity.
 
 ---
 

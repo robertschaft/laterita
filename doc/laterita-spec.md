@@ -258,6 +258,58 @@ if (changedMyMind()) { give worker; }   // run Thread.onDrop() now; binding cons
 
 Applies to any owning binding. For `Thread`, it is the standard mechanism for early termination per THR-06.
 
+### MOVE-09 — `take` participates in overload resolution
+
+Two methods in the same scope may have signatures that differ only in the `take` marker on one or more parameters; they are distinct overloads. The `mut` marker is **not** part of the overload signature: two methods that differ only in `mut` on a parameter are the same method, and declaring both in the same scope is a compile error.
+
+Standard Java overload resolution applies, extended along the ownership axis as follows. When more than one overload is applicable to a call, the compiler selects the one with the least restrictive caller requirement: a borrow form is preferred over a `take` form on the same argument position. The caller opts in to a `take` overload by writing `give arg` at the call site — a `give` argument is applicable only to a `take` parameter (per MOVE-03), removing the borrow form from the candidate set on that argument position.
+
+```laterita
+void put(take K key, take V value);    // (a) consumes both
+void put(K key, take V value);         // (b) borrows the key, consumes the value
+
+let k = makeKey();
+let v = makeValue();
+put(k, v);          // resolves to (b): k borrowed; v moved (implicit give per MOVE-03)
+put(give k, v);     // resolves to (a): explicit give removes (b) from candidates
+```
+
+The implicit transfer described in MOVE-03 ("a bare argument that is a binding implicitly transfers ownership when the parameter is `take`") happens only when the take form is the sole applicable overload on that argument. When a borrow overload is also applicable, borrow wins and ownership is retained.
+
+A consequence for interface evolution: adding a borrow overload alongside an existing `take` overload silently shifts existing bare call sites from consume to borrow. Such callers continue to compile but retain ownership of the argument, and its drop point may move past the call. For arguments where the drop point is observable (large buffers, lock guards, files), authors should write `give` explicitly at sites that need to be pinned to the consuming form.
+
+### MOVE-10 — Override variance for `take` and `mut`
+
+For overrides of inherited methods (subclass override, interface implementation):
+
+- **`take` matches invariantly.** An override's parameter must carry `take` if and only if the inherited declaration does. This follows from MOVE-09: a parameter list differing on `take` is a different overload, not an override of the same method.
+
+- **`mut` matches contravariantly.** An override may drop `mut` from a parameter that the inherited declaration marks `mut`, but may not add `mut` to a parameter the inherited declaration leaves bare. Dropping `mut` is sound — the override demands less of the caller than the inherited contract promises. Adding `mut` is unsound — callers holding only an immutable borrow could no longer satisfy the override through the inherited type.
+
+```laterita
+interface Visitor {
+    void visit(mut Node n);
+}
+
+class CountingVisitor implements Visitor {
+    override void visit(Node n) { ... }       // OK: drops mut; requires less
+}
+
+class RewritingVisitor implements Visitor {
+    override void visit(mut Node n) { ... }   // OK: matches exactly
+}
+
+interface Reader {
+    void read(Node n);
+}
+
+class BadReader implements Reader {
+    override void read(mut Node n) { ... }    // ERROR: cannot strengthen mut
+}
+```
+
+The variance rule mirrors Java's existing treatment of `throws`: an override may declare fewer or narrower checked exceptions than the inherited signature, never more. The principle is the same — an override may relax its demands on callers, never tighten them.
+
 ---
 
 ## 4. Mutability Rules (Cross-cutting)
