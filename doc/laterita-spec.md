@@ -87,6 +87,8 @@ print(name.length());       // always safe
 
 The type `T?` admits either a value of `T` or the special value `null`. `T` and `T?` are distinct types: `T` widens to `T?` implicitly; `T?` does not narrow to `T` without a check (NULL-06) or an assertion (NULL-07).
 
+`T` must be a reference type. Nullable primitive types (`int?`, `long?`, `boolean?`, etc.) are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`Integer?`, `Boolean?`, …). The compiler does not auto-box at the type-suffix level.
+
 ```laterita
 String? maybeName = lookup(id);
 print(maybeName.length());   // ERROR: requires null check
@@ -101,7 +103,7 @@ The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is 
 `expr?.method(args)` evaluates to `null` if `expr` is `null`, otherwise invokes `method` on `expr`. The result type is `R?` where `R` is the method's return type.
 
 ```laterita
-int? len = maybeName?.length();
+String? upper = maybeName?.toUpperCase();
 ```
 
 ### NULL-05 — Elvis operator `?:`
