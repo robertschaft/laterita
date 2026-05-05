@@ -66,18 +66,6 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ---
 
-## OQ-07 — Method-level `mut` syntax
-
-**Surfaced when:** writing the first examples of mutating methods.
-
-**The issue.** BIND-05 specifies that mutating methods are marked with `mut` before the return type. The conversation used `mut void put(String key, Entry entry)` without the user explicitly confirming this is the right placement. Alternatives could be `void mut put(...)` (after return type) or a different keyword altogether.
-
-**Why it matters.** Affects every mutating method signature in the language. Aesthetic, but pervasive.
-
-**Related codes:** BIND-05.
-
----
-
 ## OQ-08 — Owned-vs-borrowed strings: one type or two
 
 **Surfaced when:** working through the StringBuilder/String slice case.

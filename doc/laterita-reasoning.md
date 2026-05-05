@@ -40,6 +40,14 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 The signature of `mut void put(...)` answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `mut` in the signature, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary.
 
+### Why `mut` sits in the visibility slot (BIND-05)
+
+`mut` is conceptually a visibility-like marker, not a behavioral one. By BIND-06 a `mut` method can only be called on a `mut` receiver — so the marker doesn't describe *what the body does* in a way the caller has to reason about, it describes *which receivers can see the method at all*. From a caller's point of view, an immutable binding sees a strictly smaller API surface than a `mut` binding does; that is exactly the shape of a visibility predicate.
+
+Placing `mut` immediately after `public`/`protected`/`private`/`internal` reflects this. Reading left-to-right, the modifier list answers two questions in order: "to whom is this visible?" (the visibility keyword) and "on what receivers?" (`mut` or absence). Everything that comes after — `static`, `final`, `override`, `unsafe`, Java's behavioral modifiers — describes orthogonal facts about the body or the inheritance role and follows in the conventional Java positions.
+
+We considered the alternative position the spec drafts originally used — `mut` immediately before the return type, after every other modifier — and rejected it. Putting `mut` next to the return type reads as if `mut` qualifies the return value, which it does not; the receiver-mutation semantics belong to the method, not the result. Anchoring `mut` to the visibility slot also keeps the return-type prefixes (`give`, `bound`) uncontested in the slot directly preceding the return type, where they genuinely do qualify the returned value.
+
 ### Why constructors are a special initialization case (BIND-04)
 
 This is the same accommodation Rust makes for struct initialization and Java already makes for `final` fields. Immutable fields have to be assigned somewhere; the constructor is the only place that makes sense. Generalizing today's `final` to be the default for every field is straightforward.

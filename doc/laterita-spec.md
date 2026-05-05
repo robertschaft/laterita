@@ -49,13 +49,16 @@ Every field of a class must be assigned exactly once in every constructor before
 
 ### BIND-05 — Methods declare mutation of `this` with `mut`
 
-A method whose return type is prefixed with `mut` may mutate `this` (i.e., reassign or mutate-through `mut` fields, and call other `mut` methods on `this`). A method without `mut` cannot.
+A method marked `mut` may mutate `this` (i.e., reassign or mutate-through `mut` fields, and call other `mut` methods on `this`). A method without `mut` cannot.
+
+In a method declaration, `mut` occupies the slot immediately after the visibility modifiers (`public`, `protected`, `private`, `internal`) and before every other modifier. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a `mut` method is only callable on receivers whose binding is itself `mut`, so the marker narrows the method's visible API surface to mutable receivers. Other modifiers (`static`, `final`, `override`, `unsafe`, and Java's `synchronized`/`native`/`strictfp`) follow `mut` in their conventional Java positions.
 
 ```laterita
 class Counter {
     mut int n;
-    int read()      { return n; }       // immutable receiver
-    mut void inc()  { n = n + 1; }      // mutable receiver
+    public int read()              { return n; }       // immutable receiver
+    public mut void inc()          { n = n + 1; }      // mutable receiver
+    public mut final void reset()  { n = 0; }          // mut precedes final
 }
 ```
 
