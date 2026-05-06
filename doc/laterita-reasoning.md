@@ -381,7 +381,7 @@ A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` 
 
 ---
 
-## Functional Interfaces (FN-01 through FN-04)
+## Functional Interfaces (FN-01 through FN-03)
 
 ### Why "functional interface" rather than "function type"
 
@@ -403,41 +403,41 @@ OQ-05 is dissolved by this decision: there are no closure-interface names to fix
 
 ### Why functional interfaces are kept separate from closures (FN vs CLO)
 
-A functional interface is a type-system concept; a closure is a value-construction concept. The type `(int) -> int` exists independent of how its values are produced — a method reference, a lambda, or any other future construction yields the same type. Putting the type-system rules in FN and the lambda-and-capture rules in CLO mirrors the conceptual boundary and lets each section talk about one thing at a time.
+A functional interface is a type-system concept; a closure is a value-construction concept. The type `(int) -> int` exists independent of how its values are produced — a method reference, a lambda, or any other future construction yields the same type. Putting the type-system rules in FN and the value-construction rules in CLO mirrors the conceptual boundary.
 
-The pairing also matches how the rest of the spec is organized: type-system rules live in BIND, MOVE, MUT, LIFE; value-construction and lifecycle rules live in DROP, OBJ, STR, CLO. Functional interfaces belong on the type-system side of that split.
+The slot-mode rule (CLO-03) and the override/overload variance for FI parameters (CLO-05) live on the closure side because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. FN keeps the type syntax, identity, and synthesis; CLO covers everything that depends on the value living inside a binding.
 
-### Why slot mode controls invocation (FN-03)
-
-This is not a new rule — it falls directly out of BIND-06 and BIND-07. A function value is just an object with a SAM. The slot holding it is an ordinary binding with one of the standard modifier forms. The receiver-mode transitivity rules already enforce: bare bindings call only bare-receiver methods, `mut` bindings can call mut, `take` bindings can call `give`. We document the consequence in FN-03 because function values are where readers will look first, but no new mechanism is introduced.
-
-### Why anonymous synthesis (FN-04)
+### Why anonymous synthesis (FN-03)
 
 Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail.
 
-### Why slot-mode override variance is inverted (FN-05)
-
-MOVE-10 makes `mut` contravariant for ordinary parameters: an override may *drop* `mut`. FN-05 inverts this for the slot mode of a functional-interface parameter: an override may *add* `mut`, never drop it. The two rules look opposite but are the same principle expressed in different domains — *an override must continue to accept every value the inherited declaration accepted.*
-
-For an ordinary parameter `mut Buf b`, the modifier names a capability the function reserves over the caller's value. Dropping `mut` reduces what the function will do with `b`; callers with mutable borrow sources continue to work because mutable degrades to immutable on demand. Contravariance is sound.
-
-For a functional-interface slot `mut (T) -> R fn`, the modifier still names the slot's invocation capability — but that capability *defines what closures may be assigned into the slot* (CLO-03). A `mut` slot accepts read **and** mutate closures; a bare slot accepts only read. Dropping `mut` shrinks the admissible-closure set, breaking callers who satisfied the inherited contract with a mutate closure. The safe direction is to add `mut`, broadening the set.
-
 ---
 
-## Closures (CLO-01 through CLO-04)
+## Closures (CLO-01 through CLO-06)
 
 ### Why three modes, inferred (CLO-01, CLO-02)
 
 This is Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces you to think about because closures need precise typing for trait dispatch. Laterita takes the same three categories — read, mutate, consume — but lets the compiler classify the closure from its body. Users write a lambda; the compiler does the work.
 
-### Why lambdas inhabit functional interfaces (CLO-03)
+### Why slot mode controls invocation (CLO-03)
 
-A lambda literal is one way to construct a value of a functional-interface type. CLO-03 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-side rules (FN-01 syntax, FN-03 slot mode). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-03 just lines them up.
+This is not a new rule — it falls directly out of BIND-06 and BIND-07. A function value is just an object with a SAM. The slot holding it is an ordinary binding with one of the standard modifier forms. The receiver-mode transitivity rules already enforce: bare bindings call only bare-receiver methods, `mut` bindings can call mut, `take` bindings can call `give`. We document the consequence in CLO-03 because function values are where readers will look first, but no new mechanism is introduced.
+
+### Why lambdas inhabit functional interfaces (CLO-04)
+
+A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-side rules (FN-01 syntax, CLO-03 slot mode). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
 
 We considered making lambdas the *only* construction (and so collapsing FN and CLO into one section). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side and value-side rules separate keeps the type-system surface stable as more value-constructions appear.
 
-### Why closures carry capture lifetimes (CLO-04)
+### Why slot-mode override variance is inverted (CLO-05)
+
+MOVE-10 makes `mut` contravariant for ordinary parameters: an override may *drop* `mut`. CLO-05 inverts this for the slot mode of a functional-interface parameter: an override may *add* `mut`, never drop it. The two rules look opposite but are the same principle expressed in different domains — *an override must continue to accept every value the inherited declaration accepted.*
+
+For an ordinary parameter `mut Buf b`, the modifier names a capability the function reserves over the caller's value. Dropping `mut` reduces what the function will do with `b`; callers with mutable borrow sources continue to work because mutable degrades to immutable on demand. Contravariance is sound.
+
+For a functional-interface slot `mut (T) -> R fn`, the modifier still names the slot's invocation capability — but that capability *defines what closures may be assigned into the slot* (CLO-04). A `mut` slot accepts read **and** mutate closures; a bare slot accepts only read. Dropping `mut` shrinks the admissible-closure set, breaking callers who satisfied the inherited contract with a mutate closure. The safe direction is to add `mut`, broadening the set.
+
+### Why closures carry capture lifetimes (CLO-06)
 
 A closure that borrows `name` cannot outlive `name`. This is the same lifetime-bounded-by-input principle from LIFE-02, applied to closures. Without it, you could create a closure, the captured variable would die, and calling the closure would deref freed memory. The standard ownership rules force this, but it's worth calling out as a separate requirement because closures are where it bites people.
 
@@ -461,7 +461,7 @@ The strongest evidence is consensus across both language designers and the Java 
 
 - **The Java ecosystem routes around the feature.** Spring's data-access layer wraps `SQLException` into the unchecked `DataAccessException` hierarchy on principle. Hibernate, Jackson, and modern Jakarta EE APIs are unchecked-by-default. Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism, and is widely used. When the most popular ecosystem in the language is built on top of escape hatches from a language feature, that feature is not paying its rent.
 
-- **Lambdas broke the remaining case.** The functional interfaces introduced in Java 8 — `Function`, `Consumer`, `Supplier` — don't declare exceptions, so any checked throw inside a stream pipeline forces wrapping into `RuntimeException` or a custom `CheckedFunction` shim. Laterita wants closures (CLO-01 through CLO-04) to be ordinary; carrying forward a feature that fights closure interop is incoherent.
+- **Lambdas broke the remaining case.** The functional interfaces introduced in Java 8 — `Function`, `Consumer`, `Supplier` — don't declare exceptions, so any checked throw inside a stream pipeline forces wrapping into `RuntimeException` or a custom `CheckedFunction` shim. Laterita wants closures (CLO-01 through CLO-06) to be ordinary; carrying forward a feature that fights closure interop is incoherent.
 
 - **The signature-contagion problem is real.** It was already the rationale for THR-08 making `InterruptedException` unchecked. The argument generalizes: every checked exception that propagates through a deep call stack pollutes every signature on the path, the path inevitably reaches a method whose author didn't want to think about that exception, and the author writes `throws Exception` to escape — losing the precision the model was trying to deliver.
 
