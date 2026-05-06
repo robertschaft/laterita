@@ -651,21 +651,38 @@ interface F<T, R> { R apply(take T); }
 <T, R> void process(mut F<T, R> fn) { /* … */ }
 ```
 
-Three modifiers — `take`, `mut`, `bound` — may each appear in either layer; the position determines which:
+The two layers carry different modifiers:
 
-| Position | What it modifies | Governed by |
+| Layer | Modifiers | Governed by |
 |---|---|---|
-| Inside the parens, or attached to the return | the SAM's parameter or return | MOVE-03, LIFE-02 |
-| Outside the type expression, attached to the binding name | the slot holding the FI value | CLO-03 (slot mode), LIFE-02 (return-bound) |
+| Inside the type — SAM parameters and return | `take`, `mut`, `bound` per the usual rules | MOVE-03, LIFE-02 |
+| Outside the type — the binding holding the FI value | `mut` or `take` (slot mode), plus an orthogonal optional `bound` (return-binding annotation) | CLO-03, LIFE-02 |
 
-Each modifier shown in both positions, as parameter declarations:
+Inside the type, modifiers describe the SAM's parameters and return:
 
 ```laterita
-<T, R>    void run((take T) -> R consumer);                          // inner take: SAM consumes its T argument
-          void onClose(take () -> void hook);                        // outer take: caller transfers ownership of the FI value
-<A, B, R> R each(A source, B key, (bound A, B) -> R fn);             // inner bound: SAM parameter A is borrowed
-<A, B, R> R apply(bound (A, B) -> R fn, A source, B key);            // outer bound: enclosing return is bound to fn (LIFE-02)
+<T, R>    void run((take T) -> R consumer);                            // SAM consumes its T argument
+<A, B, R> R each(A source, B key, (bound A, B) -> R fn);               // SAM parameter A is borrowed
 ```
+
+Outside the type, the slot mode is one of bare, `mut`, or `take`:
+
+```laterita
+<T> void inspect(mut (T) -> void fn);                                  // mut slot
+        void onClose(take () -> void hook);                            // take slot: caller transfers ownership of the FI value
+```
+
+The outer `bound` is **not** a slot mode — it is an orthogonal annotation declaring that the enclosing function's return is bound to this parameter (LIFE-02). It applies on top of a non-`take` slot, and arises in practice when the function returns a value derived from a borrow of the FI parameter, most commonly a closure that captures it:
+
+```laterita
+// Partial application: the returned closure borrows `fn` (and `first`),
+// so its lifetime is bounded by the intersection of both (LIFE-03).
+<A, B, R> bound (B) -> R partial(bound (A, B) -> R fn, bound A first) {
+    return (b) -> fn(first, b);
+}
+```
+
+A `take` slot consumes the FI value on the call, so the return cannot reference the slot's lifetime; outer `bound` does not combine with `take`.
 
 ### FN-02 — Identity
 
