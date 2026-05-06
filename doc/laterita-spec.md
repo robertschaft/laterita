@@ -2,7 +2,7 @@
 
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
 
-Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model).
+Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `FN` (functional interfaces), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model).
 
 ---
 
@@ -613,7 +613,54 @@ Subclasses of `String` declared by user code are owned. They cannot be returned 
 
 ---
 
-## 10. Closures
+## 10. Functional Interfaces
+
+Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface. The rules in this section govern these anonymous functional interfaces as types — independent of how their values are constructed. A lambda literal (CLO-03) is one way to construct a value; a method reference is another.
+
+### FN-01 — Anonymous functional interface syntax
+
+An anonymous functional interface is written
+
+```
+(P1, P2, …, Pn) -> R
+```
+
+where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `mut T`, `take T`, with optional `bound` per LIFE-02), and `R` is the return type. The form is anonymous and structural: no named interface need be declared. Anonymous functional interfaces may appear wherever another type may appear: parameter, return, field, local binding, generic argument.
+
+```laterita
+(int, int) -> int                 // owned-int args, owned-int return
+(take String, mut StringBuilder) -> String
+(bound Record, RecordKey) -> Field
+() -> void
+```
+
+A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement.
+
+### FN-02 — Identity
+
+Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
+
+### FN-03 — Slot mode controls invocation
+
+A binding of functional-interface type follows the standard parameter-modifier rules. The binding's mode controls which receiver-mode method on the held value may be invoked through it (BIND-06, BIND-07):
+
+- **Bare binding** — invocations need a bare-receiver SAM.
+- **`mut` binding** — invocations need a bare- or mut-receiver SAM.
+- **`take` binding** — invocations need any receiver-mode SAM, including `give` (the binding owns the value and may consume it during the call).
+
+```laterita
+(int, int) -> int adder;          // bare slot — bare-receiver SAMs only
+mut (int, int) -> int counter;    // mut slot — bare or mut SAMs
+take () -> void onClose;          // take slot — any SAM, including give-receiver
+```
+
+### FN-04 — Anonymous synthesis per construction
+
+Each value-construction of an anonymous functional interface (most commonly a lambda literal per CLO-03, also a method reference) yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
+
+---
+
+## 11. Closures
 
 ### CLO-01 — Three capture modes
 
@@ -627,23 +674,20 @@ Closures are classified by how they use captured bindings:
 
 The compiler infers a closure's capture mode from the body. The user does not declare it.
 
-### CLO-03 — Closures have structural function types
+### CLO-03 — Lambdas are values of functional interfaces
 
-A closure's type is a structural function type written
+A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional interface — anonymous (FN-01) or nominal — selected by:
 
-```
-(P1, P2, …, Pn) -> R
-```
+- The target slot's expected type (target typing), when the lambda appears in a position with a known functional-interface expectation; or
+- Inference from the body together with any explicit parameter annotations otherwise.
 
-where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `mut T`, `take T`, with optional `bound` per LIFE-02) and `R` is the return type. Two function types are identical iff their arity, each parameter's mode and underlying type, the return type, and any `bound` relationships match. Function types may appear wherever another type may appear: parameter, return, field, local binding, generic argument.
+The lambda's capture mode (CLO-01) determines the receiver mode of the synthesized SAM (FN-04):
 
-A parameter of function type follows the standard parameter-modifier rules. The slot's mode controls which closures may be passed to it by determining which receiver-mode SAM may be invoked through it (BIND-06, BIND-07):
+- Read captures → bare-receiver SAM.
+- Mutate captures → mut-receiver SAM.
+- Consume captures → give-receiver SAM.
 
-- **Bare slot** — invocations need a bare-receiver SAM. Read closures (CLO-01) fit.
-- **`mut` slot** — invocations need a bare- or mut-receiver SAM. Read or mutate closures fit.
-- **`take` slot** — invocations need any receiver-mode SAM, including `give`. Read, mutate, or consume closures all fit.
-
-There is no normatively-named closure interface in the standard library. For each lambda the compiler synthesizes one anonymous class implementing the SAM dictated by the inferred function type and the captures' mode (CLO-01, CLO-02). The synthesized class is not addressable from source code.
+The target slot's mode (FN-03) must accommodate the synthesized SAM's receiver mode for the assignment to type-check: read closures fit any slot; mutate closures need at least a `mut` slot; consume closures need a `take` slot.
 
 ```laterita
 // Read-or-mutate lambda: consumes input, mut-borrows buffer, returns owned R.
@@ -668,7 +712,7 @@ A closure value carries the lifetimes of every binding it captures by borrow. Th
 
 ---
 
-## 11. Exceptions
+## 12. Exceptions
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
@@ -694,7 +738,7 @@ The `throws` clause is permitted as documentation. A method may list the excepti
 
 ---
 
-## 12. Unsafe
+## 13. Unsafe
 
 ### UNS-01 — `unsafe` is a private method modifier
 
@@ -737,7 +781,7 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 
 ---
 
-## 13. Standard Library Types (Required)
+## 14. Standard Library Types (Required)
 
 ### STD-01 — `Rc<T>`
 
@@ -827,7 +871,7 @@ A mutual-exclusion primitive wrapping an owned value. The API mirrors `java.util
 
 ---
 
-## 14. Threads
+## 15. Threads
 
 ### THR-01 — `Thread` type
 
@@ -914,7 +958,7 @@ Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection
 
 ---
 
-## 15. Compilation Model
+## 16. Compilation Model
 
 ### COMP-01 — Native compilation, no GC
 
@@ -940,15 +984,15 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 ---
 
-## 16. Reserved Names
+## 17. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Closure types are structural per CLO-03 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`.
 
 The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; bare-statement form `give x;` per MOVE-08; method-level receiver-consume modifier per BIND-07), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06), `local` (class-body declaration marking the class as `local` per STD-07), `nonlocal` (class-body declaration paired with `unsafe` overriding inferred `local`-ness per STD-07). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
-The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07). The form `(P1, …, Pn) -> R` denotes a structural function type per CLO-03.
+The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07). The form `(P1, …, Pn) -> R` denotes an anonymous functional interface per FN-01.
 
 Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
 

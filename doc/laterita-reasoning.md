@@ -381,33 +381,53 @@ A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` 
 
 ---
 
+## Functional Interfaces (FN-01 through FN-04)
+
+### Why "functional interface" rather than "function type"
+
+Earlier drafts called this construct a "function type," following Scala / Kotlin / TypeScript usage. The Java audience reads "functional interface" more directly: it is the term for "interface with one abstract method" they have used since Java 8, and the construct here is exactly that with the *interface declaration* elided. Calling it a functional interface — anonymous and structural — costs nothing and lands faster than introducing a parallel vocabulary.
+
+The "anonymous" qualifier matters when distinguishing from Java's nominal functional interfaces. Both forms coexist: a `Function<T, R>` declaration is still a functional interface; `(T) -> R` is an anonymous functional interface that has the same shape without the published name. FN-02 keeps them as distinct types; the user picks which one to use based on whether the contract deserves a name.
+
+### Why structural rather than nominal (FN-01)
+
+Earlier drafts planned a small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc. The unresolved question (OQ-05) was only their names. Once parameter modes (`take`, `mut`, `bound`) entered the type system, the count exploded: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
+
+The anonymous structural form resolves the explosion at the source. The type *is* the signature: `(take A, mut B) -> R` is a distinct type from `(bound A, B) -> R` not because two interfaces were declared, but because the type expressions differ. The compiler compares structurally, the same way `int[]` and `String[]` are different without a separate interface for each. No stdlib zoo, no naming committee, no question of which canonical interface a value targets.
+
+The cost is one new kind of type expression in the grammar. Laterita's type system is already growing modifier-bearing positions (`take`, `mut`, `bound`), so adding a type form that aggregates those positions is a smaller step than it would be in plain Java.
+
+The trade-off is that source-level `import` of an anonymous functional interface isn't possible — there is no name to import. We accept this. Reusable function-shaped contracts in real code almost always have richer obligations than a SAM expresses (a name, documentation, related methods), and those still want a nominal interface. What the anonymous form fixes is the ergonomic wart of "I just need a callback parameter" requiring a published interface to land in.
+
+OQ-05 is dissolved by this decision: there are no closure-interface names to fix because there are no closure interfaces.
+
+### Why functional interfaces are kept separate from closures (FN vs CLO)
+
+A functional interface is a type-system concept; a closure is a value-construction concept. The type `(int) -> int` exists independent of how its values are produced — a method reference, a lambda, or any other future construction yields the same type. Putting the type-system rules in FN and the lambda-and-capture rules in CLO mirrors the conceptual boundary and lets each section talk about one thing at a time.
+
+The pairing also matches how the rest of the spec is organized: type-system rules live in BIND, MOVE, MUT, LIFE; value-construction and lifecycle rules live in DROP, OBJ, STR, CLO. Functional interfaces belong on the type-system side of that split.
+
+### Why slot mode controls invocation (FN-03)
+
+This is not a new rule — it falls directly out of BIND-06 and BIND-07. A function value is just an object with a SAM. The slot holding it is an ordinary binding with one of the standard modifier forms. The receiver-mode transitivity rules already enforce: bare bindings call only bare-receiver methods, `mut` bindings can call mut, `take` bindings can call `give`. We document the consequence in FN-03 because function values are where readers will look first, but no new mechanism is introduced.
+
+### Why anonymous synthesis (FN-04)
+
+Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail.
+
+---
+
 ## Closures (CLO-01 through CLO-04)
 
 ### Why three modes, inferred (CLO-01, CLO-02)
 
 This is Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces you to think about because closures need precise typing for trait dispatch. Laterita takes the same three categories — read, mutate, consume — but lets the compiler classify the closure from its body. Users write a lambda; the compiler does the work.
 
-### Why closures have structural function types (CLO-03)
+### Why lambdas inhabit functional interfaces (CLO-03)
 
-Earlier drafts of this section planned a small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc. The unresolved question (OQ-05) was only their names. Once parameter modes (`take`, `mut`, `bound`) entered the type system, the count exploded: a binary closure has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
+A lambda literal is one way to construct a value of a functional-interface type. CLO-03 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-side rules (FN-01 syntax, FN-03 slot mode). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-03 just lines them up.
 
-Structural function types resolve the explosion at the source. The type *is* the signature: `(take A, mut B) -> R` is a distinct type from `(bound A, B) -> R` not because two interfaces were declared, but because the type expressions differ. The compiler compares structurally, the same way `int[]` and `String[]` are different without a separate interface for each. No stdlib zoo, no naming committee, no question of which canonical interface a lambda targets.
-
-The cost is one new kind of type expression in the grammar. Laterita's type system is already growing modifier-bearing positions (`take`, `mut`, `bound`), so adding a type form that aggregates those positions is a smaller step than it would be in plain Java. Lambda literal syntax (`(a, b) -> body`) is unchanged from Java; only the *target* changes from a SAM interface to a function type.
-
-The trade-off is that source-level `import` of a closure type isn't possible — there is no `Function` to import. We accept this. Reusable function-shaped contracts in real code almost always have richer obligations than a SAM expresses (a name, documentation, related methods), and those still want a regular interface. What the structural form fixes is the ergonomic wart of "I just need a callback parameter" requiring a published interface to land in.
-
-OQ-05 is dissolved by this decision: there are no closure-interface names to fix because there are no closure interfaces.
-
-### Why parameter mode controls closure mode (CLO-03)
-
-The receiver-mode story for closures follows directly from BIND-06 and BIND-07, with no new rule needed. A lambda is an object whose SAM has a receiver mode determined by its captures (CLO-01). The slot holding the lambda is a parameter (or field, etc.) with one of the standard modifier forms. The transitivity rules already in the spec handle the rest:
-
-- A bare slot can only invoke bare-receiver methods on its binding → only read closures fit.
-- A `mut` slot can invoke bare- or mut-receiver methods → read or mutate fit.
-- A `take` slot owns its binding and can invoke any-receiver method, including a `give` SAM → all three modes fit.
-
-This is the same mode-flow that applies to any other type. The closure interacts with the type system the same way any other object does; the capture-mode classification of CLO-01 determines the SAM's receiver mode, and everything downstream is pre-existing rules. No special "closure mode" axis was needed.
+We considered making lambdas the *only* construction (and so collapsing FN and CLO into one section). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side and value-side rules separate keeps the type-system surface stable as more value-constructions appear.
 
 ### Why closures carry capture lifetimes (CLO-04)
 
