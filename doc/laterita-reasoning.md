@@ -415,6 +415,16 @@ This is not a new rule — it falls directly out of BIND-06 and BIND-07. A funct
 
 Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail.
 
+### Why slot-mode override variance is inverted (FN-05)
+
+MOVE-10 makes `mut` contravariant for ordinary parameters: an override may *drop* `mut`. FN-05 inverts this for the slot mode of a functional-interface parameter: an override may *add* `mut`, never drop it. The two rules look opposite but are the same principle expressed in different domains — *an override must continue to accept every value the inherited declaration accepted.*
+
+For an ordinary parameter `mut Buf b`, the modifier names a capability the function reserves over the caller's value. Dropping `mut` reduces what the function will do with `b`; callers with mutable borrow sources continue to work because mutable degrades to immutable on demand. Contravariance is sound.
+
+For a functional-interface slot `mut (T) -> R fn`, the modifier still names the slot's invocation capability — but that capability *defines what closures may be assigned into the slot* (CLO-03). A `mut` slot accepts read **and** mutate closures; a bare slot accepts only read. Dropping `mut` shrinks the admissible-closure set, breaking callers who satisfied the inherited contract with a mutate closure. The safe direction is to add `mut`, broadening the set.
+
+The asymmetry sits where the modifier's *meaning* sits. For ordinary parameters the slot mode constrains what the body does; for FI slots it also constrains what the slot accepts, because CLO-03 ties closure fit to slot mode. The variance has to flip to keep "Liskov for callers" intact in both cases.
+
 ---
 
 ## Closures (CLO-01 through CLO-04)

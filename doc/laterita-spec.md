@@ -636,6 +636,36 @@ where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `mu
 
 A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement.
 
+A binding of functional-interface type combines two layers of modifiers. The parameter `fn` in
+
+```laterita
+<T, R> void process(mut (take T) -> R fn) { /* … */ }
+```
+
+carries `mut` as the **slot mode** on the binding (FN-03), and `take` as the **SAM-parameter mode** inside the type expression. The type expression is the same shape it would have if a nominal interface were declared and then used as the slot's type:
+
+```laterita
+interface F<T, R> { R apply(take T); }
+
+<T, R> void process(mut F<T, R> fn) { /* … */ }
+```
+
+Three modifiers — `take`, `mut`, `bound` — may each appear in either layer; the position determines which:
+
+| Position | What it modifies | Governed by |
+|---|---|---|
+| Inside the parens, or attached to the return | the SAM's parameter or return | MOVE-03, LIFE-02 |
+| Outside the type expression, attached to the binding name | the slot holding the FI value | FN-03 (slot mode), LIFE-02 (return-bound) |
+
+Each modifier shown in both positions, as parameter declarations:
+
+```laterita
+<T, R>    void run((take T) -> R consumer);                          // inner take: SAM consumes its T argument
+          void onClose(take () -> void hook);                        // outer take: caller transfers ownership of the FI value
+<A, B, R> R each(A source, B key, (bound A, B) -> R fn);             // inner bound: SAM parameter A is borrowed
+<A, B, R> R apply(bound (A, B) -> R fn, A source, B key);            // outer bound: enclosing return is bound to fn (LIFE-02)
+```
+
 ### FN-02 — Identity
 
 Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
@@ -644,19 +674,61 @@ Two anonymous functional interfaces are identical iff their arity, each paramete
 
 A binding of functional-interface type follows the standard parameter-modifier rules. The binding's mode controls which receiver-mode method on the held value may be invoked through it (BIND-06, BIND-07):
 
-- **Bare binding** — invocations need a bare-receiver SAM.
-- **`mut` binding** — invocations need a bare- or mut-receiver SAM.
-- **`take` binding** — invocations need any receiver-mode SAM, including `give` (the binding owns the value and may consume it during the call).
+| Slot mode | SAM receiver modes the slot can invoke   | Why (BIND-06 / BIND-07) |
+|---|---|---|
+| bare      | bare-receiver only                       | a bare binding cannot call `mut` or `give` methods |
+| `mut`     | bare- or mut-receiver                    | a mut binding can call bare and `mut` methods, but not `give` |
+| `take`    | any (bare-, mut-, or give-receiver)      | a take binding owns the value and may consume it |
 
 ```laterita
 (int, int) -> int adder;          // bare slot — bare-receiver SAMs only
 mut (int, int) -> int counter;    // mut slot — bare or mut SAMs
 take () -> void onClose;          // take slot — any SAM, including give-receiver
+
+counter(1, 2);                    // OK: mut binding may invoke a bare- or mut-receiver SAM
+adder(1, 2);                      // OK: bare binding invokes the bare-receiver SAM
+give onClose;                     // OK: consumes the slot, invoking the SAM if give-receiver
 ```
+
+The slot mode bounds invocation; whether a *particular* construction (a lambda per CLO-03, or a method reference) yields a SAM whose receiver mode fits a given slot is governed by the fit relation in CLO-03.
 
 ### FN-04 — Anonymous synthesis per construction
 
 Each value-construction of an anonymous functional interface (most commonly a lambda literal per CLO-03, also a method reference) yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
+
+### FN-05 — Overloading and override variance for FI parameters
+
+A functional-interface parameter is an ordinary parameter; MOVE-09 (overload resolution) and MOVE-10 (override variance) apply, with one inversion noted below.
+
+**Overloading.** The slot-side `take` is part of the overload signature; slot-side `mut` is not. (This mirrors MOVE-09 for ordinary parameters.)
+
+```laterita
+class Stream<T> {
+    <R> Stream<R> map(mut (take T) -> R fn);     // (a) mut slot
+    <R> Stream<R> map(take (take T) -> R fn);    // (b) take slot — distinct overload (MOVE-09)
+    <R> Stream<R> map((take T) -> R fn);         // ERROR: differs from (a) only in mut — same method
+}
+
+stream.map(x -> x.length());      // resolves to (a): bare argument; MOVE-09 tie-breaker prefers borrow
+stream.map(give oneShot);         // resolves to (b): `give` removes the borrow form from candidates
+```
+
+**Override variance — inverted for slot modes.** MOVE-10 says `mut` on an ordinary parameter is contravariant: an override may *drop* `mut` because the override demands less of the caller. For an FI slot the relationship is reversed — an override may **add** `mut` (or strengthen further to `take`), but not remove it. The reason: a `mut` slot accepts strictly more closures (read and mutate) than a bare slot (read only), and an override must continue to accept every closure the inherited declaration accepted.
+
+```laterita
+interface Source<T> {
+    void forEach(mut (T) -> void fn);                      // base: mut slot
+}
+
+class CountingSource<T> implements Source<T> {
+    override void forEach(take (T) -> void fn) { ... }     // OK: take slot accepts strictly more
+    override void forEach((T) -> void fn)      { ... }     // ERROR: bare slot rejects mutate closures
+}
+```
+
+The two variance rules align if read as a single principle: *an override must continue to accept every value the inherited declaration accepted*. For ordinary parameters that direction is dropping `mut` (degrading mutable to immutable is free); for FI slots it is adding `mut` (broadening the set of admissible SAMs).
+
+The SAM type itself is invariant under override (FN-02): two anonymous FIs whose parameter or return modes differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
 
 ---
 
@@ -687,7 +759,15 @@ The lambda's capture mode (CLO-01) determines the receiver mode of the synthesiz
 - Mutate captures → mut-receiver SAM.
 - Consume captures → give-receiver SAM.
 
-The target slot's mode (FN-03) must accommodate the synthesized SAM's receiver mode for the assignment to type-check: read closures fit any slot; mutate closures need at least a `mut` slot; consume closures need a `take` slot.
+The target slot's mode (FN-03) must accommodate the synthesized SAM's receiver mode for the assignment to type-check:
+
+| Closure capture mode | SAM receiver  | Bare slot | `mut` slot | `take` slot |
+|---|---|:---:|:---:|:---:|
+| Read    | bare-receiver | accept    | accept     | accept      |
+| Mutate  | mut-receiver  | reject    | accept     | accept      |
+| Consume | give-receiver | reject    | reject     | accept      |
+
+Read closures fit any slot; mutate closures need at least a `mut` slot; consume closures need a `take` slot. Note the asymmetry against ordinary parameters: for `mut Buf b`, the more capable parameter mode demands more from the caller; for an FI slot, the more capable slot mode accepts the *broader* range of closures, because the slot mode is an upper bound on what the body may invoke.
 
 ```laterita
 // Read-or-mutate lambda: consumes input, mut-borrows buffer, returns owned R.
@@ -704,6 +784,41 @@ The target slot's mode (FN-03) must accommodate the synthesized SAM's receiver m
 void onClose(take () -> void action) {
     action();
 }
+```
+
+Caller-side examples against the three signatures above:
+
+```laterita
+// Accepted — read closure fits the mut slot of fold.
+mut int factor = 2;
+let r1 = fold(give input, buf, (a, b) -> b.append(a.scale(factor)));
+
+// Accepted — mutate closure fits the mut slot of fold.
+mut int count = 0;
+let r2 = fold(give input, buf, (a, b) -> {
+    count = count + 1;
+    return b.append(a);
+});
+
+// Accepted — consume closure fits the take slot of onClose.
+take Logger log = openLog();
+onClose(() -> { give log; });
+
+// Rejected — consume closure does not fit a mut slot.
+fold(give other, buf, (a, b) -> {
+    give log;                                    // moves a captured owned value
+    return b.append(a);
+});
+// ERROR: lambda's capture mode is consume (give-receiver SAM);
+// fold's slot is `mut`, which only accommodates read or mutate closures.
+
+// Rejected — mutate closure does not fit a bare slot.
+lookup(source, key, (s, k) -> {
+    count = count + 1;                           // mutate capture
+    return s.find(k);
+});
+// ERROR: lambda's capture mode is mutate (mut-receiver SAM);
+// lookup's slot is bare, which only admits read closures.
 ```
 
 ### CLO-04 — Capture lifetimes propagate
