@@ -423,8 +423,6 @@ For an ordinary parameter `mut Buf b`, the modifier names a capability the funct
 
 For a functional-interface slot `mut (T) -> R fn`, the modifier still names the slot's invocation capability — but that capability *defines what closures may be assigned into the slot* (CLO-03). A `mut` slot accepts read **and** mutate closures; a bare slot accepts only read. Dropping `mut` shrinks the admissible-closure set, breaking callers who satisfied the inherited contract with a mutate closure. The safe direction is to add `mut`, broadening the set.
 
-The asymmetry sits where the modifier's *meaning* sits. For ordinary parameters the slot mode constrains what the body does; for FI slots it also constrains what the slot accepts, because CLO-03 ties closure fit to slot mode. The variance has to flip to keep "Liskov for callers" intact in both cases.
-
 ---
 
 ## Closures (CLO-01 through CLO-04)

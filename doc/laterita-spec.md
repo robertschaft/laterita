@@ -700,7 +700,7 @@ Each value-construction of an anonymous functional interface (most commonly a la
 
 A functional-interface parameter is an ordinary parameter; MOVE-09 (overload resolution) and MOVE-10 (override variance) apply, with one inversion noted below.
 
-**Overloading.** The slot-side `take` is part of the overload signature; slot-side `mut` is not. (This mirrors MOVE-09 for ordinary parameters.)
+**Overloading.** The slot-side `take` is part of the overload signature; slot-side `mut` is not.
 
 ```laterita
 class Stream<T> {
@@ -725,8 +725,6 @@ class CountingSource<T> implements Source<T> {
     override void forEach((T) -> void fn)      { ... }     // ERROR: bare slot rejects mutate closures
 }
 ```
-
-The two variance rules align if read as a single principle: *an override must continue to accept every value the inherited declaration accepted*. For ordinary parameters that direction is dropping `mut` (degrading mutable to immutable is free); for FI slots it is adding `mut` (broadening the set of admissible SAMs).
 
 The SAM type itself is invariant under override (FN-02): two anonymous FIs whose parameter or return modes differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
 
@@ -753,13 +751,7 @@ A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional i
 - The target slot's expected type (target typing), when the lambda appears in a position with a known functional-interface expectation; or
 - Inference from the body together with any explicit parameter annotations otherwise.
 
-The lambda's capture mode (CLO-01) determines the receiver mode of the synthesized SAM (FN-04):
-
-- Read captures → bare-receiver SAM.
-- Mutate captures → mut-receiver SAM.
-- Consume captures → give-receiver SAM.
-
-The target slot's mode (FN-03) must accommodate the synthesized SAM's receiver mode for the assignment to type-check:
+The lambda's capture mode (CLO-01) determines the receiver mode of the synthesized SAM (FN-04), and the slot's mode (FN-03) must admit that receiver mode for the assignment to type-check:
 
 | Closure capture mode | SAM receiver  | Bare slot | `mut` slot | `take` slot |
 |---|---|:---:|:---:|:---:|
@@ -767,7 +759,7 @@ The target slot's mode (FN-03) must accommodate the synthesized SAM's receiver m
 | Mutate  | mut-receiver  | reject    | accept     | accept      |
 | Consume | give-receiver | reject    | reject     | accept      |
 
-Read closures fit any slot; mutate closures need at least a `mut` slot; consume closures need a `take` slot. Note the asymmetry against ordinary parameters: for `mut Buf b`, the more capable parameter mode demands more from the caller; for an FI slot, the more capable slot mode accepts the *broader* range of closures, because the slot mode is an upper bound on what the body may invoke.
+Note the asymmetry against ordinary parameters: for `mut Buf b`, the more capable parameter mode demands more from the caller; for an FI slot, the more capable slot mode accepts the *broader* range of closures, because the slot mode is an upper bound on what the body may invoke.
 
 ```laterita
 // Read-or-mutate lambda: consumes input, mut-borrows buffer, returns owned R.
