@@ -39,6 +39,24 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 **Related codes:** OQ-06.
 
+## OQ-14 - Ownership of Strings
+
+This is a hand added entry.
+
+My gut feeling is: Hardcoded Strings are immutable and owned by the defining class. The ownership of dynamically created Strings (e.g. read from files or Sockets) is normally hand over to the caller as a mutable String (if possible). Internally we probably need to work with the concept of splitting the ownership of arrays (aka buffers). Many of String methods will be `give`. Only a few new methods will be `mut` (e.g. POSIX tr-like search and replace function for single characters; or an Iterator over all characters).
+
+## OQ-15 - Migratability Java Code
+
+This is a hand added entry.
+
+Migration tools:
+1. Java Annotations like `@mut` or `@take` that reflect the new keywords.
+2. Class with static function `T give(@take T x) { return x; }` as a temporary drop in for the `give` keyword in expressions.
+3. A tools that enhances java classes with given annotations and functions best effort. It adds `@Nullable` wherever required.
+4. A java compiler plugin that tries to simulate the borrow checker based on above annotations. Developers can improve their java code.
+5. A tool that converts java code to laterita code. It assumes that the previous two steps are already executed.
+6. A laterita formatter that formats laterita always in the same manner. If should allow only very few formatting freedom to developers (e.g. it wouldn't remove some additional line breaks).
+
 # Resolved Questions
 
 * OQ-01 — Panic safety and lock poisoning
