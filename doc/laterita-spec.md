@@ -627,15 +627,44 @@ Closures are classified by how they use captured bindings:
 
 The compiler infers a closure's capture mode from the body. The user does not declare it.
 
-### CLO-03 — Three closure interfaces
+### CLO-03 — Closures have structural function types
 
-The standard library provides three interfaces a method may take to declare what kind of closure it accepts. A method's parameter type fixes the strongest guarantee it requires.
+A closure's type is a structural function type written
 
-(Concrete interface names are not normatively fixed by this specification — see open questions.)
+```
+(P1, P2, …, Pn) -> R
+```
+
+where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `mut T`, `take T`, with optional `bound` per LIFE-02) and `R` is the return type. Two function types are identical iff their arity, each parameter's mode and underlying type, the return type, and any `bound` relationships match. Function types may appear wherever another type may appear: parameter, return, field, local binding, generic argument.
+
+A parameter of function type follows the standard parameter-modifier rules. The slot's mode controls which closures may be passed to it by determining which receiver-mode SAM may be invoked through it (BIND-06, BIND-07):
+
+- **Bare slot** — invocations need a bare-receiver SAM. Read closures (CLO-01) fit.
+- **`mut` slot** — invocations need a bare- or mut-receiver SAM. Read or mutate closures fit.
+- **`take` slot** — invocations need any receiver-mode SAM, including `give`. Read, mutate, or consume closures all fit.
+
+There is no normatively-named closure interface in the standard library. For each lambda the compiler synthesizes one anonymous class implementing the SAM dictated by the inferred function type and the captures' mode (CLO-01, CLO-02). The synthesized class is not addressable from source code.
+
+```laterita
+// Read-or-mutate lambda: consumes input, mut-borrows buffer, returns owned R.
+<A, B, R> R fold(take A input, mut B buffer, mut (take A, mut B) -> R lambda) {
+    return lambda(give input, buffer);
+}
+
+// Read lambda whose return is bound to the first input's lifetime.
+<A, B, R> R lookup(bound A source, B key, (bound A, B) -> R lambda) {
+    return lambda(source, key);
+}
+
+// One-shot consume callback: `take` slot admits a give-receiver SAM.
+void onClose(take () -> void action) {
+    action();
+}
+```
 
 ### CLO-04 — Capture lifetimes propagate
 
-A closure's type carries the lifetimes of every binding it captures by borrow. The closure cannot outlive any captured borrow.
+A closure value carries the lifetimes of every binding it captures by borrow. The closure cannot outlive any captured borrow. Lifetime intersection (LIFE-03) applies when multiple borrows are captured.
 
 ---
 
@@ -763,7 +792,7 @@ A class is `local` by inference if any field in its transitive field hierarchy i
 A class may be declared `unsafe nonlocal` to override inferred `local`-ness despite containing `local` fields. This declaration asserts that the class internally synchronizes access to those fields per UNS-04. The compiler does not verify the assertion. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are declared `unsafe nonlocal`.
 
 The compiler must reject:
-- A cross-thread closure capture (CLO-03) of a binding whose type is `local`.
+- A cross-thread closure capture (CLO-01) of a binding whose type is `local`.
 - A move (MOVE-02) of a `local` value across a thread boundary outside `unsafe` (UNS-02 already gates this).
 
 ### STD-08 — Borrow-checked mutable iteration
@@ -819,7 +848,7 @@ worker.start();
 let other = Thread.ofVirtual().start(() -> body);   // factory returns started Thread
 ```
 
-Captures within the closure body follow CLO-03 closure capture rules with the additional restrictions of STD-07: each captured binding's referenced type must be non-`local`.
+Captures within the closure body follow the closure capture rules (CLO-01, CLO-04) with the additional restrictions of STD-07: each captured binding's referenced type must be non-`local`.
 
 ### THR-03 — Interrupt flag
 
@@ -913,13 +942,13 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 ## 16. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Three closure interfaces required by CLO-03 must also be provided; their names are not fixed by this specification.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Closure types are structural per CLO-03 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`.
 
 The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; bare-statement form `give x;` per MOVE-08; method-level receiver-consume modifier per BIND-07), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06), `local` (class-body declaration marking the class as `local` per STD-07), `nonlocal` (class-body declaration paired with `unsafe` overriding inferred `local`-ness per STD-07). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
-The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
+The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07). The form `(P1, …, Pn) -> R` denotes a structural function type per CLO-03.
 
 Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
 

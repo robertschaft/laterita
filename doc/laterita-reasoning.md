@@ -387,11 +387,27 @@ A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` 
 
 This is Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces you to think about because closures need precise typing for trait dispatch. Laterita takes the same three categories — read, mutate, consume — but lets the compiler classify the closure from its body. Users write a lambda; the compiler does the work.
 
-### Why three corresponding interfaces (CLO-03)
+### Why closures have structural function types (CLO-03)
 
-Method signatures need a way to say "this needs a closure I can call from many threads" vs. "this needs a closure I can call once." Three interfaces, picked by the receiver based on what guarantee the API needs. Most user code doesn't see them — you write a lambda and the compiler picks the right one. You see them when (a) writing library code that takes closures, or (b) the compiler tells you your closure is the wrong kind for this API.
+Earlier drafts of this section planned a small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc. The unresolved question (OQ-05) was only their names. Once parameter modes (`take`, `mut`, `bound`) entered the type system, the count exploded: a binary closure has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
 
-The concrete interface names from the conversation (`Closure`, `RepeatableClosure`, `SharedClosure`) were illustrative. The spec leaves them open because we never settled on names.
+Structural function types resolve the explosion at the source. The type *is* the signature: `(take A, mut B) -> R` is a distinct type from `(bound A, B) -> R` not because two interfaces were declared, but because the type expressions differ. The compiler compares structurally, the same way `int[]` and `String[]` are different without a separate interface for each. No stdlib zoo, no naming committee, no question of which canonical interface a lambda targets.
+
+The cost is one new kind of type expression in the grammar. Laterita's type system is already growing modifier-bearing positions (`take`, `mut`, `bound`), so adding a type form that aggregates those positions is a smaller step than it would be in plain Java. Lambda literal syntax (`(a, b) -> body`) is unchanged from Java; only the *target* changes from a SAM interface to a function type.
+
+The trade-off is that source-level `import` of a closure type isn't possible — there is no `Function` to import. We accept this. Reusable function-shaped contracts in real code almost always have richer obligations than a SAM expresses (a name, documentation, related methods), and those still want a regular interface. What the structural form fixes is the ergonomic wart of "I just need a callback parameter" requiring a published interface to land in.
+
+OQ-05 is dissolved by this decision: there are no closure-interface names to fix because there are no closure interfaces.
+
+### Why parameter mode controls closure mode (CLO-03)
+
+The receiver-mode story for closures follows directly from BIND-06 and BIND-07, with no new rule needed. A lambda is an object whose SAM has a receiver mode determined by its captures (CLO-01). The slot holding the lambda is a parameter (or field, etc.) with one of the standard modifier forms. The transitivity rules already in the spec handle the rest:
+
+- A bare slot can only invoke bare-receiver methods on its binding → only read closures fit.
+- A `mut` slot can invoke bare- or mut-receiver methods → read or mutate fit.
+- A `take` slot owns its binding and can invoke any-receiver method, including a `give` SAM → all three modes fit.
+
+This is the same mode-flow that applies to any other type. The closure interacts with the type system the same way any other object does; the capture-mode classification of CLO-01 determines the SAM's receiver mode, and everything downstream is pre-existing rules. No special "closure mode" axis was needed.
 
 ### Why closures carry capture lifetimes (CLO-04)
 

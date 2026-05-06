@@ -4,16 +4,6 @@ This document records questions and issues that surfaced during the design conve
 
 Resolving any of these requires a separate decision; the spec deliberately leaves them open.
 
-## OQ-05 — Closure interface names
-
-**Surfaced when:** specifying the three closure types.
-
-**The issue.** CLO-03 requires three interfaces for the three closure capture modes (read / mutate / consume). The conversation used `Closure`, `RepeatableClosure`, `SharedClosure` as illustrative names but did not finalize them. Other reasonable names exist (`Fn`/`FnMut`/`FnOnce` from Rust, `Function`/`Consumer` from Java extended to three forms, etc.).
-
-**Why it matters.** These names appear in every higher-order method signature. Picking them is a public-API decision.
-
-**Related codes:** CLO-03.
-
 ## OQ-06 — Spring DI and compile-time annotation processing details
 
 **Surfaced when:** discussing how Spring-style dependency injection would work without runtime reflection.
@@ -55,6 +45,7 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 * OQ-02 — Exception ergonomics beyond what ownership forces
 * OQ-03 — Reflection model
 * OQ-04 — Cross-thread safety marker (resolved as `local`, STD-07)
+* OQ-05 — Closure interface names (dissolved by structural function types, CLO-03)
 * OQ-07 — Method-level `mut` syntax
 * OQ-08 — Owned-vs-borrowed strings: one type or two
 * OQ-09 — Iterator.remove and ConcurrentModificationException
