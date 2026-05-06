@@ -73,6 +73,42 @@ mut c2 = new Counter();
 c2.inc();                   // OK
 ```
 
+### BIND-07 — Methods declare consumption of `this` with `give`
+
+A method marked `give` consumes its receiver. The body owns `this`, may move out of `this`'s fields (MOVE-07), and may hand `this` itself to a `take` parameter or to another `give` method. After the call returns, the binding that held the receiver is consumed (MOVE-04, MOVE-08); subsequent uses are rejected.
+
+In a method declaration, `give` occupies the slot immediately after the visibility modifiers (`public`, `protected`, `private`, `internal`), preceding `mut` and every other modifier. The combination `give mut` parallels the parameter form `take mut T` (MOVE-03): the receiver is consumed and the implicit `this` slot is reassignable. Other modifiers (`static`, `final`, `override`, `unsafe`, and Java's `native`/`strictfp`) follow in their conventional Java positions.
+
+Calling a `give` method requires the receiver binding to own its value; a borrowed binding cannot satisfy a `give` call. The receiver consumption is implicit at the call site — no `give` keyword is written there, since the method's signature already declares the transfer.
+
+```laterita
+class Connection {
+    Heap<DbConn> conn;
+
+    public give void close() {                       // consumes this
+        this.conn.flush();
+        // `this` is dropped at function end; underlying connection released
+    }
+}
+
+class StringBuilder {
+    mut String contents;
+
+    public give StringBuilder append(String s) {     // consumes this, returns new
+        this.contents = this.contents + s;
+        return give this;
+    }
+
+    public give String build() {                     // consumes this, yields String
+        return give this.contents;
+    }
+}
+
+let conn = openConnection();
+conn.close();        // OK: conn was owned; consumed by close()
+conn.use();          // ERROR: conn was consumed
+```
+
 ---
 
 ## 2. Optionality
@@ -340,14 +376,13 @@ The compiler must reject any program in which a borrow is used after the binding
 
 ### LIFE-02 — Returns are owned by default
 
-A bare return type means the function gives the caller an owned value. The keyword `give` may be used as an optional declarative prefix on the return type, equivalent to the bare form; tooling and documentation may surface it for emphasis. To declare a borrowed return instead, the contributing source is marked with `bound`:
+A bare return type means the function gives the caller an owned value. To declare a borrowed return instead, the contributing source is marked with `bound`:
 
 - **Parameter source**: prefix the parameter type with `bound`. The return is bound to that parameter.
 - **Receiver source**: prefix the return type with `bound`. The return is bound to `this`.
 
 ```laterita
-String upperCase(String s);                    // owned return (bare)
-give String upperCase(String s);        // owned return (explicit; equivalent)
+String upperCase(String s);                    // owned return
 
 String firstWord(bound String s) {             // returned borrow bound to s
     return s.substring(0, s.indexOf(' '));
@@ -482,7 +517,7 @@ class CachedFile extends File {
 class SecretKey {
     byte[] material;
     // Class-level opt-out via broken clone() (OBJ-02).
-    override give SecretKey clone() {
+    override SecretKey clone() {
         broken "secret keys must not be copied";
     }
 }
@@ -490,7 +525,7 @@ class SecretKey {
 
 ### OBJ-02 — Auto-generated `clone()` method
 
-Every class has a public `give Self clone()` method, synthesized as `return new Self(this);` when not provided by the user. `clone()` is the standard duplication API for code that does not statically know the concrete class — generic code over a type parameter, and polymorphic code holding a value at a supertype or interface — because the call dispatches virtually to the actual class's `clone()`.
+Every class has a public `Self clone()` method, synthesized as `return new Self(this);` when not provided by the user. `clone()` is the standard duplication API for code that does not statically know the concrete class — generic code over a type parameter, and polymorphic code holding a value at a supertype or interface — because the call dispatches virtually to the actual class's `clone()`.
 
 ```laterita
 <T> List<T> deepCopy(List<T> source) {
@@ -520,7 +555,7 @@ The statement `broken;` (or `broken "<reason>";`) declares that the enclosing pa
 ```laterita
 class File {
     Heap<FileHandle> handle;
-    override give File clone() {
+    override File clone() {
         broken "files cannot be copied";
     }
 }
@@ -739,7 +774,7 @@ Three operations support in-place modification of collections under the borrow r
 - **`Iterator<T>` and `ListIterator<T>`** — Java's existing iterator types, reused by name and by method set (`hasNext`, `next`, `hasPrevious`, `previous`, `nextIndex`, `previousIndex`, `remove`, `set`, `add`).
 - **`next()` and `previous()` return `bound T`** — a borrow into the underlying collection's storage, bound to the iterator. Any iterator-mutating call (`remove`, `set`, `add`) invalidates the borrow at the type level via MOVE-04.
 
-The one signature deviation from Java: **`Iterator<T>.remove()` and `ListIterator<T>.remove()` return `give T`** rather than `void`. The removed element is yielded to the caller as an owned value. Statement-form `it.remove();` (ignoring the return) drops the value via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+The one signature deviation from Java: **`Iterator<T>.remove()` and `ListIterator<T>.remove()` return `T`** rather than `void`. The removed element is yielded to the caller as an owned value. Statement-form `it.remove();` (ignoring the return) drops the value via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
 
 Holding a `mut Iterator<T>` or `mut ListIterator<T>` is a mutable borrow of the underlying collection per MOVE-04. Concurrent modification through any other path is rejected at compile time; `ConcurrentModificationException` is not part of Laterita's runtime semantics, and `modCount`-style runtime guards are not required.
 
@@ -882,7 +917,7 @@ The following names are introduced by this specification and must be provided by
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`.
 
-The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; bare-statement form `give x;` per MOVE-08; also an optional declarative prefix on return types per LIFE-02), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06), `local` (class-body declaration marking the class as `local` per STD-07), `nonlocal` (class-body declaration paired with `unsafe` overriding inferred `local`-ness per STD-07). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
+The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; bare-statement form `give x;` per MOVE-08; method-level receiver-consume modifier per BIND-07), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06), `local` (class-body declaration marking the class as `local` per STD-07), `nonlocal` (class-body declaration paired with `unsafe` overriding inferred `local`-ness per STD-07). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 
 The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07).
 

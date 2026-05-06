@@ -46,7 +46,25 @@ The signature of `mut void put(...)` answers a question Java developers have alw
 
 Placing `mut` immediately after `public`/`protected`/`private`/`internal` reflects this. Reading left-to-right, the modifier list answers two questions in order: "to whom is this visible?" (the visibility keyword) and "on what receivers?" (`mut` or absence). Everything that comes after — `static`, `final`, `override`, `unsafe`, Java's behavioral modifiers — describes orthogonal facts about the body or the inheritance role and follows in the conventional Java positions.
 
-We considered the alternative position the spec drafts originally used — `mut` immediately before the return type, after every other modifier — and rejected it. Putting `mut` next to the return type reads as if `mut` qualifies the return value, which it does not; the receiver-mutation semantics belong to the method, not the result. Anchoring `mut` to the visibility slot also keeps the return-type prefixes (`give`, `bound`) uncontested in the slot directly preceding the return type, where they genuinely do qualify the returned value.
+We considered the alternative position the spec drafts originally used — `mut` immediately before the return type, after every other modifier — and rejected it. Putting `mut` next to the return type reads as if `mut` qualifies the return value, which it does not; the receiver-mutation semantics belong to the method, not the result. Anchoring `mut` to the visibility slot also keeps the return-type prefix `bound` uncontested in the slot directly preceding the return type, where it genuinely does qualify the returned value.
+
+### Why methods declare consumption of `this` with `give` (BIND-07)
+
+The receiver-mode markers form a triple: bare (read), `mut` (mutate), `give` (consume). Spec drafts initially considered `take` here to mirror the parameter form (`take T name`) — methods would then have read with `void f()`, mutate with `mut void f()`, and consume with `take void f()`. We chose `give` instead.
+
+The call site is the dominant reader. For parameters there are two surfaces: the function signature uses `take` to declare the receiving end, and the caller may write `give x` to mark the giving end. Methods have only one surface — the call `obj.consume()` is itself the transfer, with no separate caller-side opt-in. Reading the signature, the caller wants to know what *they* lose, not what the method gains. `public give void close()` reads as "calling this gives `this` up." `take` would read in the wrong direction.
+
+The mnemonic carries from the existing use of `give`. `give x` at a call site means the caller is releasing ownership of `x`. `give` on a method signature means the caller is releasing ownership of the receiver. Same word, same direction; a reader who has met `give x` understands `give R foo()` immediately.
+
+The small inconsistency with parameters — `take T name` for the receiving side, `give R foo()` for the consuming side — is accepted on its own terms. Parameters are a two-sided contract written from the function-author's perspective; methods are a one-sided contract read from the caller's perspective. Each side gets the word that fits its dominant reader.
+
+### Why owned returns lost the optional `give` prefix (LIFE-02)
+
+Earlier drafts allowed `give` as an optional declarative prefix on a return type, equivalent to the bare form, on the theory that explicit producer-side marking helped tooling and readers. With `give` now also a method-level receiver-consume modifier (BIND-07) sitting in the slot immediately after the visibility modifiers, the two readings collide visually: `give Stream<R> map(...)` could parse as either receiver-consume (BIND-07) or owned-return-prefix (LIFE-02). Removing the optional return-type form eliminates the ambiguity. Owned remains the default; `bound` is the only prefix that qualifies a return type. Code that previously wrote `give T foo()` for emphasis simply drops the keyword.
+
+### Ordering: `give mut` parallels `take mut T`
+
+When both modifiers appear on a method, the order is `give mut`, matching the parameter form `take mut T` (MOVE-03). The ownership marker comes first, the mutability marker second. The semantic parallel is exact: `take T name` is "owned, slot not reassignable"; `take mut T name` is "owned, slot reassignable"; `give R foo()` is "consumes `this`, `this` slot not reassignable"; `give mut R foo()` is "consumes `this`, `this` slot reassignable." Whether method bodies have practical use for a reassignable `this` is a separate question; the spec admits the syntax for consistency with parameters.
 
 ### Why constructors are a special initialization case (BIND-04)
 
@@ -177,8 +195,6 @@ The asymmetry mirrors the producer/consumer framing of the rest of the language.
 We also considered relying entirely on body-driven inference — keep the signature silent, let the compiler look through to the implementation to decide owned vs. borrowed. That collapses under separate compilation and, more importantly, hides the contract from the caller: they would have to read the body or guess and let the compiler error. The signature is the API; what the caller can do with the return value belongs in the signature.
 
 The hard case prior versions of this design left ambiguous was the receiver-tied borrow (a method returning a slice of `this`). We tried elision rules ("if the body returns a field, tie it to `this`") and a `from this` annotation; both were unsatisfying. Elision hid the contract; `from this` was visually heavy. The chosen form — a single `bound` on the return type — collapses to one short token and makes the relationship explicit at the API boundary.
-
-`give` is also permitted as an optional declarative prefix on a return type, mirroring how `take` is permitted on LHS bindings (MOVE-02). Both are documentary: bare is the canonical form, and the explicit keyword adds nothing operational. The win is for tooling and readers — an IDE hover, generated documentation, or a deliberately verbose signature can show `give` to make the producer-side transfer obvious without changing semantics. The pattern is consistent: `take` on the consuming side, `give` on the producing side, both optional where the surrounding context already determines the operation.
 
 ### Why `bound` instead of `from` or apostrophe-letter
 
