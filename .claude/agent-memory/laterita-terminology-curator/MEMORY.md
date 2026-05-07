@@ -1,0 +1,4 @@
+- [Terminology Document Created](terminology-document-created.md) — first terminology document added to spec on 2026-05-07
+- [Specification Structure](spec-structure.md) — layout and relationships of the four core Laterita spec documents
+- [Rust vs Java Vocabulary](rust-java-vocabulary.md) — key Rust concepts that appear in the spec and how they map to Java
+- [String Terms Audit 2026-05-07](string-terms-audit-2026-05-07.md) — audit of terminology following STR-06/STR-07/STR-08 spec changes; all 57 entries verified, no orphans
