@@ -349,7 +349,7 @@ C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered so
 
 ---
 
-## Strings (STR-01 through STR-05)
+## Strings (STR-01 through STR-08)
 
 ### Why `String` is no longer final (STR-01)
 
@@ -378,6 +378,26 @@ The dominant ergonomic concern with the one-type choice is "I have a borrow here
 ### Why subclasses are owned (STR-05)
 
 A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` could be a borrow into a mutable buffer, the buffer's owner could break the invariant from underneath. Forcing user-defined subclasses to be owned is the simplest rule that prevents this. The standard library's `String` itself can have borrowed instances because `String` has no invariant beyond "valid UTF-8" that holding a slice could break.
+
+### Why string literals are borrowed, not owned (STR-06)
+
+A literal lives in the program's read-only static segment, not on the heap. Treating it as `give` would either lie about ownership (no allocation took place) or force every literal expression to allocate a heap copy — both unacceptable. Borrowing is the honest description: the literal owns itself, every binding onto it is a view. The static lifetime is universal, so a literal flows freely into any borrow context, and the few sites that need owned storage call `.clone()` (STR-02).
+
+This makes the spec's earlier example `String greeting = "hello"` a borrowed binding, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in MOVE-01 and STR-02 like any other borrow.
+
+### Why `String` exposes no mut methods (STR-07)
+
+We considered admitting `mut String` with a small set of in-place operations (overwrite, truncate, clear) and rejected it.
+
+The motivating cases turned out weaker than they first looked. Bulk construction is `StringBuilder`'s job and stays there — the per-binding owned/borrowed tracking already lets I/O code return `give String` (an owned, fresh allocation) without needing the value itself to be mutable. The case that hardest resists this — zeroing a buffer that held a secret — is not actually solved by `String.clear()`: by the time the original gets erased, copies have typically already flowed into HTTP headers, log lines, and serialization buffers, so the threat model isn't met. A dedicated `Secret` / `Sensitive` type that forbids copy and zeroes on drop is the right answer there, and it lives outside `String`.
+
+What remains is "small in-place edits in narrow domain code", which doesn't justify a class of operations that Java idiom and Laterita's larger design (favoring immutability) both push against. The cost — tracking mutable-vs-immutable String bindings mentally, a new mut-method surface, invariant complications on subclasses like `Email` — exceeds the benefit.
+
+A binding may still be *declared* `mut String`. The `mut` modifier is general (BIND-02, MUT-01) and rejecting it specifically on `String` would be a special case requiring its own justification. The declaration is inert for in-place purposes: nothing in `String`'s API takes a `mut` receiver, so no method can mutate the contents. Reassignment of a `mut String` field still works because that's `mut` field semantics (BIND-03, BIND-06), not String mutation — which is what the `StringBuilder` example with `mut String contents` actually relies on (it reassigns the field on each `append`, not the underlying buffer). Subclasses introducing their own mut state reach mutability through the general rules without needing a String-specific carve-out.
+
+### Why default receiver mode is borrow (STR-08)
+
+The same Java-feel argument that motivates non-final classes (STR-01) and per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case — methods that consume `this` (rare; terminal conversions) — carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
 
 ---
 

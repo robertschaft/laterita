@@ -20,6 +20,9 @@ A binding that holds a reference to a value owned elsewhere, rather than owning 
 ### bound (annotation on return types and parameters)
 A keyword marking that a returned value is a borrow, not an owned value. Placed before the return type (e.g., `bound String substring(...)`) or before a parameter type (e.g., `bound String s`). Tells the compiler that the return value's lifetime is limited to the lifetime of the marked source. See `LIFE-02`.
 
+### buffer splitting
+Dividing a single borrowed region of memory into two non-overlapping borrowed views. For arrays, `splitAt` produces this effect (MOVE-06). For `String`, buffer splitting is currently only exposed through `String`'s own methods (`substring`, `trim`, `splitOn`); OQ-17 considers whether to expose a public `splitAt` operation for user code to perform parallel-decomposition algorithms over strings.
+
 ### Cell<T>
 An interior-mutability primitive permitting mutation of contents through a non-`mut` binding. The only way to implement mutable state inside a type that is otherwise immutable. Requires `unsafe` context per `UNS-02`. Similar to Rust's `UnsafeCell<T>`.
 
@@ -133,6 +136,15 @@ A borrow that grants read-only access to a borrowed value. Any number of shared 
 
 ### slice (of a String or array)
 A borrowed view into a contiguous region of a String or array. Methods like `substring`, `trim` (on String) and `slice` (on arrays) return a borrowed view (marked `bound`), not a new copy. The borrow is bounded by the original's lifetime. See `STR-03`, `MOVE-06`.
+
+### static borrow
+A borrow with a static lifetime — one that is guaranteed to live for the entire program execution. String literals in Laterita are static borrows: they reside in read-only program memory and can be safely borrowed by any binding without lifetime restrictions. See `STR-06`.
+
+### static lifetime
+A lifetime that spans the entire program execution. Values with static lifetime (such as string literals) can be borrowed without restriction in any context. The static lifetime is the broadest possible scope, permitting a borrow to flow freely without being tied to a particular binding's scope. See `STR-06`, `LIFE-01`.
+
+### string literal
+A quoted string expression in source code (e.g., `"hello"`), which has type `bound String` with a static lifetime. The literal is not a heap allocation; it resides in the program's read-only memory segment. A binding initialized from a literal is borrowed; to obtain an owned heap-allocated `String`, call `.clone()`. See `STR-06`.
 
 ### smart pointer
 A wrapper type that manages a value's lifetime. Examples: `Rc<T>` (reference-counted, single-threaded), `Arc<T>` (atomic reference-counted, multi-threaded), `MutexGuard<T>` (lock guard, released on `onDrop()`). Smart pointers carry `onDrop()` to enforce cleanup.

@@ -22,7 +22,7 @@ The language provides exactly four local binding forms:
 Whether the binding holds an owned value or a borrow is determined by the RHS expression per MOVE-01 and MOVE-02.
 
 ```laterita
-String greeting = "hello";
+String greeting = "hello";    // borrowed; static lifetime per STR-06
 let count = items.size();
 mut sb = new StringBuilder();
 mut int retries = 0;
@@ -611,6 +611,42 @@ Methods that produce new storage (e.g., `toUpperCase`, `concat`) return an owned
 ### STR-05 — User-defined subclasses are owned
 
 Subclasses of `String` declared by user code are owned. They cannot be returned as borrows into other storage.
+
+### STR-06 — String literals are static borrows
+
+A string literal expression has type `bound String` with a static lifetime. A binding initialized from a literal is borrowed; to obtain owned storage, call `.clone()` (OBJ-02).
+
+```laterita
+String greeting = "hello";              // borrowed, static lifetime
+String owned = "hello".clone();         // owned heap allocation
+take String s = give greeting;          // ERROR: greeting is borrowed
+take String u = give "hello";           // ERROR: literal is borrowed (give on a borrow per MOVE-02)
+take String t = "hello".clone();        // OK
+void inspect(String s);                 // accepts a literal directly (borrow)
+void store(take String s);              // requires `.clone()` on a literal
+```
+
+### STR-07 — Standard `String` exposes no mut methods
+
+The standard library `String` class declares no methods with a `mut String this` receiver. A binding may be declared `mut String` — `mut` is permitted on any owned binding (BIND-02, MUT-01) — and a `mut String` field may be reassigned, but the `String` value itself cannot be mutated in place through `String`'s API. Bulk text construction belongs in `StringBuilder`.
+
+```laterita
+mut String s = readLine();        // declaration permitted
+s = readLine();                   // OK: reassigning a mut binding
+// no in-place mutation method exists on String
+```
+
+### STR-08 — Default receiver mode of `String` methods is borrow
+
+Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`give String this`) are rare and explicitly marked; per STR-07, no mut-receiver methods exist.
+
+```laterita
+class String {
+    bound String trim();             // borrow this, return slice
+    String toUpperCase();            // borrow this, return owned
+    int length();                    // borrow this
+}
+```
 
 ---
 

@@ -39,12 +39,6 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 **Related codes:** OQ-06.
 
-## OQ-14 - Ownership of Strings
-
-This is a hand added entry.
-
-My gut feeling is: Hardcoded Strings are immutable and owned by the defining class. The ownership of dynamically created Strings (e.g. read from files or Sockets) is normally hand over to the caller as a mutable String (if possible). Internally we probably need to work with the concept of splitting the ownership of arrays (aka buffers). Many of String methods will be `give`. Only a few new methods will be `mut` (e.g. POSIX tr-like search and replace function for single characters; or an Iterator over all characters).
-
 ## OQ-15 - Migratability Java Code
 
 This is a hand added entry.
@@ -56,6 +50,24 @@ Migration tools:
 4. A java compiler plugin that tries to simulate the borrow checker based on above annotations. Developers can improve their java code.
 5. A tool that converts java code to laterita code. It assumes that the previous two steps are already executed.
 6. A laterita formatter that formats laterita always in the same manner. If should allow only very few formatting freedom to developers (e.g. it wouldn't remove some additional line breaks).
+
+## OQ-17 — Public expression of buffer splitting for `String`
+
+**Surfaced when:** discussing how `String`'s internal buffer-splitting capability surfaces in user code (alongside OQ-14's resolution).
+
+**The issue.** Internally, two non-overlapping `bound String` slices over the same backing storage are sound. MOVE-06 already establishes the analogous rule for arrays via a stdlib `splitAt`. The natural fit for `String` is the same shape — but `splitAt` returns two values, which Java has no native multiple-return syntax for.
+
+**The question.** Three sub-options:
+
+1. Add `splitAt` returning a tuple-like multi-value, accepting "multiple returns" as a new language feature.
+2. Use a record (`record StringSplit(bound String left, bound String right)`) to avoid native multi-return.
+3. Omit a public splitting form entirely; leave buffer splitting as an `unsafe` internal mechanism behind `String`'s own methods (`substring`, `trim`, `splitOn`, etc.).
+
+Option 3 is the smallest language surface but loses parity with MOVE-06's `splitAt` for arrays. Option 2 reuses the records feature already in the language and stays Java-native. Option 1 adds language surface but yields the cleanest call-site syntax.
+
+**Why it matters.** Determines whether parallel-decomposition algorithms over strings (e.g., divide-and-conquer parsing) are expressible without dropping into `unsafe`.
+
+**Related codes:** STR-02, STR-03, MOVE-06.
 
 # Resolved Questions
 
@@ -69,3 +81,5 @@ Migration tools:
 * OQ-09 — Iterator.remove and ConcurrentModificationException
 * OQ-12 — Doubly-linked structures and graph data
 * OQ-13 — User-invoked `close()` and early cleanup
+* OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
+* OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
