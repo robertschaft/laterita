@@ -282,7 +282,7 @@ mut int[] right = data.slice(50, 100);   // OK: provably disjoint
 
 ### MOVE-07 — Partial moves are tracked per field
 
-Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04).
+Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04). A field that the value's `onDrop()` chain reads cannot be moved out (DROP-08).
 
 ### MOVE-08 — `give` to void
 
@@ -450,7 +450,7 @@ Within a scope, bindings are dropped in the reverse of their declaration order.
 
 ### DROP-04 — Drop flags for partial moves
 
-When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant.
+When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. The enclosing value's own `onDrop()` may not observe the moved-out parts (DROP-08).
 
 ### DROP-05 — Auto-chained `super.onDrop()`
 
@@ -480,6 +480,30 @@ The `internal` modifier is reserved for future compiler-orchestrated hooks. It i
 An `onDrop()` invocation must not propagate an exception to its compiler-emitted call site. Any exception that escapes the override body — directly thrown, or propagated from a transitively called method, or from the auto-chained `super.onDrop()` — causes the program to terminate immediately.
 
 Implementations must insert a runtime guard at each compiler-emitted `onDrop()` call site that catches any exception and triggers termination with diagnostic output identifying the throwing class's `onDrop()` and the originating exception. `onDrop()` overrides that perform fallible operations (network flushes, file syncs) must catch and handle exceptions internally.
+
+### DROP-08 — `onDrop()` may not observe moved-out fields
+
+A field left in the moved-out state by a partial move (MOVE-07) holds no value, so it is unavailable to cleanup code. A single `onDrop()` body serves every drop site of its class — including a drop site reached after one of the class's fields has been moved out — so the compiler must reject any program in which `onDrop()`, or any method it transitively invokes on `this` (including the auto-chained `super.onDrop()` of DROP-05), reads a field that is moved-out on a path reaching that read.
+
+Operationally the rejection lands at the move: moving a field out of an owned value is an error when that value's class has an `onDrop()` chain that reads the field, because the value's compiler-emitted drop (DROP-01) would then have to run cleanup over the vacated field. The diagnostic identifies the field, the move that vacated it, and the read in the `onDrop()` chain.
+
+A class whose `onDrop()` chain reads none of its own fields imposes no such restriction. The default no-op `Object.onDrop()` reads nothing, and an override that touches only locals, parameters, and `super.onDrop()` likewise leaves every field free to be moved out — the common case for records and plain data carriers, whose fields remain freely splittable per MOVE-07. The restriction is per field: an `onDrop()` that reads only some fields pins only those; the rest may still be moved out, and the value's compiler-emitted drop (DROP-04) covers whatever remains.
+
+```laterita
+record Pair(Resource left, Resource right) {}        // no onDrop override
+
+let p = new Pair(openA(), openB());
+useLeft(give p.left);          // OK: Pair.onDrop() is the no-op; left is now moved-out
+useRight(give p.right);        // OK: right still owned; nothing of p remains to drop
+
+class Logged {
+    Handle h;
+    override void onDrop() { log("closing " + h.id()); }   // reads field h
+}
+
+let x = new Logged(openHandle());
+useHandle(give x.h);           // ERROR: Logged.onDrop() reads h; h cannot be moved out of x
+```
 
 ---
 
