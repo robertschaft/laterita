@@ -214,7 +214,7 @@ Earlier drafts treated the receiver as a default contributor — an instance met
 
 ---
 
-## Cleanup (DROP-01 through DROP-07)
+## Cleanup (DROP-01 through DROP-08)
 
 ### Why universal `onDrop()`, not opt-in (DROP-01)
 
@@ -283,6 +283,18 @@ Three options were considered: compile-time enforcement (forbid `throws` clauses
 Abort-on-throw matches Rust's choice for the same reason: a drop hook is the wrong place to surface fallible operations. The override's role is best-effort cleanup. If a flush can fail meaningfully, the user calls a separate `flush()` method explicitly while the binding is still alive — somewhere a caller can handle the result. Anything that reaches `onDrop` and throws is, by definition, a cleanup contract violation; treating it as fatal makes the contract observable instead of silently corrupting subsequent execution.
 
 The runtime guard at each compiler-emitted call site is cheap (a try-catch wrapper on a code path that almost never executes). The diagnostic on abort identifies the throwing class and the originating exception, so cleanup-contract violations are debuggable.
+
+### Why `onDrop()` cannot observe moved-out fields (DROP-08)
+
+Partial moves (MOVE-07) and a universal `onDrop()` (DROP-01) collide: after `give x.left`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup. There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so if that body reads `left` it would be reading a vacated slot on the partial-move path. Three ways out:
+
+1. **Forbid the partial move when `onDrop()` reads the field.** What DROP-08 picks.
+2. **Skip `onDrop()` entirely on a partial-move path, dropping only the survivors.** Rejected: partially moving one field would silently disable the whole object's destructor — a quiet correctness hole exactly where resource handling matters most.
+3. **Run `onDrop()` anyway and make a moved-out field read inside it a separate error.** Same observable rule as (1) — the body still can't touch a possibly-moved field — but the diagnostic surfaces at the `onDrop()` definition rather than at the move. We prefer the move site: that's where the programmer made the choice, and the body stays a normal method whose field reads need no special annotation.
+
+Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). Laterita can't copy that verbatim — *every* class has an `onDrop()` (DROP-01), so the blanket rule would ban partial moves outright, which MOVE-07 and the disassembly half of BIND-07 deliberately allow. DROP-08 is the finer-grained version: the prohibition attaches per field, and only to fields the cleanup chain actually reads. A class with the default no-op `onDrop()` — every record, every plain data carrier — reads nothing and stays fully splittable, so the common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
+
+This also explains why `StringBuilder.build()` (BIND-07) — `return give this.contents;` — is legal: `StringBuilder` carries the inherited no-op `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and that `give` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
 
 ---
 
