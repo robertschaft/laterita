@@ -45,7 +45,7 @@ A constructor that takes a single parameter of the same type as the class being 
 A code path marked with `broken` that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken` is dead code. See `UNR-01`.
 
 ### drop / onDrop()
-To clean up a value when its owning binding leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). User code overrides `onDrop()` to release resources (files, locks, memory). See `DROP-01`.
+To clean up a value when its owning binding leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). A `final` class overrides `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead. See `DROP-01`, `DROP-09`.
 
 ### drop flag
 Compiler bookkeeping tracking whether each field of a partially-moved value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
@@ -99,7 +99,7 @@ Used with `unsafe` to explicitly declare that a class is safe to move across thr
 A type that admits both a value and the special value `null`. Written as `T?` where `T` is the value type. Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`.
 
 ### onDrop()
-A method invoked by the compiler at scope exit to clean up a binding. Every class inherits `Object.onDrop()` (a no-op by default). User code overrides it to release resources. The compiler calls it on every binding that leaves scope, in reverse declaration order. See `DROP-01`, `DROP-02`.
+A method invoked by the compiler at scope exit to clean up a binding. Every class inherits `Object.onDrop()` (a no-op by default); only a `final` class may override it with a body (`DROP-09`). The compiler runs it as part of the reverse-construction teardown of the value — own body, then own fields in reverse, then each superclass subobject — and on every binding that leaves scope, in reverse declaration order. See `DROP-01`, `DROP-02`, `DROP-05`, `DROP-09`.
 
 ### OQ (prefix in OQ-N)
 "Open Question." A numbered entry in the open-questions document listing unresolved design decisions. Example: OQ-06 (Spring DI and compile-time annotation processing). Not part of the normative spec.

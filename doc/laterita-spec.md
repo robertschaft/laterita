@@ -431,7 +431,7 @@ The diagnostic identifies the contributing source the body actually uses, so the
 
 ### DROP-01 — Universal `onDrop()`
 
-Every binding triggers an invocation of its value's `onDrop()` method when the binding leaves scope. `Object.onDrop()` is declared `internal void onDrop()` (see DROP-06 for the `internal` modifier) and is a no-op by default; classes override it to perform cleanup. No syntactic opt-in is required at the call site.
+Every binding triggers an invocation of its value's `onDrop()` method when the binding leaves scope. `Object.onDrop()` is declared `internal void onDrop()` (see DROP-06 for the `internal` modifier) and is a no-op by default; a `final` class may override it to perform cleanup (DROP-09 confines overrides to `final` classes). No syntactic opt-in is required at the call site.
 
 ```laterita
 {
@@ -452,18 +452,26 @@ Within a scope, bindings are dropped in the reverse of their declaration order.
 
 When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. The enclosing value's own `onDrop()` may not observe the moved-out parts (DROP-08).
 
-### DROP-05 — Auto-chained `super.onDrop()`
+### DROP-05 — Reverse-construction teardown
 
-When a class overrides `onDrop()`, the compiler auto-inserts a call to `super.onDrop()` as the last statement of the override body. Users do not write the super-chain themselves; the compiler-emitted call guarantees the entire inheritance chain participates in cleanup, in conventional reverse-construction order (subclass first, then superclass).
+Dropping an instance runs cleanup in the reverse of construction order, interleaving each class's `onDrop()` body with the teardown of that class's own fields. For an instance whose dynamic class is `C` with superclass chain `C → B → … → Object`, the compiler emits, in order:
+
+1. `C.onDrop()` — its body if `C` overrides `onDrop()`, otherwise nothing (the inherited no-op).
+2. `C`'s fields, in reverse declaration order; array elements in reverse index order. Fields that are moved-out (DROP-04) or `null` (NULL-09) are skipped; each surviving field's value is dropped by this same procedure recursively.
+3. Steps 1–2 repeated for `B`, then its superclass, and so on up to `Object`.
+4. If the instance is heap-allocated, its storage is released.
+
+Each step-1 body runs while that class's own fields (and every superclass's fields) are still live, so a body may read its class's non-moved-out fields (DROP-08). The user writes no part of this: per DROP-06, `onDrop()` and `super.onDrop()` are not callable from source, so the super-chain is compiler-emitted — exactly as the synthesized copy constructor auto-inserts `super(source)` (OBJ-01). Because DROP-09 confines `onDrop()` overrides to `final` classes, every step-1 body above the leaf is the inherited no-op `Object.onDrop()`; the chain still executes (so the ordering is unambiguous and composes unchanged should the restriction ever be loosened) but the only user-written body it reaches is the leaf class's own.
 
 ```laterita
-class CachedFile extends File {
-    Cache cache;
+final class TimerScope {                  // final: required to override onDrop (DROP-09)
+    Rc<Metrics> metrics;
+    long startNanos;
 
     override void onDrop() {
-        cache.flush();
-        // compiler appends: super.onDrop();
+        metrics.record(System.nanoTime() - startNanos);   // both fields still live here
     }
+    // teardown: onDrop() body → startNanos → metrics.onDrop() (Rc decrement) → Object.onDrop() (no-op) → free
 }
 ```
 
@@ -471,23 +479,23 @@ class CachedFile extends File {
 
 The visibility modifier `internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `internal` method directly (`x.onDrop()`) nor via super-chain (`super.onDrop()`); both are compile errors. Subclasses may `override` an `internal` method; the override inherits the modifier and does not need to repeat it.
 
-`onDrop()` is the only `internal` method introduced by this specification. The compiler emits all of its invocations: at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and at the end of override bodies (DROP-05).
+`onDrop()` is the only `internal` method introduced by this specification. The compiler emits all of its invocations: at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and as the super-chain and field teardown of the reverse-construction sequence (DROP-05).
 
 The `internal` modifier is reserved for future compiler-orchestrated hooks. It is not a general-purpose access-control level; ordinary visibility scoping continues to use `public`, `protected`, `private`, and package-default.
 
 ### DROP-07 — `onDrop()` is no-throw; uncaught exceptions abort
 
-An `onDrop()` invocation must not propagate an exception to its compiler-emitted call site. Any exception that escapes the override body — directly thrown, or propagated from a transitively called method, or from the auto-chained `super.onDrop()` — causes the program to terminate immediately.
+An `onDrop()` invocation must not propagate an exception to its compiler-emitted call site. Any exception that escapes the override body — directly thrown, or propagated from a transitively called method, or from a field's `onDrop()` or the super-chain reached by the reverse-construction teardown (DROP-05) — causes the program to terminate immediately.
 
 Implementations must insert a runtime guard at each compiler-emitted `onDrop()` call site that catches any exception and triggers termination with diagnostic output identifying the throwing class's `onDrop()` and the originating exception. `onDrop()` overrides that perform fallible operations (network flushes, file syncs) must catch and handle exceptions internally.
 
 ### DROP-08 — `onDrop()` may not observe moved-out fields
 
-A field left in the moved-out state by a partial move (MOVE-07) holds no value, so it is unavailable to cleanup code. A single `onDrop()` body serves every drop site of its class — including a drop site reached after one of the class's fields has been moved out — so the compiler must reject any program in which `onDrop()`, or any method it transitively invokes on `this` (including the auto-chained `super.onDrop()` of DROP-05), reads a field that is moved-out on a path reaching that read.
+A field left in the moved-out state by a partial move (MOVE-07) holds no value, so it is unavailable to cleanup code. A single `onDrop()` body serves every drop site of its class — including a drop site reached after one of the class's fields has been moved out — so the compiler must reject any program in which `onDrop()`, or any method it transitively invokes on `this`, reads a field that is moved-out on a path reaching that read.
 
 Operationally the rejection lands at the move: moving a field out of an owned value is an error when that value's class has an `onDrop()` chain that reads the field, because the value's compiler-emitted drop (DROP-01) would then have to run cleanup over the vacated field. The diagnostic identifies the field, the move that vacated it, and the read in the `onDrop()` chain.
 
-A class whose `onDrop()` chain reads none of its own fields imposes no such restriction. The default no-op `Object.onDrop()` reads nothing, and an override that touches only locals, parameters, and `super.onDrop()` likewise leaves every field free to be moved out — the common case for records and plain data carriers, whose fields remain freely splittable per MOVE-07. The restriction is per field: an `onDrop()` that reads only some fields pins only those; the rest may still be moved out, and the value's compiler-emitted drop (DROP-04) covers whatever remains.
+A class whose `onDrop()` chain reads none of its own fields imposes no such restriction. The default no-op `Object.onDrop()` reads nothing, and an override that touches only locals and parameters likewise leaves every field free to be moved out — the common case for records and plain data carriers, whose fields remain freely splittable per MOVE-07. The restriction is per field: an `onDrop()` that reads only some fields pins only those; the rest may still be moved out, and the value's compiler-emitted drop (DROP-04) covers whatever remains.
 
 ```laterita
 record Pair(Resource left, Resource right) {}        // no onDrop override
@@ -496,13 +504,33 @@ let p = new Pair(openA(), openB());
 useLeft(give p.left);          // OK: Pair.onDrop() is the no-op; left is now moved-out
 useRight(give p.right);        // OK: right still owned; nothing of p remains to drop
 
-class Logged {
+final class Logged {           // final: required to override onDrop (DROP-09)
     Handle h;
     override void onDrop() { log("closing " + h.id()); }   // reads field h
 }
 
 let x = new Logged(openHandle());
 useHandle(give x.h);           // ERROR: Logged.onDrop() reads h; h cannot be moved out of x
+```
+
+### DROP-09 — `onDrop()` overrides only on `final` classes
+
+A class may override `onDrop()` only if it is declared `final`. An `onDrop()` override on a non-`final` class is a compile error; `onDrop()` may not be declared `abstract`, and an interface may neither declare it nor supply it as a `default` (an interface is never `final`, so this also follows from the rule, but the compiler diagnoses it specifically). The inherited no-op `Object.onDrop()` is unaffected — every class still *has* an `onDrop()`; a non-`final` class simply cannot give it a body.
+
+The consequence is that at most one user-written `onDrop()` body runs per instance: the body belonging to the instance's — necessarily `final` — dynamic class. A `final` class has no subclass, so no override of any method it calls on `this` can exist below it; combined with DROP-06's ban on user-invoked `onDrop()`, this removes the hazard of an `onDrop()` body virtual-dispatching *down* into a subclass whose state has already been torn down by the reverse-construction sequence (DROP-05) — the C++ destructor-and-virtual-call problem. No special dispatch mode inside `onDrop()` is required: there is no subclass to dispatch into.
+
+A class that requires cleanup beyond what its fields' own `onDrop()`s provide must therefore be `final`. A type meant to be extended holds its resources through `final` handle fields — `FileHandle`, `MutexGuard<T>`, `Rc<T>`, `Arc<T>`, `Thread`, and the like — whose `onDrop()`s perform the release during the owner's field teardown (DROP-05, step 2). This is composition in place of the Java idiom of overriding a cleanup hook in an open base class, and it is how the standard library is structured: every stdlib type with a non-trivial `onDrop()` is `final`.
+
+```laterita
+final class Connection { … }              // OK: final, may override onDrop
+
+class Service {                           // OK: no onDrop override; ordinary extensible class
+    Connection conn;                      // resource held by composition; conn.onDrop() runs in Service's teardown
+}
+
+abstract class Resource {
+    override void onDrop() { … }           // ERROR: onDrop override on a non-final class
+}
 ```
 
 ---
@@ -1123,6 +1151,8 @@ Resources whose cleanup needs to block (flush-on-close for buffered IO, drain on
 3. Reclaim the thread's resources.
 
 To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per MOVE-08 (`give worker;`).
+
+`Thread` is `final`: it overrides `onDrop()`, so DROP-09 applies. The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable; pass a `Runnable` or lambda to the constructor instead (THR-01, THR-02), and compose rather than extend when a richer thread wrapper is needed.
 
 ### THR-07 — `Thread.interrupt()`
 
