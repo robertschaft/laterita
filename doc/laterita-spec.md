@@ -282,7 +282,7 @@ mut int[] right = data.slice(50, 100);   // OK: provably disjoint
 
 ### MOVE-07 — Partial moves are tracked per field
 
-Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04). A field that the value's `onDrop()` chain reads cannot be moved out (DROP-08).
+Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04). A field that the value's `onDrop()` body reads cannot be moved out (DROP-08).
 
 ### MOVE-08 — `give` to void
 
@@ -321,7 +321,7 @@ Two consequences for interface evolution:
 - Adding a same-type borrow overload alongside an existing `take` shifts bare call sites from consume to borrow on the tie-breaker.
 - Adding a more-specific `take` overload alongside an existing less-specific borrow shifts bare call sites at the more-specific type from borrow to consume on Java specificity.
 
-For arguments where the drop point is observable (large buffers, lock guards, files), authors should write `give` explicitly at sites that need to be pinned to the consuming form, even when only one overload exists today.
+For arguments where the drop point is observable (large buffers, files, threads), authors should write `give` explicitly at sites that need to be pinned to the consuming form, even when only one overload exists today.
 
 ### MOVE-10 — Override variance for `take` and `mut`
 
@@ -1196,7 +1196,7 @@ Generic types and methods are monomorphized: each instantiation produces a speci
 
 ### COMP-03 — Compiler-inserted cleanup
 
-The compiler must emit `onDrop()` calls at every scope-exit point per DROP-03 and unwind table entries per EXC-02. These insertions happen after all user-level analysis and are not visible in source. Each emitted call site must include the runtime guard required by DROP-07.
+The compiler must emit `onDrop()` calls at every scope-exit point per DROP-03 and unwind table entries per EXC-02. These insertions happen after all user-level analysis and are not visible in source. Each emitted call site must implement the exception handling specified by DROP-07: body termination, drop sequence continuation, and suppressed-exception accumulation.
 
 ### COMP-04 — Drop flags as compile-time state
 
