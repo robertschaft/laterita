@@ -431,7 +431,7 @@ The diagnostic identifies the contributing source the body actually uses, so the
 
 ### DROP-01 — Universal `onDrop()`
 
-Every binding triggers the drop of its value when the binding leaves scope; the drop sequence is specified by DROP-05. The cleanup hook is `onDrop()`, an `internal` method (DROP-06) a `final` class may override with a body (DROP-09). A class with no override contributes no body to its drop sequence. No syntactic opt-in is required at the call site.
+Every binding triggers the drop of its value when the binding leaves scope; the drop sequence is specified by DROP-05. The cleanup hook is `onDrop()`, an `internal` method (DROP-06) a `final` class may implement (DROP-09). A class with no implementation contributes no body to its drop sequence. No syntactic opt-in is required at the call site.
 
 ```laterita
 {
@@ -456,19 +456,19 @@ When MOVE-07 has resulted in partially-moved values, the compiler must emit code
 
 Dropping a value runs cleanup in the reverse of construction order. For an instance of dynamic class `C` with superclass chain `C → B → … → Object`, the compiler emits, in order:
 
-1. `C.onDrop()` body, if it overrides — only `final` classes may, per DROP-09.
+1. `C.onDrop()` body, if implemented — only `final` classes may, per DROP-09.
 2. `C`'s fields, in reverse declaration order; array elements in reverse index order.
-3. Steps 1–2 repeated for `B`, then for each superclass up to `Object`. Step 1 is empty for any class without an `onDrop()` override.
+3. Step 2 repeated for `B`, then for each superclass up to `Object`.
 4. If the instance is heap-allocated, its storage is released.
 
 Fields that are moved-out (DROP-04) or `null` (NULL-09) are skipped in steps 2 and 3; each surviving field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
 
 ```laterita
-final class TimerScope {                  // final: required to override onDrop (DROP-09)
+final class TimerScope {                  // final: required to implement onDrop (DROP-09)
     Rc<Metrics> metrics;
     long startNanos;
 
-    override void onDrop() {
+    implement void onDrop() {
         metrics.record(System.nanoTime() - startNanos);   // both fields still live here
     }
     // drop sequence: onDrop() body → startNanos → metrics dropped (Rc decrement) → free
@@ -477,7 +477,7 @@ final class TimerScope {                  // final: required to override onDrop 
 
 ### DROP-06 — `internal` visibility forbids user invocation
 
-The visibility modifier `internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `internal` method directly (`x.onDrop()`); doing so is a compile error. A class may `override` an `internal` method; the override inherits the modifier and does not need to repeat it.
+The visibility modifier `internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `internal` method directly (`x.onDrop()`); doing so is a compile error.
 
 `onDrop()` is the only `internal` method introduced by this specification. The compiler emits its invocations at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and as part of the drop sequence (DROP-05).
 
@@ -489,45 +489,45 @@ An exception propagating out of an `onDrop()` body terminates that body, but the
 
 If multiple invocations along a drop path throw — sibling bindings (DROP-02), nested field drops, the body and a field of the same value, or any of these during an exception unwind (EXC-02) — the first thrown exception is the propagating one; later throws are attached to it via `Throwable.addSuppressed`.
 
-`onDrop()` overrides that perform fallible operations (network flushes, file syncs) may either catch internally or allow exceptions to propagate. DROP-10 guarantees that no external reference to the value can survive into step 4, so the drop sequence is safe to complete even after the body throws.
+`onDrop()` implementations that perform fallible operations (network flushes, file syncs) may either catch internally or allow exceptions to propagate. DROP-10 guarantees that no external reference to the value can survive into step 4, so the drop sequence is safe to complete even after the body throws.
 
 ### DROP-08 — `onDrop()` may not observe moved-out fields
 
-A field that may be moved out (MOVE-07) on any path to a drop site may not be read by that class's `onDrop()` body, nor by any method it transitively invokes on `this`. The compiler diagnoses the violation at the move: a `give` of a field is rejected when the field's class has an `onDrop()` that reads it. The diagnostic identifies the field, the move, and the read.
+A field that may be moved out (MOVE-07) on any path to a drop site may not be read by that class's `onDrop()` body, nor by any method it transitively invokes on `this`. The compiler diagnoses the violation at the move: a `give` of a field is rejected when the containing class has an `onDrop()` that reads it. The diagnostic identifies the field, the move, and the read.
 
-The restriction is per field — an `onDrop()` reading only some fields pins only those, and partial cleanup of the rest follows DROP-04. A class whose `onDrop()` reads no field — every record, every plain data carrier, every class without an `onDrop()` override — imposes no restriction at all.
+The restriction is per field — an `onDrop()` reading only some fields pins only those, and partial cleanup of the rest follows DROP-04. A class whose `onDrop()` reads no field — every record, every plain data carrier, every class without an `onDrop()` implementation — imposes no restriction at all.
 
 ```laterita
-record Pair(Resource left, Resource right) {}        // no onDrop override
+record Pair(Resource left, Resource right) {}        // no onDrop implementation
 
 let p = new Pair(openA(), openB());
-useLeft(give p.left);          // OK: Pair has no onDrop() override; left is now moved-out
+useLeft(give p.left);          // OK: Pair has no onDrop(); left is now moved-out
 useRight(give p.right);        // OK: right still owned; nothing of p remains to drop
 
-final class Logged {           // final: required to override onDrop (DROP-09)
+final class Logged {           // final: required to implement onDrop (DROP-09)
     Handle h;
-    override void onDrop() { log("closing " + h.id()); }   // reads field h
+    implement void onDrop() { log("closing " + h.id()); }   // reads field h
 }
 
 let x = new Logged(openHandle());
 useHandle(give x.h);           // ERROR: Logged.onDrop() reads h; h cannot be moved out of x
 ```
 
-### DROP-09 — `onDrop()` overrides only on `final` classes
+### DROP-09 — `onDrop()` implementations only on `final` classes
 
-A class may override `onDrop()` only if it is declared `final`. An `onDrop()` override on a non-`final` class is a compile error; `onDrop()` may not be declared `abstract`, and an interface may neither declare it nor supply it as a `default`. A class without an override contributes no body to its drop sequence (DROP-05 step 1). At most one user-written `onDrop()` body therefore runs per instance, on the instance's (necessarily `final`) dynamic class.
+A class may implement `onDrop()` only if it is declared `final`. An `onDrop()` implementation on a non-`final` class is a compile error; `onDrop()` may not be declared `abstract`, and an interface may neither declare it nor supply it as a `default`. A class without an implementation contributes no body to its drop sequence (DROP-05 step 1). At most one user-written `onDrop()` body therefore runs per instance, on the instance's (necessarily `final`) dynamic class.
 
 A class that needs cleanup beyond what its fields' own `onDrop()`s provide must be `final`. Extensible types compose `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose `onDrop()`s perform the release during the owner's drop sequence (DROP-05, step 2).
 
 ```laterita
-final class Connection { … }              // OK: final, may override onDrop
+final class Connection { … }              // OK: final, may implement onDrop
 
-class Service {                           // OK: no onDrop override; ordinary extensible class
+class Service {                           // OK: no onDrop implementation; ordinary extensible class
     Connection conn;                      // resource held by composition; conn dropped in Service's drop sequence
 }
 
 abstract class Resource {
-    override void onDrop() { … }           // ERROR: onDrop override on a non-final class
+    implement void onDrop() { … }          // ERROR: onDrop implementation on a non-final class
 }
 ```
 
@@ -1085,7 +1085,7 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 **Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock. `tryWith` throws `PoisonedException` only.
 
-**Poison on closure throw.** If `action` propagates an exception, `with` / `tryWith` mark the mutex poisoned (THR-10) before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning. Detection is local: an ordinary `try`/`catch` around the `action.apply(...)` call inside the stdlib implementation. No runtime "am I unwinding?" indicator is required.
+**Poison on closure throw.** If `action` propagates an exception, `with` / `tryWith` mark the mutex poisoned (THR-10) before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning.
 
 **Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
 
@@ -1156,7 +1156,7 @@ Resources whose cleanup needs to block (flush-on-close for buffered IO, drain on
 
 To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per MOVE-08 (`give worker;`).
 
-`Thread` is `final`: it overrides `onDrop()`, so DROP-09 applies. The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable; pass a `Runnable` or lambda to the constructor instead (THR-01, THR-02), and compose rather than extend when a richer thread wrapper is needed.
+`Thread` is `final`: it implements `onDrop()`, so DROP-09 applies. The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable; pass a `Runnable` or lambda to the constructor instead (THR-01, THR-02), and compose rather than extend when a richer thread wrapper is needed.
 
 ### THR-07 — `Thread.interrupt()`
 
