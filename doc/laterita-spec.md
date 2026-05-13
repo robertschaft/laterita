@@ -468,7 +468,7 @@ final class TimerScope {                  // final: required to implement onDrop
     Rc<Metrics> metrics;
     long startNanos;
 
-    implement void onDrop() {
+    internal void onDrop() {
         metrics.record(System.nanoTime() - startNanos);   // both fields still live here
     }
     // drop sequence: onDrop() body → startNanos → metrics dropped (Rc decrement) → free
@@ -506,7 +506,7 @@ useRight(give p.right);        // OK: right still owned; nothing of p remains to
 
 final class Logged {           // final: required to implement onDrop (DROP-09)
     Handle h;
-    implement void onDrop() { log("closing " + h.id()); }   // reads field h
+    internal void onDrop() { log("closing " + h.id()); }   // reads field h
 }
 
 let x = new Logged(openHandle());
@@ -527,7 +527,7 @@ class Service {                           // OK: no onDrop implementation; ordin
 }
 
 abstract class Resource {
-    implement void onDrop() { … }          // ERROR: onDrop implementation on a non-final class
+    internal void onDrop() { … }           // ERROR: onDrop implementation on a non-final class
 }
 ```
 
