@@ -519,7 +519,7 @@ A class may override `onDrop()` only if it is declared `final`. An `onDrop()` ov
 
 The consequence is that at most one user-written `onDrop()` body runs per instance: the body belonging to the instance's — necessarily `final` — dynamic class. A `final` class has no subclass, so no override of any method it calls on `this` can exist below it; combined with DROP-06's ban on user-invoked `onDrop()`, this removes the hazard of an `onDrop()` body virtual-dispatching *down* into a subclass whose state has already been torn down by the reverse-construction sequence (DROP-05) — the C++ destructor-and-virtual-call problem. No special dispatch mode inside `onDrop()` is required: there is no subclass to dispatch into.
 
-A class that requires cleanup beyond what its fields' own `onDrop()`s provide must therefore be `final`. A type meant to be extended holds its resources through `final` handle fields — `FileHandle`, `MutexGuard<T>`, `Rc<T>`, `Arc<T>`, `Thread`, and the like — whose `onDrop()`s perform the release during the owner's field teardown (DROP-05, step 2). This is composition in place of the Java idiom of overriding a cleanup hook in an open base class, and it is how the standard library is structured: every stdlib type with a non-trivial `onDrop()` is `final`.
+A class that requires cleanup beyond what its fields' own `onDrop()`s provide must therefore be `final`. A type meant to be extended holds its resources through `final` handle fields — `FileHandle`, `Rc<T>`, `Arc<T>`, `Thread`, and the like — whose `onDrop()`s perform the release during the owner's field teardown (DROP-05, step 2). This is composition in place of the Java idiom of overriding a cleanup hook in an open base class, and it is how the standard library is structured: every stdlib type with a non-trivial `onDrop()` is `final`.
 
 ```laterita
 final class Connection { … }              // OK: final, may override onDrop
@@ -1075,19 +1075,21 @@ Implementations of these operations are permitted (and expected) to use `private
 
 ### STD-09 — `Mutex<T>`
 
-A mutual-exclusion primitive wrapping an owned value. The API mirrors `java.util.concurrent.locks.Lock` for blocking, fairness, and timed acquisition; what follows specifies the differences.
+A mutual-exclusion primitive wrapping an owned value. Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
 
 **Constructor.** `new Mutex<T>(take T value)` — wraps `value`, initially unlocked and unpoisoned.
 
-**Acquisition returns a guard.** `lock()` and `tryLock()` (including timed variants) return `bound mut MutexGuard<T>` rather than `void`/`boolean`. The guard *is* the critical section: its `onDrop` releases the lock, and there is no `unlock()` method. `MutexGuard<T>.value()` returns a `bound mut T` borrow of the protected value.
+**Scoped acquisition.** `<R> R with((bound mut T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result. `<R> Optional<R> tryWith((bound mut T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped. The protected `T` is reachable only as the parameter of `action`; there is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
-**Acquisition can throw.** `lock()` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked. `tryLock()` throws `PoisonedException` only.
+**Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock. `tryWith` throws `PoisonedException` only.
 
-**Drop semantics.** `MutexGuard<T>.onDrop()` releases the lock; if the guard is being dropped on an exception unwind (EXC-02), the mutex is marked poisoned (THR-10) before release. `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no guard can be outstanding when the mutex itself is dropped, so cleanup is independent of lock or poison state.
+**Poison on closure throw.** If `action` propagates an exception, `with` / `tryWith` mark the mutex poisoned (THR-10) before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning. Detection is local: an ordinary `try`/`catch` around the `action.apply(...)` call inside the stdlib implementation. No runtime "am I unwinding?" indicator is required.
+
+**Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
-`Mutex<T>` is declared `unsafe nonlocal` per STD-07.
+`Mutex<T>` is declared `unsafe nonlocal` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) require `unsafe`; the closure-scoped surface above is safe.
 
 ---
 
@@ -1172,9 +1174,9 @@ To trigger `Thread.onDrop()` before natural scope exit, give the binding to the 
 
 ### THR-10 — `Mutex<T>` poisoning
 
-A `Mutex<T>` whose holder unwinds (via `InterruptedException` or any other thrown exception) before exiting its critical section is **poisoned**. The outstanding `MutexGuard`'s `onDrop` on the unwind path (EXC-02) sets the mutex's poison flag before releasing the lock.
+A `Mutex<T>` is **poisoned** when the closure passed to its `with` / `tryWith` call (STD-09) propagates an exception — `InterruptedException` or any other — out of the critical section. `with` / `tryWith` set the poison flag inside the `catch` clause that wraps the closure invocation, before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning.
 
-`Mutex<T>.lock()` and `tryLock()` throw `PoisonedException` on a poisoned mutex. There is no bypass: a poisoned mutex's contents are no longer reachable through the locking API. Programs that need to recover from poisoning replace the entire `Mutex<T>` (typically the surrounding `Arc<Mutex<T>>`); the replaced instance is dropped along with its protected value through the standard `onDrop` path (STD-09).
+`Mutex<T>.with()` and `tryWith()` throw `PoisonedException` on a poisoned mutex. There is no bypass: a poisoned mutex's contents are no longer reachable through the locking API. Programs that need to recover from poisoning replace the entire `Mutex<T>` (typically the surrounding `Arc<Mutex<T>>`); the replaced instance is dropped along with its protected value through the standard `onDrop` path (STD-09).
 
 Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection. `isPoisoned()` reads the flag without acquiring the lock.
 
@@ -1208,7 +1210,7 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 ## 17. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`.
 
