@@ -99,7 +99,7 @@ Used with `unsafe` to explicitly declare that a class is safe to move across thr
 A type that admits both a value and the special value `null`. Written as `T?` where `T` is the value type. Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`.
 
 ### onDrop()
-A method invoked by the compiler at scope exit to clean up a binding. Every class inherits `Object.onDrop()` (a no-op by default); only a `final` class may override it with a body (`DROP-09`). The compiler runs it as part of the reverse-construction teardown of the value — own body, then own fields in reverse, then each superclass subobject — and on every binding that leaves scope, in reverse declaration order. See `DROP-01`, `DROP-02`, `DROP-05`, `DROP-09`.
+A method the compiler invokes to clean up a value. Every class inherits `Object.onDrop()` (a no-op); only a `final` class may give it a body (`DROP-09`). The compiler runs it as step 1 of the value's drop sequence (`DROP-05`: own body, then own fields in reverse, then each superclass), and triggers the drop sequence on every binding that leaves scope, in reverse declaration order (`DROP-01`, `DROP-02`).
 
 ### OQ (prefix in OQ-N)
 "Open Question." A numbered entry in the open-questions document listing unresolved design decisions. Example: OQ-06 (Spring DI and compile-time annotation processing). Not part of the normative spec.
