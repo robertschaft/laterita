@@ -214,7 +214,7 @@ Earlier drafts treated the receiver as a default contributor — an instance met
 
 ---
 
-## Cleanup (DROP-01 through DROP-09)
+## Cleanup (DROP-01 through DROP-10)
 
 ### Why universal `onDrop()`, not opt-in (DROP-01)
 
@@ -255,7 +255,7 @@ Without per-field tracking, partial moves either have to be forbidden (severely 
 
 For ordinary methods the user calls `super.foo()` explicitly when an override needs the parent's behavior — the user, not the language, decides whether super's behavior runs. `onDrop()` is the exception, on both axes. The user never invokes it (DROP-06), so the super-chain cannot be user-written; and the *order* of an object's internal teardown — own `onDrop()` body, then own fields in reverse, then the superclass subobject, recursively, in the reverse of construction — is the only order that keeps every field live while the body that might read it runs. There is no decision to delegate; a "remember to chain" rule would be a pure footgun. This puts `onDrop()` on the same footing as the synthesized copy constructor (OBJ-01), which auto-inserts `super(source)`: both are language-internal recursive backbones the user should not have to remember to participate in.
 
-Under DROP-09 the super-chain's `onDrop()` bodies are all the inherited no-op, since only the leaf `final` class can have a body — so what the chain does *today* is the field teardown, with no-op stops between levels. It is still specified as a full chain so the ordering is unambiguous and composes unchanged if the `final` restriction is ever loosened.
+Under DROP-09 only the leaf `final` class can declare an `onDrop()` body, so the chain's step-1 invocations above the leaf are empty — what the chain does *today* is the field teardown, with no body between levels. It is still specified as a full chain so the ordering is unambiguous and composes unchanged if the `final` restriction is ever loosened.
 
 ### Why explicit `onDrop()` calls are forbidden (DROP-06)
 
@@ -268,19 +268,21 @@ Forbidding it has two payoffs:
 
 The cost is no early-cleanup mechanism: a binding lives until its scope ends, period. We considered an opt-in early-cleanup keyword (a `drop x;` form, sugar for "consume `x` and run its `onDrop`") and chose not to specify one. Real cases for early cleanup are rare; structuring scopes — extracting an inner block or a helper function — covers the cases that matter; and adding any escape hatch reintroduces the double-drop surface we just closed. If a future need is convincing, the keyword can be added later without breaking existing code.
 
-### Why `onDrop()` aborts on throw (DROP-07)
+### Why `onDrop()` exceptions terminate the body but continue the drop sequence (DROP-07)
 
-Without DROP-07, an exception escaping `onDrop()` would create real safe-code memory leaks:
+The earliest draft made any exception from `onDrop()` abort the program. The motivation was preventing leaks — three concrete concerns drove the abort choice:
 
-- Sibling bindings in the same scope: DROP-02 drops in reverse order, so an exception from the inner binding's `onDrop` skips the outer one's `onDrop`.
-- Reverse-construction teardown (DROP-05): a throw from the `onDrop()` body skips the rest of the sequence — the class's remaining fields and every superclass subobject — leaking them.
-- Enclosing scope unwind (EXC-02): a throwing drop during exception unwind interrupts the unwind itself.
+- Sibling bindings in the same scope: DROP-02 drops in reverse order, so a throw from the inner binding's `onDrop` would skip the outer's.
+- Drop sequence teardown (DROP-05): a throw from the body would skip the rest of the sequence — the class's remaining fields and every superclass subobject — leaking them.
+- Enclosing scope unwind (EXC-02): a throwing drop during exception unwind would interrupt the unwind itself.
 
-Three options were considered: compile-time enforcement (forbid `throws` clauses on `onDrop`), runtime abort, or catch-and-continue (Java's try-with-resources `addSuppressed` model). Compile-time enforcement is too restrictive — it bans transitively any operation that *could* throw, which sweeps in legitimate flush/sync calls. Catch-and-continue brings back the try-with-resources complexity the language was meant to simplify away, and it keeps "throwing drops" as a normal control-flow shape that user code has to reason about.
+The current rule resolves all three differently. An exception terminates only the `onDrop()` *body* it escapes; field teardown of the same value, superclass teardown, sibling `onDrop()` invocations, and any in-progress exception unwind all continue. The drop-time exception then propagates at the binding's scope exit, joining the normal exception flow — the same shape Java's `finally` block gives a throw, with multi-throw accumulation following try-with-resources' `addSuppressed` convention.
 
-Abort-on-throw matches Rust's choice for the same reason: a drop hook is the wrong place to surface fallible operations. The override's role is best-effort cleanup. If a flush can fail meaningfully, the user calls a separate `flush()` method explicitly while the binding is still alive — somewhere a caller can handle the result. Anything that reaches `onDrop` and throws is, by definition, a cleanup contract violation; treating it as fatal makes the contract observable instead of silently corrupting subsequent execution.
+Two things make the looser rule sound. DROP-10 guarantees `this` does not escape the body, so no external reference to the value can survive into the rest of the drop sequence — the value remains unreachable regardless of whether the body threw. And the compiler-emitted drop sequence is the one paying attention to multi-throw accumulation, not user code: the first thrown exception is the propagating one; later throws attach via `addSuppressed` automatically. User code does not have to reason about suppressed exceptions to write a correct `onDrop()`.
 
-The runtime guard at each compiler-emitted call site is cheap (a try-catch wrapper on a code path that almost never executes). The diagnostic on abort identifies the throwing class and the originating exception, so cleanup-contract violations are debuggable.
+The trade against abort-on-throw is that drop-time exceptions are now a control-flow shape callers can observe — the same shape Java callers already see from `close()` inside try-with-resources. The benefit is that `onDrop()` bodies performing legitimately fallible operations (flush, fsync) can let exceptions reach a handler instead of being silently swallowed or fatally aborted, and the failure paths are testable in ordinary unit tests rather than crashing the test process. Rust chose abort because it had no exception machinery to integrate with; Laterita does, so it can use it.
+
+A residual rule of thumb survives from the abort draft: `onDrop()` should still be best-effort cleanup. Fallible operations whose failure carries semantic meaning belong in an explicit `close()` (THR-05's split) where the caller has a clear handler; letting them escape `onDrop()` is the fallback when no such call site exists, not the primary contract.
 
 ### Why `onDrop()` cannot observe moved-out fields (DROP-08)
 
@@ -290,9 +292,9 @@ Partial moves (MOVE-07) and a universal `onDrop()` (DROP-01) collide: after `giv
 2. **Skip `onDrop()` entirely on a partial-move path, dropping only the survivors.** Rejected: partially moving one field would silently disable the whole object's destructor — a quiet correctness hole exactly where resource handling matters most.
 3. **Run `onDrop()` anyway and make a moved-out field read inside it a separate error.** Same observable rule as (1) — the body still can't touch a possibly-moved field — but the diagnostic surfaces at the `onDrop()` definition rather than at the move. We prefer the move site: that's where the programmer made the choice, and the body stays a normal method whose field reads need no special annotation.
 
-Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). Laterita can't copy that verbatim — *every* class has an `onDrop()` (DROP-01), so the blanket rule would ban partial moves outright, which MOVE-07 and the disassembly half of BIND-07 deliberately allow. DROP-08 is the finer-grained version: the prohibition attaches per field, and only to fields the cleanup chain actually reads. A class with the default no-op `onDrop()` — every record, every plain data carrier — reads nothing and stays fully splittable, so the common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
+Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). DROP-08 is the finer-grained version: Rust's prohibition attaches at the *type* level — a `Drop` type has all its fields locked, even those the drop never touches — whereas DROP-08 attaches at the *field* level, locking only fields the `onDrop()` body actually reads. A class without an `onDrop()` declaration (every record, every plain data carrier) reads nothing and stays fully splittable; a class that reads only some of its fields pins only those. The common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
 
-This also explains why `StringBuilder.build()` (BIND-07) — `return give this.contents;` — is legal: `StringBuilder` carries the inherited no-op `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and that `give` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
+This also explains why `StringBuilder.build()` (BIND-07) — `return give this.contents;` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and that `give` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
 
 ### Why `onDrop()` is confined to `final` classes (DROP-09, resolving OQ-18)
 
@@ -306,9 +308,17 @@ DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `fin
 - A static-dispatch mode inside `onDrop()` (OQ-18 option 1) and a "may call only `private`/`final` methods on `this`" rule (OQ-18 options 2–3) are both unnecessary: `this` in a `final` class's `onDrop()` has no override anywhere, so even a virtual call is statically resolved.
 - "`onDrop()` may not be declared on an interface" stops needing to be a separate rule — an interface is never `final` — though the compiler still diagnoses it by name for a clearer message.
 - "Exactly once per instance *and per class-level*" simplifies to "exactly once per instance"; the per-class-level distinction had bite only with a chain of overriding bodies.
-- DROP-05's auto-chained `super.onDrop()` keeps its *field-teardown* role but loses its *body-chaining* role (every body above the leaf is the no-op), and DROP-08's old parenthetical about "the auto-chained `super.onDrop()`" reading a field becomes moot — removed.
+- DROP-05's auto-chained step-1 keeps its *field-teardown* role but loses its *body-chaining* role (every step-1 above the leaf is empty), and DROP-08's old parenthetical about "the auto-chained `super.onDrop()`" reading a field becomes moot — removed.
 
-**What stays.** DROP-09 is orthogonal to, and does not weaken: DROP-02 (reverse-declaration order of sibling bindings), DROP-04 / NULL-09 (drop flags, null-skipping — still needed for partial moves and `T?`), DROP-06 (`internal`), DROP-07 (no-throw → abort), DROP-08 (an `onDrop()` body still may not read a moved-out field of its own class), and THR-05 (no interruption point inside `onDrop()`; `Thread.onDrop()` exempt — and the conservative ban there on the running thread's own `isInterrupted()`/`interrupted()` is part of "no interruption point", not an inheritance concern). Those address moved-out state, throwing cleanup, and blocking cleanup — none of which touches the inheritance axis DROP-09 closes. The one ripple beyond the cleanup section: `Thread` overrides `onDrop()`, so it is now `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
+**What stays.** DROP-09 is orthogonal to, and does not weaken: DROP-02 (reverse-declaration order of sibling bindings), DROP-04 / NULL-09 (drop flags, null-skipping — still needed for partial moves and `T?`), DROP-06 (`internal`), DROP-07 (drop sequence continues past a body throw, with suppressed accumulation), DROP-08 (an `onDrop()` body still may not read a moved-out field of its own class), DROP-10 (`this` does not escape `onDrop()`), and THR-05 (no interruption point inside `onDrop()`; `Thread.onDrop()` exempt). Those address moved-out state, throwing cleanup, receiver escape, and blocking cleanup — none of which touches the inheritance axis DROP-09 closes. The one ripple beyond the cleanup section: `Thread` overrides `onDrop()`, so it is now `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
+
+### Why `this` does not escape `onDrop()` (DROP-10)
+
+The once-per-instance guarantee on `onDrop()` (DROP-09) breaks if the body can smuggle `this` out — to a global, a returned value, a captured collection — because then the value would continue to be reachable after the drop sequence has torn down its fields and freed its storage. Either the smuggled reference points at dropped memory (use-after-free) or a later drop runs over the same instance (double drop). Rust prevents both at once: `Drop::drop` takes `&mut self` (no move out of the receiver possible) and E0509 blocks moves out of fields of a `Drop` type. Laterita's analog is DROP-10.
+
+Most of the work is already done by ordinary borrow-checking: if `this` in `onDrop()` is treated as a borrow bounded by the call, then storing it in a longer-lived location is a lifetime error, just as it would be in any other method. DROP-10 spells out the receiver case explicitly so the question doesn't depend on whether `onDrop()`'s receiver is owned or borrowed in the formal model — `give this` is rejected outright, and so is any path that smuggles the receiver into something that outlives the call.
+
+The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantics. Without DROP-10, a thrown exception from the body could leave a smuggled reference to a partially-cleaned-up instance, with no safe way for the runtime to continue. With DROP-10, the field teardown that follows a throw can never be observed by an external reader of `this`, so completing the sequence is sound whether the body returned normally or threw.
 
 ---
 
