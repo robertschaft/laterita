@@ -51,23 +51,31 @@ Migration tools:
 5. A tool that converts java code to laterita code. It assumes that the previous two steps are already executed.
 6. A laterita formatter that formats laterita always in the same manner. If should allow only very few formatting freedom to developers (e.g. it wouldn't remove some additional line breaks).
 
-## OQ-17 — Public expression of buffer splitting for `String`
+## OQ-19 — Ownership splitting of mut arrays: required, and what shape?
 
-**Surfaced when:** discussing how `String`'s internal buffer-splitting capability surfaces in user code (alongside OQ-14's resolution).
+**Surfaced when:** resolving OQ-17. Once `String` was shown not to need a public splitting API (STR-07 makes every `bound String` read-only, so repeated `substring` calls implement `String.split` / `Pattern.split` / `String.lines` / `URI` getters without any disjointness obligation), the remaining splitting question is about **mut** arrays: two simultaneous `mut T[]` slices over the same backing storage for parallel in-place algorithms. MOVE-06 currently posits a stdlib `splitAt` for this case using `unsafe` internally, but the design has not been settled.
 
-**The issue.** Internally, two non-overlapping `bound String` slices over the same backing storage are sound. MOVE-06 already establishes the analogous rule for arrays via a stdlib `splitAt`. The natural fit for `String` is the same shape — but `splitAt` returns two values, which Java has no native multiple-return syntax for.
+**The issue.** Two sub-questions.
 
-**The question.** Three sub-options:
+1. **Is the primitive required at all?** MOVE-06 already permits two disjoint mut slices when the compiler can prove disjointness from constant or simple-arithmetic ranges. Pushing the prover slightly further — pairs `[0, mid)` and `[mid, length)` sharing a midpoint, ranges related by a chain of `≤` comparisons — would cover the bulk of real divide-and-conquer code without any explicit `splitAt` call. The remaining cases (slices indexed by independent variables with no compiler-visible ordering) may be rare enough not to justify a stdlib primitive.
 
-1. Add `splitAt` returning a tuple-like multi-value, accepting "multiple returns" as a new language feature.
-2. Use a record (`record StringSplit(bound String left, bound String right)`) to avoid native multi-return.
-3. Omit a public splitting form entirely; leave buffer splitting as an `unsafe` internal mechanism behind `String`'s own methods (`substring`, `trim`, `splitOn`, etc.).
+2. **If required, what is its shape?** Three candidates:
 
-Option 3 is the smallest language surface but loses parity with MOVE-06's `splitAt` for arrays. Option 2 reuses the records feature already in the language and stays Java-native. Option 1 adds language surface but yields the cleanest call-site syntax.
+   a. **Continuation-passing.** A single method taking the split point and a lambda receiving the two slices:
+   ```laterita
+   class T[] {
+       <R> R splitAt(int mid, mut (mut T[], mut T[]) -> R body);
+   }
+   ```
+   Uses FN-01 anonymous functional interfaces already in the language. Needs no multi-return feature, no record specialization per primitive element type, and no `unsafe` — the body is two `slice(0, mid)` / `slice(mid, length)` calls whose disjointness MOVE-06 already covers. The two slices cannot escape the lambda because they are typed `bound`. The divide-and-conquer pattern fits directly: each slice is `give`n to a different consumer (one to a thread, one processed locally) inside the body, and the lambda returns a single result.
 
-**Why it matters.** Determines whether parallel-decomposition algorithms over strings (e.g., divide-and-conquer parsing) are expressible without dropping into `unsafe`.
+   b. **Record return.** `record ArraySplit<T>(bound mut T[] left, bound mut T[] right)` plus `ArraySplit<T> splitAt(int mid)`. More Java-idiomatic at the call site (two named bindings in the surrounding scope), but costs a record per primitive element type to avoid boxing, plus a rule for `bound` to propagate through a record's fields out to its consumers.
 
-**Related codes:** STR-02, STR-03, MOVE-06.
+   c. **Multi-return language feature.** A tuple-like return shape introduced solely to make `splitAt` natural. Adds the most language surface for the narrowest benefit.
+
+**Why it matters.** Determines whether parallel-decomposition over **mut** arrays (in-place parallel sort, parallel fold over a working buffer, partition-based numerics) is expressible in safe code, and at what cost to the language surface. Also determines whether MOVE-06's "`splitAt` uses `unsafe` internally" framing survives, or whether the operation reduces to two ordinary `slice` calls.
+
+**Related codes:** MOVE-06, FN-01.
 
 # Resolved Questions
 
@@ -83,4 +91,5 @@ Option 3 is the smallest language surface but loses parity with MOVE-06's `split
 * OQ-13 — User-invoked `close()` and early cleanup
 * OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
 * OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
+* OQ-17 — Public expression of buffer splitting for `String` (resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting is OQ-19)
 * OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
