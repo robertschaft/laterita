@@ -91,5 +91,5 @@ Migration tools:
 * OQ-13 — User-invoked `close()` and early cleanup
 * OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
 * OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
-* OQ-17 — Public expression of buffer splitting for `String` (dissolved: STR-07 makes every `bound String` read-only, so `String.split` / `Pattern.split` / `String.lines` / `URI` getters and friends are implementable with repeated `substring` calls — no public splitting API and no `unsafe` are needed on `String`; the remaining mut-array splitting question moves to OQ-19)
+* OQ-17 — Public expression of buffer splitting for `String` (resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting is OQ-19)
 * OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
