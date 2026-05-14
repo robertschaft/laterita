@@ -45,7 +45,7 @@ A constructor that takes a single parameter of the same type as the class being 
 A code path marked with `broken` that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken` is dead code. See `UNR-01`.
 
 ### drop / onDrop()
-To clean up a value when its owning binding leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). User code overrides `onDrop()` to release resources (files, locks, memory). See `DROP-01`.
+To clean up a value when its owning binding leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). A `final` class implements `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead. See `DROP-01`, `DROP-09`.
 
 ### drop flag
 Compiler bookkeeping tracking whether each field of a partially-moved value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
@@ -90,7 +90,7 @@ The single unified marker for mutability. Appears in: bindings (`mut x = ...`), 
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `mut` or the borrow to occur within a `mut` method of the same object. See `MOVE-03`, `MOVE-04`.
 
 ### Mutex<T>
-A mutual-exclusion primitive wrapping an owned value. Acquisition via `lock()` or `tryLock()` returns a `MutexGuard<T>` bound to the protected value. The guard's `onDrop()` releases the lock. See `STD-09`.
+A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((bound mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
 
 ### nonlocal (declaration)
 Used with `unsafe` to explicitly declare that a class is safe to move across thread boundaries despite containing `local` fields. The class internally synchronizes access. Applied to standard library types like `Arc<T>` and `Mutex<T>`. See `STD-07`.
@@ -99,7 +99,7 @@ Used with `unsafe` to explicitly declare that a class is safe to move across thr
 A type that admits both a value and the special value `null`. Written as `T?` where `T` is the value type. Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`.
 
 ### onDrop()
-A method invoked by the compiler at scope exit to clean up a binding. Every class inherits `Object.onDrop()` (a no-op by default). User code overrides it to release resources. The compiler calls it on every binding that leaves scope, in reverse declaration order. See `DROP-01`, `DROP-02`.
+A method the compiler invokes to clean up a value. Only a `final` class may implement it with a body (`DROP-09`); a class without an implementation contributes no body. The compiler runs the implementation (if any) as step 1 of the value's drop sequence (`DROP-05`: own body, then own fields in reverse, then each superclass), and triggers the drop sequence on every binding that leaves scope, in reverse declaration order (`DROP-01`, `DROP-02`).
 
 ### OQ (prefix in OQ-N)
 "Open Question." A numbered entry in the open-questions document listing unresolved design decisions. Example: OQ-06 (Spring DI and compile-time annotation processing). Not part of the normative spec.
@@ -117,7 +117,7 @@ How a parameter receives its argument: bare (borrows the argument), `mut` (borro
 Moving a value out of a field while other fields of the same object remain owned. The compiler tracks which fields are moved and which remain, emitting `onDrop()` only on the unmoved fields. See `MOVE-07`.
 
 ### poisoned (Mutex)
-A `Mutex<T>` marked as unusable because a thread panicked or unwound while holding its lock. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
+A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
 
 ### Rc<T>
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
@@ -147,7 +147,7 @@ A lifetime that spans the entire program execution. Values with static lifetime 
 A quoted string expression in source code (e.g., `"hello"`), which has type `bound String` with a static lifetime. The literal is not a heap allocation; it resides in the program's read-only memory segment. A binding initialized from a literal is borrowed; to obtain an owned heap-allocated `String`, call `.clone()`. See `STR-06`.
 
 ### smart pointer
-A wrapper type that manages a value's lifetime. Examples: `Rc<T>` (reference-counted, single-threaded), `Arc<T>` (atomic reference-counted, multi-threaded), `MutexGuard<T>` (lock guard, released on `onDrop()`). Smart pointers carry `onDrop()` to enforce cleanup.
+A wrapper type that manages a value's lifetime. Examples: `Rc<T>` (reference-counted, single-threaded), `Arc<T>` (atomic reference-counted, multi-threaded). Smart pointers carry `onDrop()` to enforce cleanup.
 
 ### static analysis
 Compile-time reasoning about program behavior without running the code. Laterita's compiler performs static analysis of ownership, borrows, lifetime, mutability, and reachability to catch errors before runtime.
@@ -232,7 +232,7 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `mut` (mutable borrow) | Non-final reference to mutable object | Like Java, but enforced at compile time |
 | `local` marker | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |
-| `Mutex<T>` | `synchronized` block or `ReentrantLock` | Similar; guard-based API ensures lock release |
+| `Mutex<T>` | `synchronized` block or `ReentrantLock` | Similar; closure-scoped API ensures lock release |
 | `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object; closer to C++ destructors than Java finalizers |
 | `drop` flag | N/A | Java doesn't track per-field move state |
 

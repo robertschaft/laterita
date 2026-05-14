@@ -282,7 +282,7 @@ mut int[] right = data.slice(50, 100);   // OK: provably disjoint
 
 ### MOVE-07 — Partial moves are tracked per field
 
-Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04). A field that the value's `onDrop()` chain reads cannot be moved out (DROP-08).
+Moving out of a field of a value leaves that field in the moved-out state while leaving other fields valid. The compiler must track per-field move state through the function and use it both for use-after-move checking and for cleanup emission (see DROP-04). A field that the value's `onDrop()` body reads cannot be moved out (DROP-08).
 
 ### MOVE-08 — `give` to void
 
@@ -321,7 +321,7 @@ Two consequences for interface evolution:
 - Adding a same-type borrow overload alongside an existing `take` shifts bare call sites from consume to borrow on the tie-breaker.
 - Adding a more-specific `take` overload alongside an existing less-specific borrow shifts bare call sites at the more-specific type from borrow to consume on Java specificity.
 
-For arguments where the drop point is observable (large buffers, lock guards, files), authors should write `give` explicitly at sites that need to be pinned to the consuming form, even when only one overload exists today.
+For arguments where the drop point is observable (large buffers, files, threads), authors should write `give` explicitly at sites that need to be pinned to the consuming form, even when only one overload exists today.
 
 ### MOVE-10 — Override variance for `take` and `mut`
 
@@ -431,13 +431,13 @@ The diagnostic identifies the contributing source the body actually uses, so the
 
 ### DROP-01 — Universal `onDrop()`
 
-Every binding triggers an invocation of its value's `onDrop()` method when the binding leaves scope. `Object.onDrop()` is declared `internal void onDrop()` (see DROP-06 for the `internal` modifier) and is a no-op by default; classes override it to perform cleanup. No syntactic opt-in is required at the call site.
+Every binding triggers the drop of its value when the binding leaves scope; the drop sequence is specified by DROP-05. The cleanup hook is `onDrop()`, an `internal` method (DROP-06) a `final` class may implement (DROP-09). A class with no implementation contributes no body to its drop sequence. No syntactic opt-in is required at the call site.
 
 ```laterita
 {
     Rc<File> f = openFile();
     f.read();
-}   // f.onDrop() runs here (compiler-emitted)
+}   // f's drop sequence runs here (compiler-emitted)
 ```
 
 ### DROP-02 — Reverse declaration order
@@ -452,58 +452,88 @@ Within a scope, bindings are dropped in the reverse of their declaration order.
 
 When MOVE-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. The enclosing value's own `onDrop()` may not observe the moved-out parts (DROP-08).
 
-### DROP-05 — Auto-chained `super.onDrop()`
+### DROP-05 — Drop sequence
 
-When a class overrides `onDrop()`, the compiler auto-inserts a call to `super.onDrop()` as the last statement of the override body. Users do not write the super-chain themselves; the compiler-emitted call guarantees the entire inheritance chain participates in cleanup, in conventional reverse-construction order (subclass first, then superclass).
+Dropping a value runs cleanup in the reverse of construction order. For an instance of dynamic class `C` with superclass chain `C → B → … → Object`, the compiler emits, in order:
+
+1. `C.onDrop()` body, if implemented — only `final` classes may, per DROP-09.
+2. `C`'s fields, in reverse declaration order; array elements in reverse index order.
+3. Step 2 repeated for `B`, then for each superclass up to `Object`.
+4. If the instance is heap-allocated, its storage is released.
+
+Fields that are moved-out (DROP-04) or `null` (NULL-09) are skipped in steps 2 and 3; each surviving field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
 
 ```laterita
-class CachedFile extends File {
-    Cache cache;
+final class TimerScope {                  // final: required to implement onDrop (DROP-09)
+    Rc<Metrics> metrics;
+    long startNanos;
 
-    override void onDrop() {
-        cache.flush();
-        // compiler appends: super.onDrop();
+    internal void onDrop() {
+        metrics.record(System.nanoTime() - startNanos);   // both fields still live here
     }
+    // drop sequence: onDrop() body → startNanos → metrics dropped (Rc decrement) → free
 }
 ```
 
 ### DROP-06 — `internal` visibility forbids user invocation
 
-The visibility modifier `internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `internal` method directly (`x.onDrop()`) nor via super-chain (`super.onDrop()`); both are compile errors. Subclasses may `override` an `internal` method; the override inherits the modifier and does not need to repeat it.
+The visibility modifier `internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `internal` method directly (`x.onDrop()`); doing so is a compile error.
 
-`onDrop()` is the only `internal` method introduced by this specification. The compiler emits all of its invocations: at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and at the end of override bodies (DROP-05).
+`onDrop()` is the only `internal` method introduced by this specification. The compiler emits its invocations at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and as part of the drop sequence (DROP-05).
 
 The `internal` modifier is reserved for future compiler-orchestrated hooks. It is not a general-purpose access-control level; ordinary visibility scoping continues to use `public`, `protected`, `private`, and package-default.
 
-### DROP-07 — `onDrop()` is no-throw; uncaught exceptions abort
+### DROP-07 — Exceptions from `onDrop()` terminate the body, not the drop sequence
 
-An `onDrop()` invocation must not propagate an exception to its compiler-emitted call site. Any exception that escapes the override body — directly thrown, or propagated from a transitively called method, or from the auto-chained `super.onDrop()` — causes the program to terminate immediately.
+An exception propagating out of an `onDrop()` body terminates that body, but the rest of the value's drop sequence — its remaining fields and superclass fields (DROP-05 steps 2–3) and the storage release (step 4) — still runs. The exception then leaves the compiler-emitted call site through the same path a Java `finally`-block exception leaves, joining the normal exception flow at the binding's scope exit.
 
-Implementations must insert a runtime guard at each compiler-emitted `onDrop()` call site that catches any exception and triggers termination with diagnostic output identifying the throwing class's `onDrop()` and the originating exception. `onDrop()` overrides that perform fallible operations (network flushes, file syncs) must catch and handle exceptions internally.
+If multiple invocations along a drop path throw — sibling bindings (DROP-02), nested field drops, the body and a field of the same value, or any of these during an exception unwind (EXC-02) — the first thrown exception is the propagating one; later throws are attached to it via `Throwable.addSuppressed`.
+
+`onDrop()` implementations that perform fallible operations (network flushes, file syncs) may either catch internally or allow exceptions to propagate. DROP-10 guarantees that no external reference to the value can survive into step 4, so the drop sequence is safe to complete even after the body throws.
 
 ### DROP-08 — `onDrop()` may not observe moved-out fields
 
-A field left in the moved-out state by a partial move (MOVE-07) holds no value, so it is unavailable to cleanup code. A single `onDrop()` body serves every drop site of its class — including a drop site reached after one of the class's fields has been moved out — so the compiler must reject any program in which `onDrop()`, or any method it transitively invokes on `this` (including the auto-chained `super.onDrop()` of DROP-05), reads a field that is moved-out on a path reaching that read.
+A field that may be moved out (MOVE-07) on any path to a drop site may not be read by that class's `onDrop()` body, nor by any method it transitively invokes on `this`. The compiler diagnoses the violation at the move: a `give` of a field is rejected when the containing class has an `onDrop()` that reads it. The diagnostic identifies the field, the move, and the read.
 
-Operationally the rejection lands at the move: moving a field out of an owned value is an error when that value's class has an `onDrop()` chain that reads the field, because the value's compiler-emitted drop (DROP-01) would then have to run cleanup over the vacated field. The diagnostic identifies the field, the move that vacated it, and the read in the `onDrop()` chain.
-
-A class whose `onDrop()` chain reads none of its own fields imposes no such restriction. The default no-op `Object.onDrop()` reads nothing, and an override that touches only locals, parameters, and `super.onDrop()` likewise leaves every field free to be moved out — the common case for records and plain data carriers, whose fields remain freely splittable per MOVE-07. The restriction is per field: an `onDrop()` that reads only some fields pins only those; the rest may still be moved out, and the value's compiler-emitted drop (DROP-04) covers whatever remains.
+The restriction is per field — an `onDrop()` reading only some fields pins only those, and partial cleanup of the rest follows DROP-04. A class whose `onDrop()` reads no field — every record, every plain data carrier, every class without an `onDrop()` implementation — imposes no restriction at all.
 
 ```laterita
-record Pair(Resource left, Resource right) {}        // no onDrop override
+record Pair(Resource left, Resource right) {}        // no onDrop implementation
 
 let p = new Pair(openA(), openB());
-useLeft(give p.left);          // OK: Pair.onDrop() is the no-op; left is now moved-out
+useLeft(give p.left);          // OK: Pair has no onDrop(); left is now moved-out
 useRight(give p.right);        // OK: right still owned; nothing of p remains to drop
 
-class Logged {
+final class Logged {           // final: required to implement onDrop (DROP-09)
     Handle h;
-    override void onDrop() { log("closing " + h.id()); }   // reads field h
+    internal void onDrop() { log("closing " + h.id()); }   // reads field h
 }
 
 let x = new Logged(openHandle());
 useHandle(give x.h);           // ERROR: Logged.onDrop() reads h; h cannot be moved out of x
 ```
+
+### DROP-09 — `onDrop()` implementations only on `final` classes
+
+A class may implement `onDrop()` only if it is declared `final`. An `onDrop()` implementation on a non-`final` class is a compile error; `onDrop()` may not be declared `abstract`, and an interface may neither declare it nor supply it as a `default`. A class without an implementation contributes no body to its drop sequence (DROP-05 step 1). At most one user-written `onDrop()` body therefore runs per instance, on the instance's (necessarily `final`) dynamic class.
+
+A class that needs cleanup beyond what its fields' own `onDrop()`s provide must be `final`. Extensible types compose `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose `onDrop()`s perform the release during the owner's drop sequence (DROP-05, step 2).
+
+```laterita
+final class Connection { … }              // OK: final, may implement onDrop
+
+class Service {                           // OK: no onDrop implementation; ordinary extensible class
+    Connection conn;                      // resource held by composition; conn dropped in Service's drop sequence
+}
+
+abstract class Resource {
+    internal void onDrop() { … }           // ERROR: onDrop implementation on a non-final class
+}
+```
+
+### DROP-10 — `this` does not escape `onDrop()`
+
+Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the call. It may not be given (`give this`) to another function, returned, stored in a field or global, or otherwise made reachable after the body returns. This is the rule that makes the once-per-instance guarantee on `onDrop()` (DROP-09) and the storage release in DROP-05 step 4 sound — no external reference to the value can survive into field teardown or beyond, so the drop sequence is safe to complete even when the body throws (DROP-07).
 
 ---
 
@@ -1047,19 +1077,21 @@ Implementations of these operations are permitted (and expected) to use `private
 
 ### STD-09 — `Mutex<T>`
 
-A mutual-exclusion primitive wrapping an owned value. The API mirrors `java.util.concurrent.locks.Lock` for blocking, fairness, and timed acquisition; what follows specifies the differences.
+A mutual-exclusion primitive wrapping an owned value. Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
 
 **Constructor.** `new Mutex<T>(take T value)` — wraps `value`, initially unlocked and unpoisoned.
 
-**Acquisition returns a guard.** `lock()` and `tryLock()` (including timed variants) return `bound mut MutexGuard<T>` rather than `void`/`boolean`. The guard *is* the critical section: its `onDrop` releases the lock, and there is no `unlock()` method. `MutexGuard<T>.value()` returns a `bound mut T` borrow of the protected value.
+**Scoped acquisition.** `<R> R with((bound mut T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result. `<R> Optional<R> tryWith((bound mut T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped. The protected `T` is reachable only as the parameter of `action`; there is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
-**Acquisition can throw.** `lock()` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked. `tryLock()` throws `PoisonedException` only.
+**Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock. `tryWith` throws `PoisonedException` only.
 
-**Drop semantics.** `MutexGuard<T>.onDrop()` releases the lock; if the guard is being dropped on an exception unwind (EXC-02), the mutex is marked poisoned (THR-10) before release. `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no guard can be outstanding when the mutex itself is dropped, so cleanup is independent of lock or poison state.
+**Poison on closure throw.** If `action` propagates an exception, `with` / `tryWith` mark the mutex poisoned (THR-10) before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning.
+
+**Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
-`Mutex<T>` is declared `unsafe nonlocal` per STD-07.
+`Mutex<T>` is declared `unsafe nonlocal` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) require `unsafe`; the closure-scoped surface above is safe.
 
 ---
 
@@ -1124,6 +1156,8 @@ Resources whose cleanup needs to block (flush-on-close for buffered IO, drain on
 
 To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per MOVE-08 (`give worker;`).
 
+`Thread` is `final`: it implements `onDrop()`, so DROP-09 applies. The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable; pass a `Runnable` or lambda to the constructor instead (THR-01, THR-02), and compose rather than extend when a richer thread wrapper is needed.
+
 ### THR-07 — `Thread.interrupt()`
 
 `Thread.interrupt()` sets the interrupt flag on the receiver per THR-03 and returns immediately. It does not wait for the worker to unwind. May be called from any thread holding a reference to the receiver.
@@ -1142,9 +1176,9 @@ To trigger `Thread.onDrop()` before natural scope exit, give the binding to the 
 
 ### THR-10 — `Mutex<T>` poisoning
 
-A `Mutex<T>` whose holder unwinds (via `InterruptedException` or any other thrown exception) before exiting its critical section is **poisoned**. The outstanding `MutexGuard`'s `onDrop` on the unwind path (EXC-02) sets the mutex's poison flag before releasing the lock.
+A `Mutex<T>` is **poisoned** when the closure passed to its `with` / `tryWith` call (STD-09) propagates an exception — `InterruptedException` or any other — out of the critical section. `with` / `tryWith` set the poison flag inside the `catch` clause that wraps the closure invocation, before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning.
 
-`Mutex<T>.lock()` and `tryLock()` throw `PoisonedException` on a poisoned mutex. There is no bypass: a poisoned mutex's contents are no longer reachable through the locking API. Programs that need to recover from poisoning replace the entire `Mutex<T>` (typically the surrounding `Arc<Mutex<T>>`); the replaced instance is dropped along with its protected value through the standard `onDrop` path (STD-09).
+`Mutex<T>.with()` and `tryWith()` throw `PoisonedException` on a poisoned mutex. There is no bypass: a poisoned mutex's contents are no longer reachable through the locking API. Programs that need to recover from poisoning replace the entire `Mutex<T>` (typically the surrounding `Arc<Mutex<T>>`); the replaced instance is dropped along with its protected value through the standard `onDrop` path (STD-09).
 
 Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection. `isPoisoned()` reads the flag without acquiring the lock.
 
@@ -1162,7 +1196,7 @@ Generic types and methods are monomorphized: each instantiation produces a speci
 
 ### COMP-03 — Compiler-inserted cleanup
 
-The compiler must emit `onDrop()` calls at every scope-exit point per DROP-03 and unwind table entries per EXC-02. These insertions happen after all user-level analysis and are not visible in source. Each emitted call site must include the runtime guard required by DROP-07.
+The compiler must emit `onDrop()` calls at every scope-exit point per DROP-03 and unwind table entries per EXC-02. These insertions happen after all user-level analysis and are not visible in source. Each emitted call site must implement the exception handling specified by DROP-07: body termination, drop sequence continuation, and suppressed-exception accumulation.
 
 ### COMP-04 — Drop flags as compile-time state
 
@@ -1178,9 +1212,9 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 ## 17. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `MutexGuard`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
-The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `Object.onDrop()`.
+The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01). The keyword `internal` is introduced as a visibility modifier marking a method as compiler-only-callable (DROP-06); it is not a general-purpose access level and is currently used only by `onDrop()`.
 
 The following keywords are introduced or repurposed by this specification: `let` (immutable type-inferred binding), `mut` (mutability marker for local bindings, fields, methods, and parameters), `give` (use-site move marker per MOVE-02; bare-statement form `give x;` per MOVE-08; method-level receiver-consume modifier per BIND-07), `take` (parameter-type prefix declaring an owned parameter per MOVE-03; also an optional declarative LHS prefix on binding declarations), `bound` (borrow-source marker on parameter types and return types per LIFE-02), `broken` (statement declaring a path unreachable per UNR-01), `unsafe` (private method modifier), `internal` (visibility modifier for compiler-only-callable methods per DROP-06), `local` (class-body declaration marking the class as `local` per STD-07), `nonlocal` (class-body declaration paired with `unsafe` overriding inferred `local`-ness per STD-07). Java's `var` keyword for local-variable type inference is not used in Laterita; `let` and `mut` cover the type-inferred forms.
 

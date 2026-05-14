@@ -69,28 +69,6 @@ Option 3 is the smallest language surface but loses parity with MOVE-06's `split
 
 **Related codes:** STR-02, STR-03, MOVE-06.
 
-## OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch
-
-**Surfaced when:** working through DROP-08 (the moved-out-field restriction) and noticing the adjacent hazard on the inheritance axis.
-
-**The issue.** DROP-05 runs `onDrop()` subclass-first, then the compiler-appended `super.onDrop()` runs each superclass body in turn. By the time a superclass's `onDrop()` body executes, the subclass's `onDrop()` has already run and the subclass's fields may already be dropped or freed. If the superclass body calls a method that the subclass overrides, the dynamically-dispatched override can touch subclass fields that no longer hold valid values — a use-after-free that DROP-08 does not cover (DROP-08 is about *this class's* moved-out fields, not a subclass's torn-down state).
-
-The symmetric direction is fine: a subclass `onDrop()` calling up into superclass methods sees superclass state that is still live, because superclass cleanup runs *after*. The dangerous direction is a superclass `onDrop()` body dispatching *down* into an override.
-
-C++ handles this by static dispatch inside destructors: while `~Base()` runs, the vtable slot resolves to `Base`'s version, never a derived override, precisely because the derived part is already gone. Java has no analog because it has no deterministic destruction.
-
-**The question.** What discipline makes `onDrop()` bodies safe at compile time?
-
-1. **Static dispatch inside `onDrop()`.** Mirror C++: any method call on `this` (or `super`) from within an `onDrop()` body — and transitively from methods it calls on `this` — resolves statically to the version defined in the class currently being dropped or one of its supers, never to a subclass override. No syntax change; a dispatch-mode rule for the `onDrop()` call tree.
-2. **Restrict `onDrop()` to `final` / same-or-super methods.** The `onDrop()` body (and its `this`-callees) may invoke only `final` methods or methods declared on the same class or a superclass — nothing a subclass could override. Simpler to specify and diagnose, but more restrictive: it bans calling a non-`final` method even when no subclass actually overrides it.
-3. **Forbid calling overridable methods on `this` from `onDrop()` entirely**, requiring such logic to be inlined or factored into `private`/`final` helpers. Strictest; pushes the burden onto the author.
-
-Option 1 is the most permissive and matches an established precedent; option 2 is the easiest to teach ("`onDrop()` calls only `final` things"). Whichever is chosen, the rule must compose with DROP-08 and with THR-05's ban on interruption points inside `onDrop()`.
-
-**Why it matters.** Without a rule, an ordinary-looking base-class `onDrop()` that calls a hook method a subclass customizes becomes a use-after-free the moment someone subclasses it. Deterministic destruction with inheritance is exactly where C++ had to grow a special rule; Laterita needs the equivalent before the cleanup model can be called sound.
-
-**Related codes:** DROP-01, DROP-05, DROP-08.
-
 # Resolved Questions
 
 * OQ-01 — Panic safety and lock poisoning
@@ -105,3 +83,4 @@ Option 1 is the most permissive and matches an established precedent; option 2 i
 * OQ-13 — User-invoked `close()` and early cleanup
 * OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
 * OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
+* OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
