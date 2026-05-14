@@ -83,4 +83,4 @@ Option 3 is the smallest language surface but loses parity with MOVE-06's `split
 * OQ-13 — User-invoked `close()` and early cleanup
 * OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
 * OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
-* OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: an `onDrop()` body may live only on a `final` class, so no base-class `onDrop()` exists to dispatch *down* into a torn-down subclass — the C++ destructor-and-virtual-call hazard cannot arise, and no static-dispatch mode is needed; see reasoning §Cleanup)
+* OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
