@@ -165,7 +165,7 @@ if (maybeName != null) {
 
 ### NULL-07 — Null assertion `!!`
 
-`expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing. `Intrinsics.requireNonNull(expr)` is the `.java`-mode form (COMP-06).
+`expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing. `java.util.Objects.requireNonNull(expr)` is the `.java`-mode form (COMP-06); the laterita compiler attaches the same `T? → T` narrowing to a recognized call of it.
 
 ### NULL-08 — Field default is non-nullable
 
@@ -1220,10 +1220,10 @@ A laterita source file uses one of two extensions:
 | `T?` | `@Nullable T` | NULL-02 |
 | `expr?.method(args)` | `expr == null ? null : expr.method(args)` (or NULL-06 narrowing) | NULL-04 |
 | `a ?: b` | `a != null ? a : b` (with NULL-06 narrowing on `a`) | NULL-05 |
-| `expr!!` | `Intrinsics.requireNonNull(expr)` | NULL-07 |
+| `expr!!` | `java.util.Objects.requireNonNull(expr)` | NULL-07 |
 | `(P1, …, Pn) -> R` | a nominal functional interface | FN-01 |
 
-`@Nullable` is declared in `laterita.lang.annotation`; `requireNonNull` in `laterita.lang.Intrinsics`. Both extensions denote the same language: the type system, annotation/intrinsic surface (§17), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
+`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§17), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 
@@ -1233,7 +1233,7 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ## 17. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per COMP-06. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
@@ -1252,7 +1252,6 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 | Nullable type in `.java` mode | `@Nullable T` | NULL-02, COMP-06 |
 | Move at a use site (expression or statement) | `Intrinsics.give(x)` | MOVE-02, MOVE-08 |
 | Unreachable path | `Intrinsics.broken()` | UNR-01 |
-| Null assertion in `.java` mode | `Intrinsics.requireNonNull(x)` | NULL-07, COMP-06 |
 
 The annotations are declared in `laterita.lang.annotation`. The static methods live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier. To `javac` they are ordinary annotations and ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
