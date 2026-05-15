@@ -51,7 +51,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 A method annotated `@mut` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mut` methods on `this`). A method without `@mut` cannot.
 
-`@mut` is a type-use annotation written immediately before the return type. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mut` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. Java's existing modifiers (`public`, `protected`, `private`, `static`, `final`, `override`, `native`, `strictfp`) occupy their conventional positions; other laterita annotations (`@internal`, `@unsafe`) compose freely with `@mut`.
+`@mut` is a type-use annotation on the return type. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mut` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers.
 
 ```laterita
 class Counter {
@@ -77,9 +77,7 @@ c2.inc();                   // OK
 
 A method with `@take` on its explicit `this` parameter consumes its receiver. The body owns `this`, may move out of `this`'s fields (MOVE-07), and may hand `this` itself to a `@take` parameter or to another receiver-consuming method. After the call returns, the binding that held the receiver is consumed (MOVE-02); subsequent uses are rejected.
 
-Java's grammar already permits an explicit `this` as the first parameter, with the receiver's class as its declared type and type-use annotations attached to it. Laterita reuses that slot: `@take Self this` on a method declares receiver consumption, and `@mut` on the same slot reads as the parallel of `@take @mut T` for an ordinary parameter (MOVE-03) — the receiver is consumed and the implicit `this` slot is reassignable. Ordinary parameters follow MOVE-03.
-
-Calling a receiver-consuming method requires the receiver binding to own its value; a borrowed binding cannot satisfy the call. The receiver consumption is implicit at the call site — no `give(...)` wraps the receiver, since the method's signature already declares the transfer.
+Java's grammar permits an explicit `this` as the first parameter slot with type-use annotations attached. Laterita reuses that slot: `@take Self this` declares receiver consumption; `@mut` on the same slot is the parallel of `@take @mut T` for ordinary parameters (MOVE-03) — receiver consumed, `this` reassignable. Calling a receiver-consuming method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer.
 
 ```laterita
 class Connection {
@@ -682,7 +680,7 @@ void store(@take String s);             // requires `.clone()` on a literal
 
 ### STR-07 — Standard `String` exposes no `@mut` methods
 
-The standard library `String` class declares no methods with a `@mut String this` receiver. A binding may be declared `@mut String` — `@mut` is permitted on any owned binding (BIND-02, MUT-01) — and a `@mut String` field may be reassigned, but the `String` value itself cannot be mutated in place through `String`'s API. Bulk text construction belongs in `StringBuilder`.
+The standard library `String` declares no methods with a `@mut String this` receiver. A binding or field may still be declared `@mut String` per BIND-02 (and reassigned), but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`.
 
 ```laterita
 @mut String s = readLine();       // declaration permitted

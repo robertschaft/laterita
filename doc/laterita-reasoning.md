@@ -20,15 +20,15 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 ## Surface Syntax — annotations and static methods (§17)
 
-Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces is expressed using existing Java syntax: annotations on declarations and static method calls in expression and statement positions. The language adds no new keywords.
+Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
-The win for migration is concrete: a `.java` file annotated for laterita is still a `.java` file. `javac` parses it. IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top — it attaches semantics to specific annotations (`@mut`, `@take`, `@bound`, `@internal`, `@unsafe`, `@local`, `@nonlocal`) and to specific stdlib static methods (`Intrinsics.give`, `Intrinsics.broken`), and rejects programs that violate those semantics. Nothing else about the source has to change to be parseable by the Java ecosystem.
+The migration win is concrete. A `.java` file annotated for laterita is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. Nothing else about the source has to change to remain parseable by the Java ecosystem.
 
-The cost is visual heft: `void f(@bound @mut Buf b)` reads more loudly than `void f(mut bound Buf b)` would have. The trade is deliberate. Annotations are the only modifier slot Java reserves for third parties; using them means the rest of the ecosystem keeps working without parser forks, language server forks, or build-tool forks. For a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
+The cost is visual heft: `void f(@bound @mut Buf b)` reads more loudly than `void f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
-Expression-position concepts can't be annotations — `@give x` would not parse — so the few that occur are stdlib static methods on `laterita.lang.Intrinsics`. `Intrinsics.give(x)` (statically imported as `give(x)`) is the move expression; `Intrinsics.broken()` is the unreachable-path marker. Both are ordinary static methods to `javac`; the laterita compiler treats unqualified calls of these specific names specially.
+Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. The default-immutable rule (MUT-01) extends to type-inferred bindings without a separate keyword.
+Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
 
 ---
 
@@ -36,7 +36,7 @@ Type inference reuses Java's `var`. In laterita mode every binding is immutable 
 
 ### Why `@mut` is the *single* mutability marker (BIND-02)
 
-`@mut` denotes mutability uniformly: local bindings, fields, methods, parameters. We considered splitting it across positions — one marker for reassignability of a slot, another for "this method writes to its receiver" — and rejected it. Both express the same underlying idea — "this can change" — and using one marker for all positions means a reader can grep for `@mut` and find every mutation point in the system. The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+`@mut` denotes mutability uniformly across bindings, fields, methods, and parameters. Each position expresses the same underlying idea — "this can change" — so one marker means a reader can grep for `@mut` and find every mutation point in the system. The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
 
 ### Why fields default to immutable (BIND-03)
 
@@ -48,9 +48,7 @@ A `@mut`-annotated method answers a question Java developers have always had to 
 
 ### Why methods declare consumption of `this` with `@take` on an explicit `this` (BIND-07)
 
-Java's grammar already permits an explicit `this` as the first parameter slot, with the receiver's class as its declared type and type-use annotations attached to it. Laterita reuses that slot: `@take Self this` declares receiver consumption, parallel to `@take T name` on an ordinary parameter (MOVE-03). The mental model — "the `this` slot is a parameter like any other, with the same annotations governing it" — collapses two questions into one. A reader who has met `@take` on a parameter understands `@take` on `this` immediately; the orthogonal `@mut` and the orthogonal `@bound` compose on the receiver slot exactly the way they compose on a parameter slot.
-
-The receiver consumption is implicit at the call site — `obj.close()` is itself the transfer, with no caller-side `give(obj)` wrapping required — because the method's signature already declares it, the same way a `@take` parameter declares it.
+Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot: `@take Self this` declares receiver consumption, parallel to `@take T name` on an ordinary parameter (MOVE-03). The mental model — "the `this` slot is a parameter like any other, with the same annotations governing it" — collapses two questions into one. `@mut` and `@bound` on the receiver compose the same way they do on parameters; no per-position rule book.
 
 ### Why constructors are a special initialization case (BIND-04)
 
@@ -66,19 +64,13 @@ If a `var` binding could call `@mut` methods, immutability would mean nothing �
 
 ### Why non-nullable by default
 
-Java's null is, by Tony Hoare's own assessment, the most expensive single mistake in language design. NPE remains the dominant runtime failure in Java codebases despite decades of static-analysis tooling. Laterita has the option Java didn't: pick non-nullable as the default and require a syntactic marker to opt in to absence. This is the same call Kotlin made in 2011 and Swift made in 2014, and the resulting safety improvement is one of the best-validated language design decisions of the last 15 years.
+NPE remains the dominant runtime failure in Java codebases despite decades of static-analysis tooling. Laterita has the option Java didn't: make non-nullable the default and require a syntactic marker to opt in to absence. Kotlin (2011) and Swift (2014) made the same call, with well-validated safety gains.
 
 The rule turns NPE from "any reference might fault at any time" into "only `T?` references might be null, and you can't dereference one without proving it isn't." The compiler does the proof.
 
 ### Why Kotlin's model rather than Optional<T> or Rust's Option<T>
 
-Three approaches exist:
-
-1. **Library-level `Optional<T>`** (Java 8). Wraps the value, requires `.get()` / `.orElse(...)` / `.map(...)` to use. Verbose, doesn't compose well with collections (`List<Optional<String>>`), and doesn't help fields whose underlying type is still nullable.
-2. **Tagged-union `Option<T>`** (Rust). Pattern-match to extract. Sound and explicit, but Rust pays for it with a much larger pattern-matching story than Java has — `match`, irrefutable patterns, exhaustiveness — most of which Java does not have today.
-3. **Type-level nullability** (Kotlin). `T` and `T?` are distinct types, null safety falls out of the type system, and flow-sensitive smart casts let `if (x != null) { ... x ... }` work naturally.
-
-Kotlin's model fits Laterita's other choices best. It preserves Java's surface (you write `String name`, not `Option<String> name`), it doesn't require importing pattern matching to be useful, and the `?.`/`?:`/`!!` operators are short, familiar from Kotlin and Swift, and visually localize null-handling decisions. Smart-cast narrowing (NULL-06) makes the common case — null-check then use — read like ordinary Java.
+`Optional<T>` is verbose, doesn't compose with collections (`List<Optional<String>>`), and doesn't help fields whose underlying type is still nullable. Rust's `Option<T>` is sound but presupposes a pattern-matching story Java doesn't have. Kotlin's type-level nullability — `T` and `T?` as distinct types, with flow-sensitive smart casts — preserves Java's surface (`String name`, not `Option<String> name`), needs no pattern matching to be useful, and the `?.`/`?:`/`!!` operators visually localize null-handling decisions. NULL-06 smart-cast narrowing makes "null-check then use" read like ordinary Java.
 
 ### Why `onDrop()` is null-aware
 
@@ -128,17 +120,15 @@ Once you have moves out of fields, you need to know which fields are still alive
 
 ### Why `@take` participates in overload resolution but `@mut` does not (MOVE-09)
 
-Java is an overloading language; we accept that and extend overload resolution along the ownership axis. The asymmetry between `@take` and `@mut` is deliberate.
+Java is an overloading language; Laterita extends overload resolution along the ownership axis. The asymmetry between `@take` and `@mut` is deliberate.
 
-`@take` and borrow are different *operations*. A consuming `put(take K, take V)` and a borrowing `put(K, take V)` are two reasonable APIs on the same Map: the first lets the caller donate the key, the second lets the caller keep it. Same name, same effect on the receiver, different ownership contract — exactly the situation overloading is for.
+`@take` and borrow are different *operations*. A consuming `put(@take K, @take V)` and a borrowing `put(K, @take V)` are two reasonable APIs on the same Map: the first lets the caller donate the key, the second lets the caller keep it.
 
-`@mut` and immutable borrow are not different operations; `@mut` is a *strength* on borrow. Two same-named methods that differed only in `@mut` on a parameter would be saying "I write to this argument" vs. "I don't" — and that distinction wants different names, not the same name with different access strengths. There is also no caller-side opt-in syntax for `@mut` parallel to `give(...)` for `@take`: a caller has no way to disambiguate `f(x)` between `f(T)` and `f(@mut T)` even if both existed. The combination — no useful semantic distinction, no caller-side disambiguator — makes `@mut` a poor fit for the overload axis. We exclude it.
+`@mut` is not a different operation — it is a *strength* on borrow. Two same-named methods differing only in `@mut` would be saying "I write to this argument" vs. "I don't," which wants different names, not the same name with different strengths. There is also no caller-side disambiguator parallel to `give(...)` for `@take`: a caller has no way to pick between `f(T)` and `f(@mut T)`. No useful distinction, no caller-side opt-in — `@mut` doesn't belong on the overload axis.
 
-`final` on Java parameters is excluded from the signature for a different but related reason: it is callee-internal entirely, the caller doesn't care, and there is nothing observable to overload on. `@take` is observable at the call site, so it earns its place in the signature; `@mut` is observable at the call site too but provides no useful overload distinction, so it does not.
+Borrow wins as the ownership tie-breaker because moving is observable and shouldn't happen by accident: a caller writing `f(x)` expects `x` usable afterward. The explicit opt-in is `give(x)`, matching MOVE-01's consumer-side default.
 
-Borrow wins as the ownership tie-breaker because moving is observable and shouldn't happen by accident: a caller writing `f(x)` expects `x` to remain usable afterward, and a `@take` overload silently overriding that expectation would break it invisibly at the call site. The opt-in is `give(x)`, matching MOVE-01's consumer-side default.
-
-The axis order — Java specificity first, ownership only as tie-breaker — is the deliberate trade. Putting the ownership axis first would have shielded bare call sites from silent moves at every overload set, but at the cost of reordering Java's overload-resolution intuition, where the most-specific applicable method wins, full stop. Keeping Java's order makes ported Java code resolve the way a Java reader expects, and confines the new axis to genuine ties (same-type pairs like `put(K)` vs `put(take K)`). Code-transformation tooling benefits from the same property: nothing about Java's familiar resolution shifts under porting unless the ported program actually introduces the new axis.
+The axis order — Java specificity first, ownership only as tie-breaker — keeps ported Java code resolving the way a Java reader expects, and confines the new axis to genuine ties (same-type pairs like `put(K)` vs `put(@take K)`). Putting ownership first would have shielded bare call sites from silent moves at every overload set, at the cost of reordering Java's familiar most-specific-wins rule.
 
 The cost of this choice is asymmetric. Adding a same-type borrow overload to an existing `@take` shifts bare call sites from consume to borrow on the tie-breaker — usually harmless (the argument is dropped a little later), occasionally observable (large buffers, files, threads). Adding a more-specific `@take` overload to an existing borrow shifts bare call sites at the subtype from borrow to consume on Java specificity — the same shape of break Java already has when adding a more-specific overload, just along a new axis. Both cases argue for the same discipline: write `give(...)` at any call site whose ownership semantics are load-bearing, even when only one overload exists today. The opt-in marker is where caller intent gets recorded.
 
@@ -150,15 +140,13 @@ This is non-normative — methods sometimes legitimately clone internally (defen
 
 ### Why override variance differs for `@take` and `@mut` (MOVE-10)
 
-Once `@take` is part of the signature and `@mut` is not, the override rule for each falls out almost automatically.
+Once `@take` is part of the signature and `@mut` is not, the override rules fall out automatically.
 
-`@take` is invariant for overrides for two reinforcing reasons. The structural one: `@take` is part of the overload identity, so an override of `f(take T)` must carry `@take`; otherwise it is overriding a different method (or not overriding any inherited method, depending on what else exists in the supertype).
+`@take` is invariant. Structurally it is part of overload identity (MOVE-09), so an override of `f(@take T)` must carry `@take` or else be overriding a different method. The call-site reading reinforces this: an override silently downgrading `@take` to borrow would mean `give(x)` through an interface meant "x might be consumed, depending on which implementation wins dispatch" — exactly the invisibility the annotation exists to eliminate.
 
-The call-site reading argues for invariance too, and on its own terms. A memory-aware reader looking at `@take` in a signature expects ownership to actually transfer — that is the contract `@take` exists to carry, and it is the contract `give(x)` at the call site is meant to record. If an override could silently downgrade `@take` to borrow, the contract would not hold for any specific dispatch target: the caller's `give(x)` to an interface declaring `@take` would mean "x might be consumed, depending on which implementation wins dispatch." That is exactly the invisibility the modifier exists to eliminate. `@take` always means take, on the interface and on every override.
+`@mut` is contravariant: an override may drop `@mut`, not add it. An interface that promises "I might mutate your argument" may be implemented by a class that doesn't; any caller satisfying the inherited `@mut` requirement automatically satisfies the override's bare one. The reverse is unsound: a `@mut`-demanding override cannot stand behind an inherited bare signature, because callers through the interface would supply only an immutable borrow.
 
-`@mut` is contravariant: an override may drop `@mut` but not add it. The intuition is the same as Java's `throws` rule. An interface that promises "I might mutate your argument" can be implemented by a class that doesn't actually mutate — the body simply asks for less than the contract granted, and any caller satisfying the interface's `@mut` requirement automatically satisfies the implementation's bare requirement. The reverse is unsound: a class that demands `@mut` cannot stand in for an interface that promised only a borrow, because callers passing through the interface type would supply only an immutable borrow and the implementation would have nothing to mutate.
-
-The Java parallel — `throws` clauses contract on overrides, parameter types stay invariant — guides the shape of this rule. Modifier strength relaxes; identity does not. `@mut` is a strength; `@take` is identity.
+The Java parallel — `throws` relaxes on overrides; parameter types stay invariant — names the pattern: modifier strength relaxes, identity does not. `@mut` is a strength; `@take` is identity.
 
 ---
 
@@ -174,21 +162,15 @@ There are real cases where a class is logically immutable but has internal cachi
 
 ### Why mark-borrow on returns (LIFE-02)
 
-A bare return type means owned. Borrowed returns are explicitly declared with `@bound`. We considered the inverse — owned-marked, borrowed-default — and rejected it because owned dominates at API boundaries. Constructors, factories, computed values, query results, anything that mints fresh state all return owned values. Marking the common case adds visual noise to most signatures.
+A bare return type means owned; borrowed returns are explicitly declared with `@bound`. The inverse — owned-marked, borrowed-default — would mark the common case: constructors, factories, computed values, query results all return owned values, so marking owned adds visual noise to most signatures. `@bound` carves out the case where production is actually a view into an input.
 
-The asymmetry mirrors the producer/consumer framing of the rest of the language. A function return is a producer position, and most production yields fresh ownership. The `@bound` marker carves out the case where production is actually a view into an input.
+Body-driven inference (keep the signature silent, let the compiler look through to the implementation) was rejected: it collapses under separate compilation, and it hides the contract from the caller, who would have to read the body to know what the return is good for. The signature is the API.
 
-We also considered relying entirely on body-driven inference — keep the signature silent, let the compiler look through to the implementation to decide owned vs. borrowed. That collapses under separate compilation and, more importantly, hides the contract from the caller: they would have to read the body or guess and let the compiler error. The signature is the API; what the caller can do with the return value belongs in the signature.
+### Why `@bound` instead of `'a` or `from`
 
-The hard case prior versions of this design left ambiguous was the receiver-tied borrow (a method returning a slice of `this`). We tried elision rules ("if the body returns a field, tie it to `this`") and a `from this` annotation; both were unsatisfying. Elision hid the contract; `from this` was visually heavy. The chosen form — a single `@bound` on the return type — collapses to one short token and makes the relationship explicit at the API boundary.
+Rust's `'a` notation looks like a syntax error to newcomers and introduces an entirely new sigil class — rejected. The strongest alternative was `from`, but `@bound` describes the relationship the compiler enforces (a lifetime constraint) rather than the data-flow source, and it collapses the receiver case into one token (`@bound T method(...)` — no second word, no awkward `from this` compound).
 
-### Why `@bound` instead of `from` or apostrophe-letter
-
-Rust's `'a` notation is famously off-putting to newcomers — it looks like a syntax error and forces the reader to learn an entirely new sigil class. We rejected that early.
-
-The interesting alternative was `from`, which reads as "the result borrows from this argument." `@bound` won for two reasons. First, it describes the relationship the compiler is enforcing — a lifetime constraint — rather than a data-flow source. The annotation isn't really about where the value came from; it's about what its lifetime is tied to. Second, `@bound` collapses the receiver case into a single token. A method whose return is bound to `this` writes `bound T method(...)` — no second word, no awkward `from this` compound.
-
-The known cost is overlap with Java's "upper bound / lower bound" terminology in generics (`<T extends Number>`). We accept the cost: generics and lifetimes are different beasts, the syntactic positions don't overlap (generics-bounds appear in `<...>`, lifetime-bound appears in parameter and return positions), and a reader is unlikely to confuse them after the first encounter.
+The known cost is overlap with Java's "upper bound / lower bound" generics terminology; the syntactic positions don't overlap and a reader is unlikely to confuse them after the first encounter.
 
 ### Why intersection on multiple bounds (LIFE-03)
 
@@ -204,30 +186,25 @@ Earlier drafts treated the receiver as a default contributor — an instance met
 
 ### Why universal `onDrop()`, not opt-in (DROP-01)
 
-This is the big realization: try-with-resources in real Java is the right *mechanism* but the wrong *default*. The clutter you correctly identified — needing `try ()` for every stateful binding — comes from cleanup being opt-in. Laterita makes it the default. Every binding gets deterministic cleanup; no syntactic marker required.
+Try-with-resources in real Java is the right *mechanism* but the wrong *default* — needing `try ()` around every stateful binding is friction that an ownership-typed language doesn't have to pay. Laterita makes cleanup the default. Every binding gets deterministic cleanup; no syntactic marker required.
 
 ### Why the name is `onDrop()` and not `close()`
 
-Reusing `close()` was the first instinct — Java already has `AutoCloseable`, and it would have meant "no new concept, just universal." We rejected it because Java code that ports to Laterita already has `close()` methods on streams, sockets, JDBC connections, and a long tail of resource classes. Mixing a language-orchestrated `close()` with the user-defined ones creates ambiguity at every call site: is this a normal method call, a manual scope-exit invocation, or a leftover from try-with-resources thinking? A different name keeps the language hook visually separate from any user `close()` method that survives migration.
+Java code that ports to Laterita already has `close()` methods on streams, sockets, JDBC connections, and a long tail of resource classes. A language-orchestrated `close()` mixed with the user-defined ones would create ambiguity at every call site: is this a normal method call, a manual scope-exit invocation, or a leftover from try-with-resources thinking? A different name keeps the language hook visually separate from any user `close()` that survives migration.
 
-`onDrop()` reads as event-handler convention — *what runs when this is dropped* — and aligns with Rust's `Drop` trait without inheriting Rust's terminology wholesale (Rust's method is bare `drop`; the `on` prefix matches Java/Kotlin/Android event-handler naming the Java-derived audience already knows). The name says "the system invokes this; you specify the body."
+`onDrop()` reads as event-handler convention — *what runs when this is dropped* — aligning with Rust's `Drop` trait without inheriting Rust's bare-`drop` naming. The `on` prefix matches Java/Kotlin/Android event-handler convention the audience already knows.
 
-### Why not `finalize()` or `_dispose` (both rejected)
+### Why not `finalize()`
 
-`finalize()` was tempting and wrong. Three reasons:
-1. `finalize()` is being removed from Java. Building the language's core mechanism on a method the parent language is removing is fragile.
-2. Almost no class overrides `finalize()` today, so calling it at scope exit would mostly call no-ops. Useful only after every standard library class is updated.
-3. The semantic mismatch is bad signaling. `Object.finalize()` is the GC reclamation hook. Repurposing the name to mean "scope exit" would confuse every reader who knows Java.
-
-An earlier draft used `_dispose()` with a leading-underscore convention to signal "do not call." That worked, but the visibility modifier `@internal` (DROP-06) does the job more formally — type-system enforcement instead of naming convention — and lets us drop the visually awkward underscore. With `@internal` carrying the "uncallable" property, `onDrop()` can read like a normal method name.
+`finalize()` is being removed from Java, so the parent language is taking it out from under us; almost nothing overrides it today, so reusing it at scope exit would mostly call no-ops; and its semantic association with GC reclamation would confuse every reader who knows Java. Three independently sufficient strikes.
 
 ### Why `@internal` for compiler-only methods (DROP-06)
 
-Forbidden-by-convention versus forbidden-by-type-system is a real distinction. The earlier `_dispose` design relied on a reserved-name rule plus a code-review heuristic ("if you see this identifier outside an override, something's wrong"). The current design uses a visibility modifier the compiler enforces.
+Forbidden-by-convention versus forbidden-by-type-system is a real distinction. An earlier draft used `_dispose()` with a leading-underscore convention; the current design replaces convention with `@internal`, an annotation the compiler enforces, and lets `onDrop()` read like a normal method name.
 
-Naming the modifier `@internal` accepts a known cost: C# already uses `@internal` to mean "assembly-scoped public," which is broader than what Laterita means by it. We accepted the clash because no other candidate was as natural at first reading. `lifecycle` was the cleanest narrow alternative but limits the keyword's future use; `intrinsic` connotes a compiler-provided body, not just a compiler-only call site; `hidden` reads informally. `@internal` paired with a clear specification — *only the compiler invokes; user code may override but never call, including via `super`* — communicates the intent in one word, and the C# reader recovers the meaning after the first encounter.
+Reusing the word `internal` accepts a known clash: C# already uses `internal` to mean "assembly-scoped public," which is broader than Laterita's meaning. No other candidate was as natural at first reading — `lifecycle` is narrow, `intrinsic` suggests a compiler-provided body, `hidden` reads informally — and the C# reader recovers the meaning after the first encounter.
 
-The keyword is reserved for future compiler-orchestrated hooks. It is deliberately *not* a general-purpose access level; ordinary visibility scoping continues to use `public`/`protected`/`private`/package-default. Adding `@internal` to the visibility list would invite misuse — wrapping arbitrary methods to hide them from callers — which is not what the modifier is for.
+`@internal` is reserved for future compiler-orchestrated hooks. It is deliberately *not* a general-purpose access level; ordinary visibility continues to use `public`/`protected`/`private`/package-default. Promoting it would invite misuse — wrapping arbitrary methods to hide them from callers — which is not what the annotation is for.
 
 ### Why reverse declaration order (DROP-02)
 
@@ -239,9 +216,9 @@ Without per-field tracking, partial moves either have to be forbidden (severely 
 
 ### Why teardown is compiler-orchestrated (DROP-05)
 
-For ordinary methods the user calls `super.foo()` explicitly when an override needs the parent's behavior — the user, not the language, decides whether super's behavior runs. `onDrop()` is the exception, on both axes. The user never invokes it (DROP-06), so the super-chain cannot be user-written; and the *order* of an object's internal teardown — own `onDrop()` body, then own fields in reverse, then the superclass subobject, recursively, in the reverse of construction — is the only order that keeps every field live while the body that might read it runs. There is no decision to delegate; a "remember to chain" rule would be a pure footgun. This puts `onDrop()` on the same footing as the synthesized copy constructor (OBJ-01), which auto-inserts `super(source)`: both are language-internal recursive backbones the user should not have to remember to participate in.
+For ordinary methods the user writes `super.foo()` when an override needs the parent's behavior. `onDrop()` is the exception: the user never invokes it (DROP-06), so the super-chain cannot be user-written; and the *order* — own body, then own fields in reverse, then the superclass subobject, recursively — is the only order that keeps every field live while the body that might read it runs. A "remember to chain" rule would be a pure footgun. This puts `onDrop()` on the same footing as the synthesized copy constructor (OBJ-01), which auto-inserts `super(source)`: language-internal recursive backbones the user should not have to participate in.
 
-Under DROP-09 only the leaf `final` class can declare an `onDrop()` body, so the chain's step-1 invocations above the leaf are empty — what the chain does *today* is the field teardown, with no body between levels. It is still specified as a full chain so the ordering is unambiguous and composes unchanged if the `final` restriction is ever loosened.
+Under DROP-09 only the leaf `final` class can declare a body, so today every step-1 invocation above the leaf is empty. The full chain is still specified so the ordering is unambiguous and composes unchanged if the `final` restriction is ever loosened.
 
 ### Why explicit `onDrop()` calls are forbidden (DROP-06)
 
@@ -290,13 +267,9 @@ So instead of changing dispatch, we removed the precondition. Surveying where a 
 
 DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `final` class. A `final` class has no subclass, so no override of anything it calls on `this` can exist below it; combined with DROP-06 (no user-invoked `onDrop()`), the down-dispatch hazard is structurally impossible — no static-dispatch mode needed, because there is nothing to dispatch into. The Java idiom of overriding a cleanup hook in an open base class is replaced by composition: an extensible class holds its resources through `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose own `onDrop()`s do the release during field teardown (DROP-05, step 2). Rust's ecosystem is structured the same way — `Drop` lives on leaf newtypes, not on trait-object hierarchies — so the discipline is proven.
 
-**What DROP-09 makes redundant.** With at most one user `onDrop()` body per instance, several candidate rules considered for OQ-18 collapse:
-- A static-dispatch mode inside `onDrop()` (OQ-18 option 1) and a "may call only `private`/`final` methods on `this`" rule (OQ-18 options 2–3) are both unnecessary: `this` in a `final` class's `onDrop()` has no override anywhere, so even a virtual call is statically resolved.
-- "`onDrop()` may not be declared on an interface" stops needing to be a separate rule — an interface is never `final` — though the compiler still diagnoses it by name for a clearer message.
-- "Exactly once per instance *and per class-level*" simplifies to "exactly once per instance"; the per-class-level distinction had bite only with a chain of overriding bodies.
-- DROP-05's auto-chained step-1 keeps its *field-teardown* role but loses its *body-chaining* role (every step-1 above the leaf is empty), and DROP-08's old parenthetical about "the auto-chained `super.onDrop()`" reading a field becomes moot — removed.
+With at most one user `onDrop()` body per instance, several candidate rules from OQ-18's earlier options collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`. DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
 
-**What stays.** DROP-09 is orthogonal to, and does not weaken: DROP-02 (reverse-declaration order of sibling bindings), DROP-04 / NULL-09 (drop flags, null-skipping — still needed for partial moves and `T?`), DROP-06 (`@internal`), DROP-07 (drop sequence continues past a body throw, with suppressed accumulation), DROP-08 (an `onDrop()` body still may not read a moved-out field of its own class), DROP-10 (`this` does not escape `onDrop()`), and THR-05 (no interruption point inside `onDrop()`; `Thread.onDrop()` exempt). Those address moved-out state, throwing cleanup, receiver escape, and blocking cleanup — none of which touches the inheritance axis DROP-09 closes. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is now `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
+The orthogonal cleanup rules — DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 moved-out fields, DROP-10 no-escape-of-this, THR-05 no-blocking — all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
 
 ### Why `this` does not escape `onDrop()` (DROP-10)
 
@@ -409,13 +382,9 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed bin
 
 ### Why `String` exposes no mut methods (STR-07)
 
-We considered admitting `mut String` with a small set of in-place operations (overwrite, truncate, clear) and rejected it.
+`mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
-The motivating cases turned out weaker than they first looked. Bulk construction is `StringBuilder`'s job and stays there — the per-binding owned/borrowed tracking already lets I/O code return an owned, fresh `String` allocation without needing the value itself to be mutable. The case that hardest resists this — zeroing a buffer that held a secret — is not actually solved by `String.clear()`: by the time the original gets erased, copies have typically already flowed into HTTP headers, log lines, and serialization buffers, so the threat model isn't met. A dedicated `Secret` / `Sensitive` type that forbids copy and zeroes on drop is the right answer there, and it lives outside `String`.
-
-What remains is "small in-place edits in narrow domain code", which doesn't justify a class of operations that Java idiom and Laterita's larger design (favoring immutability) both push against. The cost — tracking mutable-vs-immutable String bindings mentally, a new mut-method surface, invariant complications on subclasses like `Email` — exceeds the benefit.
-
-A binding may still be *declared* `mut String`. The `@mut` modifier is general (BIND-02, MUT-01) and rejecting it specifically on `String` would be a special case requiring its own justification. The declaration is inert for in-place purposes: nothing in `String`'s API takes a `@mut` receiver, so no method can mutate the contents. Reassignment of a `mut String` field still works because that's `@mut` field semantics (BIND-03, BIND-06), not String mutation — which is what the `StringBuilder` example with `mut String contents` actually relies on (it reassigns the field on each `append`, not the underlying buffer). Subclasses introducing their own mut state reach mutability through the general rules without needing a String-specific carve-out.
+A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mut`-receiver method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
 
 ### Why default receiver mode is borrow (STR-08)
 
@@ -465,7 +434,7 @@ Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory
 
 ### Why three modes, inferred (CLO-01, CLO-02)
 
-This is Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces you to think about because closures need precise typing for trait dispatch. Laterita takes the same three categories — read, mutate, consume — but lets the compiler classify the closure from its body. Users write a lambda; the compiler does the work.
+Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces the user to think about because closures need precise typing for trait dispatch. Laterita keeps the three categories — read, mutate, consume — but lets the compiler infer them from the body. Users write a lambda; the compiler does the work.
 
 ### Why slot mode controls invocation (CLO-03)
 
@@ -495,29 +464,20 @@ A closure that borrows `name` cannot outlive `name`. This is the same lifetime-b
 
 ### Why preserve Java's exception syntax (EXC-01)
 
-Earlier in the design I sneaked in a Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching in catch. The pushback was correct: those are nice ideas, but they aren't *forced* by ownership — they're orthogonal language improvements with their own costs. Sealed error types want a pattern-matching story Java doesn't have; mandatory `try` at call sites is a substantial syntactic change for marginal gain; exhaustive catch makes wide-net handlers (logging frameworks, top-level fallbacks) more awkward, not less. Each is defensible in isolation; none clears the bar of "introducing an unfamiliar shape pays for itself."
+A Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching was considered and dropped. None of it is *forced* by ownership — they're orthogonal improvements with their own costs. Sealed error types need a pattern-matching story Java doesn't have; mandatory call-site `try` is a substantial syntactic change for marginal gain; exhaustive catch makes wide-net handlers more awkward, not less.
 
-The ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04). The syntax — `try`/`catch`/`finally`, the `Throwable` hierarchy, the `throw` keyword — survives unchanged. The one Java-ergonomics fix that does make it into the spec is dropping the checked/unchecked distinction (EXC-05), where the consensus against checked exceptions is unusually strong and the feature actively fights other choices in the design (closure interop, lambda-friendly stdlib).
+The ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop-flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04). `try`/`catch`/`finally`, the `Throwable` hierarchy, and the `throw` keyword survive unchanged. The one Java-ergonomics fix that does make it into the spec is dropping the checked/unchecked distinction (EXC-05).
 
 ### Why no checked exceptions (EXC-05)
 
-Java's checked-exception model — methods declare every checked exception they may throw, callers must catch or re-declare — was meant to force callers to think about recoverable failures. Three decades in, the consensus is that it didn't work and is more burden than benefit. Laterita drops the checking entirely, keeping `throws` only as documentation.
+Java's checked-exception model has been a three-decade experiment that the field has rejected, and Laterita stops enforcing it. The evidence is unusually one-sided:
 
-The strongest evidence is consensus across both language designers and the Java ecosystem itself.
+- **No mainstream language designed after Java adopted the model.** Hejlsberg's 2003 C# critique — versioning brittleness, the `throws Exception` escape valve, scaling failures across deep stacks — has held up; Kotlin, Scala, and Swift each declined.
+- **The Java ecosystem routes around the feature.** Spring wraps `SQLException` into unchecked `DataAccessException` on principle. Hibernate, Jackson, and modern Jakarta EE are unchecked-by-default. Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism. When the dominant ecosystem in the language is built on escape hatches, the feature isn't paying its rent.
+- **Lambdas broke the remaining case.** Java 8's `Function`/`Consumer`/`Supplier` don't declare exceptions, forcing every checked throw in a stream pipeline into a `RuntimeException` wrapper or a `CheckedFunction` shim. Laterita wants closures (CLO-01–06) to be ordinary; carrying a feature that fights closure interop is incoherent.
+- **Signature contagion is real.** The argument that made THR-08 unchecked generalizes: every checked exception pollutes signatures along its propagation path until some author writes `throws Exception` to escape, losing the precision the model meant to deliver.
 
-- **No mainstream language designed after Java has adopted the model.** Anders Hejlsberg refused it in C# — his 2003 interview is the canonical critique: versioning brittleness (adding a thrown type is a binary-incompatible API change), the `throws Exception` escape valve, scaling failures across deep call stacks. Kotlin, Scala, and Swift each declined. The case is unusually one-sided for a language design question.
-
-- **The Java ecosystem routes around the feature.** Spring's data-access layer wraps `SQLException` into the unchecked `DataAccessException` hierarchy on principle. Hibernate, Jackson, and modern Jakarta EE APIs are unchecked-by-default. Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism, and is widely used. When the most popular ecosystem in the language is built on top of escape hatches from a language feature, that feature is not paying its rent.
-
-- **Lambdas broke the remaining case.** The functional interfaces introduced in Java 8 — `Function`, `Consumer`, `Supplier` — don't declare exceptions, so any checked throw inside a stream pipeline forces wrapping into `RuntimeException` or a custom `CheckedFunction` shim. Laterita wants closures (CLO-01 through CLO-06) to be ordinary; carrying forward a feature that fights closure interop is incoherent.
-
-- **The signature-contagion problem is real.** It was already the rationale for THR-08 making `InterruptedException` unchecked. The argument generalizes: every checked exception that propagates through a deep call stack pollutes every signature on the path, the path inevitably reaches a method whose author didn't want to think about that exception, and the author writes `throws Exception` to escape — losing the precision the model was trying to deliver.
-
-The misuse pattern of "exceptions for control flow" (parsing-by-throw, `NumberFormatException` as a question) is real but separate. It is a stdlib-API problem (use `T?` or a parsed-result type for expected absence), not a checking problem; dropping the checked discipline does not encourage it and dropping it does not solve it.
-
-The cost of the change is small. `throws` clauses remain legal as documentation, so existing Java method signatures translate without syntactic edits. Tools that surface declared exception types continue to work. The language merely stops enforcing the declaration. What is gained: clean lambda interop, no signature contagion, no `@SneakyThrows`-shaped workaround culture, and consistency with Laterita's other modern-Java-friendly choices (sticky interrupt flag, ownership-bound thread lifetime, no reflection).
-
-We considered going further — replacing exceptions with a `Result<T, E>` type, or adopting Swift's `try`-at-call-site model — and rejected both for the EXC-01 reason. They are improvements with merit, but they require importing pattern-matching infrastructure Java doesn't have, and they impose a much larger surface change than dropping a single piece of enforcement. Drop the checking, keep the syntax. The minimal change captures most of the win.
+`throws` clauses remain legal as documentation, so existing Java signatures translate without edits. Replacing exceptions with `Result<T, E>` or Swift's call-site `try` would require pattern-matching infrastructure Java doesn't have and a much larger surface change for marginal additional benefit. Drop the checking, keep the syntax.
 
 ### Why cleanup runs on unwind (EXC-02)
 
@@ -539,11 +499,9 @@ Lazy resolution gives near-zero cost in the common case (throw, catch, recover) 
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
-The big simplification you proposed: if `@unsafe` only marks private methods, the audit boundary is the method signature. A reviewer reads each `private unsafe` method, verifies its preconditions, and trusts that the public API is safe by composition. Inlining is fine because the safety reasoning is per-method.
+`@unsafe` only marks private methods, so the audit boundary is the method signature: a reviewer reads each `private @unsafe` method, verifies its preconditions, and trusts that the public API is safe by composition.
 
-This is *tighter* than Rust. Rust allows `unsafe { }` blocks deep inside public functions, and the audit boundary can be hard to find. Forcing extraction into a named private method makes every unsafe operation in a codebase trivially enumerable: `grep "private unsafe"` finds them all.
-
-The minor cost is that some inline unsafe operations have to be extracted into helper methods. The compiler inlines them back, so the runtime cost is zero. The slight visual ugliness is, arguably, *good* — you can't bury unsafe operations inline in a 200-line public method.
+This is *tighter* than Rust. Rust allows `unsafe { }` blocks deep inside public functions, where the audit boundary can be hard to find. Forcing extraction into a named private method makes every unsafe operation in a codebase trivially enumerable (`grep "private @unsafe"`). The compiler inlines the helper back, so the runtime cost is zero; the slight visual heft is arguably a feature — unsafe operations can't be buried inline in a 200-line public method.
 
 ### Why a fixed list of operations (UNS-02)
 
@@ -565,7 +523,7 @@ A class that holds a `Heap<T>` field has invariants the compiler can't check (th
 
 ### Why `Rc` and `Arc` are split
 
-Single-threaded reference counting doesn't need atomic operations. Cross-thread sharing does. Splitting them lets single-threaded code skip the synchronization cost entirely, which is significant in tight loops. Rust does the same with `Rc<T>` vs. `Arc<T>`. The cost is a slight conceptual overhead — two types instead of one — but the performance and correctness gains are worth it.
+Single-threaded reference counting doesn't need atomic operations; cross-thread sharing does. Splitting them lets single-threaded code skip the synchronization cost in tight loops. Rust does the same.
 
 ### Why `.share()` is explicit (STD-01)
 
