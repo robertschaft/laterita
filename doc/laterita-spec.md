@@ -126,6 +126,8 @@ The type `T?` admits either a value of `T` or the special value `null`. `T` and 
 
 `T` must be a reference type. Nullable primitive types (`int?`, `long?`, `boolean?`, etc.) are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`Integer?`, `Boolean?`, …). The compiler does not auto-box at the type-suffix level.
 
+The `?` suffix is a `.lat`-only surface form per COMP-06. In a `.java` source the same type is written `@Nullable T`, where `@Nullable` is declared in `laterita.lang.annotation`. The two forms denote the same type and obey the same rules in this section.
+
 ```laterita
 String? maybeName = lookup(id);
 print(maybeName.length());   // ERROR: requires null check
@@ -143,6 +145,8 @@ The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is 
 String? upper = maybeName?.toUpperCase();
 ```
 
+`?.` is a `.lat`-only surface form per COMP-06. In a `.java` source the equivalent is `expr == null ? null : expr.method(args)`, or an `if`/early-return narrowing per NULL-06.
+
 ### NULL-05 — Elvis operator `?:`
 
 `a ?: b` evaluates to `a` if `a` is non-null, otherwise to `b`. The result type is the common type of the non-nullable form of `a` and the type of `b`.
@@ -150,6 +154,8 @@ String? upper = maybeName?.toUpperCase();
 ```laterita
 String shown = maybeName ?: "anonymous";
 ```
+
+`?:` is a `.lat`-only surface form per COMP-06. In a `.java` source the equivalent is `a != null ? a : b`, with NULL-06 narrowing on `a`.
 
 ### NULL-06 — Smart narrowing on null check
 
@@ -164,6 +170,8 @@ if (maybeName != null) {
 ### NULL-07 — Null assertion `!!`
 
 `expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing.
+
+`!!` is a `.lat`-only surface form per COMP-06. In a `.java` source the equivalent is `Intrinsics.requireNonNull(expr)` (declared in `laterita.lang.Intrinsics`), which has the same null-on-fail behavior and the same `T? → T` type effect.
 
 ### NULL-08 — Field default is non-nullable
 
@@ -723,7 +731,7 @@ where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@m
 () -> void
 ```
 
-A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement.
+A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement. The anonymous form is accepted only in `.lat` sources per COMP-06; a `.java` source must use a nominal functional interface at every position where an FI value is held.
 
 A binding of functional-interface type combines two layers of modifiers. The parameter `fn` in
 
@@ -1206,6 +1214,32 @@ Laterita does not provide reflection. There is no runtime API for enumerating fi
 
 Use cases traditionally served by reflection are served by compile-time code generation (annotation processors, compiler plugins): serializers, ORM mappers, dependency-injection wiring, validators, mocks, test discovery, and SPI registries are all generated at build time from the types and annotations that exist in source. Stack traces (EXC-04) and exception types remain available; this rule constrains type and member introspection, not error reporting.
 
+### COMP-06 — Source file extensions
+
+A laterita source file uses one of two extensions, which determine the surface syntax accepted in that compilation unit:
+
+- **`.lat`** — full laterita surface. Permits the non-Java syntactic forms enumerated in §17: nullable type suffix `T?` (NULL-02), safe call `?.` (NULL-04), Elvis `?:` (NULL-05), null assertion `!!` (NULL-07), and inline anonymous-functional-interface type expressions `(P1, …, Pn) -> R` (FN-01). A `.lat` file is **not** parseable by `javac`.
+
+- **`.java`** — laterita's Java-compatible subset. The `.lat`-only forms above are rejected; equivalent meaning is expressed in pure Java syntax. A `.java` source remains parseable by `javac` and by IDEs that know nothing about laterita.
+
+The two extensions denote the same language. The annotation and intrinsic surface of §17 (`@mut`, `@take`, `@bound`, `@internal`, `@unsafe`, `@local`, `@nonlocal`, `Intrinsics.give`, `Intrinsics.broken`) is identical in both. Cross-unit references (calls, types, inheritance, imports) work uniformly across the two extensions; whether a type was declared in a `.lat` or `.java` file is not part of its identity.
+
+The required `.java`-mode substitutions are:
+
+| `.lat` form | `.java` form | Spec rule |
+|---|---|---|
+| `T?` (nullable type) | `@Nullable T` (annotation declared in `laterita.lang.annotation`) | NULL-02 |
+| `expr?.method(args)` (safe call) | `expr == null ? null : expr.method(args)`, or a narrowing `if`/early return per NULL-06 | NULL-04 |
+| `a ?: b` (Elvis) | `a != null ? a : b`, with NULL-06 narrowing on `a` | NULL-05 |
+| `expr!!` (null assertion) | `Intrinsics.requireNonNull(expr)` (declared in `laterita.lang.Intrinsics`, throws `NullPointerException` on `null`) | NULL-07 |
+| `(P1, …, Pn) -> R` (inline anonymous FI type) | a nominal functional interface declared elsewhere and named at the use site (FN-01) | FN-01 |
+
+In `.java` mode, `@Nullable` is the only carrier of nullability in type positions; the annotation has the same type-system meaning as the `?` suffix per NULL-02, including non-applicability to primitive types. Migration tooling per OQ-15 may mechanically translate between the two forms.
+
+### COMP-07 — Compiler invocation
+
+The reference laterita compiler is named `latc`. It accepts both `.lat` and `.java` sources in a single compilation unit and emits the artifacts required by COMP-01 through COMP-04. The compiler dispatches between the two source surfaces by file extension per COMP-06.
+
 ---
 
 ## 17. Reserved Names
@@ -1214,7 +1248,7 @@ The following names are introduced by this specification and must be provided by
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
-**Laterita introduces no new keywords.** Every ownership, lifetime, mutability, cleanup, and visibility concept is expressed using existing Java syntax — annotations on declarations and static method calls in expression and statement positions — so source files are parseable by `javac`. The annotations and stdlib static methods that carry laterita-specific semantics are:
+**Laterita introduces no new keywords.** Every ownership, lifetime, mutability, cleanup, and visibility concept is expressed using existing Java syntax — annotations on declarations and static method calls in expression and statement positions — with the exception of the five `.lat`-only syntactic forms enumerated below. A `.java` source (COMP-06) consequently remains parseable by `javac` and Java-aware IDEs; a `.lat` source additionally permits the non-Java forms, and is not. The annotations and stdlib static methods that carry laterita-specific semantics are:
 
 | Concept | Form | Spec rule |
 |---|---|---|
@@ -1226,14 +1260,16 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 | Private unsafe method | `@unsafe` | UNS-01 |
 | Class is thread-affine | `@local` | STD-07 |
 | Class overrides inferred `local`-ness | `@nonlocal` (with `@unsafe`) | STD-07 |
+| Nullable type in `.java` mode | `@Nullable T` | NULL-02, COMP-06 |
 | Move at a use site (expression or statement) | `Intrinsics.give(x)` | MOVE-02, MOVE-08 |
 | Unreachable path | `Intrinsics.broken()` | UNR-01 |
+| Null assertion in `.java` mode | `Intrinsics.requireNonNull(x)` | NULL-07, COMP-06 |
 
 The annotations are declared in `laterita.lang.annotation`. The static methods live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier. To `javac` they are ordinary annotations and ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
 Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` is permitted on local bindings but is redundant.
 
-The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07). The form `(P1, …, Pn) -> R` denotes an anonymous functional interface per FN-01.
+The `?` suffix denotes nullable types per NULL-02; `?.` is the safe-call operator (NULL-04); `?:` is the Elvis operator (NULL-05); `!!` is the null-assertion operator (NULL-07). The form `(P1, …, Pn) -> R` denotes an anonymous functional interface per FN-01. These five forms are accepted only in `.lat` sources; their `.java`-mode equivalents are tabulated under COMP-06.
 
 Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
 
