@@ -33,7 +33,7 @@ An auto-generated method creating a copy of an object. By default, the compiler 
 An anonymous function (lambda) that may capture variables from an enclosing scope. Laterita classifies closures by capture mode: **read** (borrows captured bindings, can run many times), **mutate** (borrows mutably, runs sequentially), or **consume** (moves captured bindings, runs exactly once). See `CLO-01`.
 
 ### consume / give (also "moved")
-To transfer ownership of a value from one binding to another, or to invoke a method that consumes its receiver. Once consumed, the original binding is no longer usable. Marked at the call site with `give(x)`, a static method on `laterita.lang.Lt` normally statically imported as `give`. In Rust, this is a "move"; Laterita uses the verb `give` in Java's vocabulary.
+To transfer ownership of a value from one binding to another, or to invoke a method that consumes its receiver. Once consumed, the original binding is no longer usable. Marked at the call site with `give(x)`, a static method on `laterita.lang.Intrinsics` normally statically imported as `give`. In Rust, this is a "move"; Laterita uses the verb `give` in Java's vocabulary.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method. For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow—the override is less strict, so any caller satisfying the base contract satisfies the override. See `MOVE-10`.
@@ -42,7 +42,7 @@ An overriding method may **require less** of its parameters than the base method
 A constructor that takes a single parameter of the same type as the class being constructed (e.g., `new User(User source)`). Used to duplicate an object. Laterita auto-generates one per `OBJ-01` if not provided.
 
 ### divergence point / diverges
-A code path that reaches `broken()` (a static method declared in `laterita.lang.Lt`) that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken()` is dead code. The method has return type `Nothing` (the bottom type). See `UNR-01`.
+A code path that reaches `broken()` (a static method declared in `laterita.lang.Intrinsics`) that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken()` is dead code. The method has return type `Nothing` (the bottom type). See `UNR-01`.
 
 ### drop / onDrop()
 To clean up a value when its owning binding leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). A `final` class implements `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead. See `DROP-01`, `DROP-09`.
@@ -59,7 +59,7 @@ A named member variable of a class. Laterita distinguishes between immutable fie
 ### functional interface (also "function type")
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline: `(P1, P2, ...) -> R`. Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
-### give (static method on `laterita.lang.Lt`)
+### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is `@take` on an explicit `this` parameter (BIND-07).
 
 ### Heap<T>

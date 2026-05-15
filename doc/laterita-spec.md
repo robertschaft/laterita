@@ -203,7 +203,7 @@ print(b);                   // OK
 
 ### MOVE-02 — `give(...)` marks a move at the use site
 
-`Lt.give(x)` (declared in `laterita.lang.Lt` and normally statically imported as `give`) consumes the binding `x`'s ownership and yields its value at the call site. After the call, the source binding is no longer usable. The static method is the syntactic carrier for a move expression; the laterita compiler treats unqualified calls of this method specially.
+`Intrinsics.give(x)` (declared in `laterita.lang.Intrinsics` and normally statically imported as `give`) consumes the binding `x`'s ownership and yields its value at the call site. After the call, the source binding is no longer usable. The static method is the syntactic carrier for a move expression; the laterita compiler treats unqualified calls of this method specially.
 
 ```laterita
 var a = makeString();
@@ -603,7 +603,7 @@ A class opts out of copying by overriding `clone()` with a body that reaches `br
 
 ### UNR-01 — `broken()` declares a path unreachable
 
-`Lt.broken()` (declared in `laterita.lang.Lt` and normally statically imported as `broken`) declares that the enclosing path must not be reachable. The optional overload `Lt.broken(String reason)` attaches an explanatory message. The compiler must reject any program in which the call can be reached on a path it cannot prove dead.
+`Intrinsics.broken()` (declared in `laterita.lang.Intrinsics` and normally statically imported as `broken`) declares that the enclosing path must not be reachable. The optional overload `Intrinsics.broken(String reason)` attaches an explanatory message. The compiler must reject any program in which the call can be reached on a path it cannot prove dead.
 
 The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
 
@@ -1228,10 +1228,10 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 | Private unsafe method | `@unsafe` | UNS-01 |
 | Class is thread-affine | `@local` | STD-07 |
 | Class overrides inferred `local`-ness | `@nonlocal` (with `@unsafe`) | STD-07 |
-| Move at a use site (expression or statement) | `Lt.give(x)` | MOVE-02, MOVE-08 |
-| Unreachable path | `Lt.broken()` | UNR-01 |
+| Move at a use site (expression or statement) | `Intrinsics.give(x)` | MOVE-02, MOVE-08 |
+| Unreachable path | `Intrinsics.broken()` | UNR-01 |
 
-The annotations are declared in `laterita.lang.annotation`. The static methods live on `laterita.lang.Lt` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier. To `javac` they are ordinary annotations and ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
+The annotations are declared in `laterita.lang.annotation`. The static methods live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier. To `javac` they are ordinary annotations and ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
 Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` is permitted on local bindings but is redundant.
 
