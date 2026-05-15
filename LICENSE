@@ -1,3 +1,15 @@
+Laterita is licensed under the GNU General Public License, version 2,
+WITH the Classpath Exception (the same terms used by OpenJDK). The full
+GPLv2 text follows below. The Classpath Exception text is in the
+companion file ASSEMBLY_EXCEPTION and applies to the whole project: any
+program may link against Laterita's libraries without itself becoming
+subject to the GPL.
+
+See NOTICE for upstream attribution (OpenJDK, the Rust project) and the
+rules for incorporating third-party code into this repository.
+
+----------------------------------------------------------------------
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 2, June 1991
 

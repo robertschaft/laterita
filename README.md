@@ -31,3 +31,14 @@ Concretely:
 - New to the project: skim §1–§3 of the spec (bindings, optionality, move/borrow), then read the matching sections of the reasoning document.
 - Evaluating a design choice: open the reasoning document at the relevant section; cross-reference the spec codes it cites.
 - Looking for what's still undecided: start with the open-questions document.
+
+## License
+
+Laterita is distributed under **GPL v2 with the Classpath Exception** — the same terms as OpenJDK. The exception means user programs may link against Laterita's libraries without themselves becoming subject to the GPL.
+
+The license is dictated by the project's upstream sources:
+
+- Standard-library code is forked and modified from **OpenJDK** (GPLv2 + Classpath Exception). Derivative works must remain under those terms.
+- Borrow-checker logic and interface code is adapted from the **Rust project** (dual-licensed MIT OR Apache-2.0). Laterita takes it under the **MIT** half, which is GPLv2-compatible; the Apache-2.0 option is not.
+
+See [`LICENSE`](LICENSE), [`ASSEMBLY_EXCEPTION`](ASSEMBLY_EXCEPTION), and [`NOTICE`](NOTICE) for the full terms, upstream attribution, and the rules for adding third-party code.
