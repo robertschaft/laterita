@@ -537,7 +537,71 @@ Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the cal
 
 ---
 
-## 7. Copying
+## 7. Exceptions
+
+### EXC-01 — Existing Java exception syntax is preserved
+
+This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
+
+### EXC-02 — Cleanup runs on exception unwind
+
+When an exception propagates out of a scope, all `onDrop()` calls required by DROP-01 through DROP-04 must execute as part of the unwind, before the exception reaches the next handler. If an `onDrop()` invocation throws, DROP-07 applies.
+
+### EXC-03 — Drop flags participate in unwind
+
+DROP-04's drop flags must be consulted during exception unwind, not only on normal exit.
+
+### EXC-04 — Lazy stack-trace resolution
+
+When an exception is thrown, the runtime must capture the current call stack as raw return addresses. Symbol resolution (mapping addresses to source locations) must be deferred until the trace is inspected. The captured trace is owned by the exception object and freed with it.
+
+### EXC-05 — All exceptions are unchecked
+
+The compiler performs no checked-exception analysis. Any throwable type may be thrown from any method without a corresponding declaration, and callers are never required to catch a particular exception type or re-declare it on their own signatures. Java's distinction between `Exception` and `RuntimeException` carries no language-level significance in Laterita; the entire `Throwable` hierarchy is uniformly unchecked.
+
+The `throws` clause is permitted as documentation. A method may list the exception types it expects to propagate, and tooling (IDEs, generated documentation) may surface that list. The list is not enforced: declaring `throws X` does not commit the method to throwing only `X`, and omitting the clause does not prevent any exception from propagating.
+
+---
+
+## 8. Unreachability
+
+### UNR-01 — `broken()` declares a path unreachable
+
+`Intrinsics.broken()` (declared in `laterita.lang.Intrinsics` and normally statically imported as `broken`) declares that the enclosing path must not be reachable. The optional overload `Intrinsics.broken(String reason)` attaches an explanatory message. The compiler must reject any program in which the call can be reached on a path it cannot prove dead.
+
+The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
+
+```laterita
+class File {
+    Heap<FileHandle> handle;
+    @Override File clone() {
+        broken("files cannot be copied");
+    }
+}
+
+<T> List<T> deepCopy(List<T> source) {
+    var result = new List<T>();
+    for (T item : source) {
+        result.add(item.clone());
+    }
+    return give(result);
+}
+
+deepCopy(users);   // OK: User.clone() is the synthesized form
+deepCopy(files);   // ERROR: File.clone() reaches broken()
+```
+
+Diagnostics must identify the reachable path that leads to `broken()` and report the reason string when one was provided.
+
+A conditional form is expressible as an `if` guarding `broken()`; the compiler's standard dead-code analysis determines whether the path is reachable:
+
+```laterita
+if (n < 0) broken("n must be non-negative");
+```
+
+---
+
+## 9. Copying
 
 ### OBJ-01 — Auto-generated copy constructor
 
@@ -599,45 +663,7 @@ A class opts out of copying by overriding `clone()` with a body that reaches `br
 
 ---
 
-## 8. Unreachability
-
-### UNR-01 — `broken()` declares a path unreachable
-
-`Intrinsics.broken()` (declared in `laterita.lang.Intrinsics` and normally statically imported as `broken`) declares that the enclosing path must not be reachable. The optional overload `Intrinsics.broken(String reason)` attaches an explanatory message. The compiler must reject any program in which the call can be reached on a path it cannot prove dead.
-
-The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
-
-```laterita
-class File {
-    Heap<FileHandle> handle;
-    @Override File clone() {
-        broken("files cannot be copied");
-    }
-}
-
-<T> List<T> deepCopy(List<T> source) {
-    var result = new List<T>();
-    for (T item : source) {
-        result.add(item.clone());
-    }
-    return give(result);
-}
-
-deepCopy(users);   // OK: User.clone() is the synthesized form
-deepCopy(files);   // ERROR: File.clone() reaches broken()
-```
-
-Diagnostics must identify the reachable path that leads to `broken()` and report the reason string when one was provided.
-
-A conditional form is expressible as an `if` guarding `broken()`; the compiler's standard dead-code analysis determines whether the path is reachable:
-
-```laterita
-if (n < 0) broken("n must be non-negative");
-```
-
----
-
-## 9. Strings
+## 10. Strings
 
 ### STR-01 — `String` is a normal class
 
@@ -704,7 +730,7 @@ class String {
 
 ---
 
-## 10. Functional Interfaces
+## 11. Functional Interfaces
 
 Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface. The rules in this section govern these anonymous functional interfaces as types — independent of how their values are constructed. A lambda literal (CLO-04) is one way to construct a value; a method reference is another. The slot-mode rules that govern how an FI value is held and invoked live with the closure rules (CLO-03, CLO-05).
 
@@ -784,7 +810,7 @@ Each value-construction of an anonymous functional interface (most commonly a la
 
 ---
 
-## 11. Closures
+## 12. Closures
 
 ### CLO-01 — Three capture modes
 
@@ -931,32 +957,6 @@ The SAM type itself is invariant under override (FN-02): two anonymous FIs whose
 ### CLO-06 — Capture lifetimes propagate
 
 A closure value carries the lifetimes of every binding it captures by borrow. The closure cannot outlive any captured borrow. Lifetime intersection (LIFE-03) applies when multiple borrows are captured.
-
----
-
-## 12. Exceptions
-
-### EXC-01 — Existing Java exception syntax is preserved
-
-This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
-
-### EXC-02 — Cleanup runs on exception unwind
-
-When an exception propagates out of a scope, all `onDrop()` calls required by DROP-01 through DROP-04 must execute as part of the unwind, before the exception reaches the next handler. If an `onDrop()` invocation throws, DROP-07 applies.
-
-### EXC-03 — Drop flags participate in unwind
-
-DROP-04's drop flags must be consulted during exception unwind, not only on normal exit.
-
-### EXC-04 — Lazy stack-trace resolution
-
-When an exception is thrown, the runtime must capture the current call stack as raw return addresses. Symbol resolution (mapping addresses to source locations) must be deferred until the trace is inspected. The captured trace is owned by the exception object and freed with it.
-
-### EXC-05 — All exceptions are unchecked
-
-The compiler performs no checked-exception analysis. Any throwable type may be thrown from any method without a corresponding declaration, and callers are never required to catch a particular exception type or re-declare it on their own signatures. Java's distinction between `Exception` and `RuntimeException` carries no language-level significance in Laterita; the entire `Throwable` hierarchy is uniformly unchecked.
-
-The `throws` clause is permitted as documentation. A method may list the exception types it expects to propagate, and tooling (IDEs, generated documentation) may surface that list. The list is not enforced: declaring `throws X` does not commit the method to throwing only `X`, and omitting the clause does not prevent any exception from propagating.
 
 ---
 
