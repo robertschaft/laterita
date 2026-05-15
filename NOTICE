@@ -1,0 +1,49 @@
+Laterita
+========
+
+Laterita is distributed under the GNU General Public License, version 2,
+with the Classpath Exception. See LICENSE and ASSEMBLY_EXCEPTION.
+
+
+Upstream sources
+----------------
+
+Laterita incorporates and adapts code from two upstream projects:
+
+1. OpenJDK (https://openjdk.org/)
+   Licensed under GPLv2 with the Classpath Exception.
+   Files derived from OpenJDK retain their original copyright headers
+   and license notices. Modifications made for Laterita are likewise
+   GPLv2 + Classpath Exception.
+
+2. The Rust Project (https://www.rust-lang.org/)
+   Dual-licensed under MIT OR Apache-2.0.
+   Files derived from Rust are taken under the MIT option (Apache-2.0
+   is not GPLv2-compatible). Original MIT copyright and permission
+   notices are preserved verbatim in the affected files.
+
+
+Rules for adding third-party code
+---------------------------------
+
+Any new third-party code added to this repository must be license-
+compatible with GPLv2 + Classpath Exception. Acceptable source
+licenses include, but are not limited to:
+
+  - GPLv2 (with or without the Classpath Exception)
+  - LGPLv2 / LGPLv2.1
+  - MIT / X11
+  - 2-clause and 3-clause BSD
+  - ISC
+  - Code dual-licensed "MIT OR Apache-2.0" (taken under the MIT half)
+
+The following are NOT compatible and must not be added:
+
+  - Apache-2.0 only (incompatible with plain GPLv2 due to its patent
+    termination clause)
+  - GPLv3 / AGPLv3 only (incompatible with GPLv2-only downstream)
+  - Any proprietary or source-available-but-not-Free license
+
+Every imported file must retain its original copyright notice and
+license header. Record the source URL and commit/version in the commit
+message that introduces the file.
