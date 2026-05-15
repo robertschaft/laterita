@@ -109,82 +109,15 @@ conn.use();          // ERROR: conn was consumed
 
 ---
 
-## 2. Optionality
+## 2. Mutability Rules (Cross-cutting)
 
-The syntactic forms `T?`, `?.`, `?:`, and `!!` introduced in this section are accepted only in `.lat` sources; COMP-06 tabulates the `.java`-mode equivalents.
+### MUT-01 — Immutability is transitive through borrows
 
-### NULL-01 — Types are non-nullable by default
+A shared (immutable) borrow grants no mutation rights regardless of any `@mut` markers on fields reached through it. Mutation through a borrow requires the borrow itself to be mutable.
 
-A bare type `T` excludes the null state. A binding of type `T` always holds a valid value after initialization, and methods on `T` may be invoked without a null check.
+### MUT-02 — Interior mutability requires `Cell<T>`
 
-```laterita
-String name = "Alice";
-print(name.length());       // always safe
-```
-
-### NULL-02 — `?` suffix denotes a nullable type
-
-The type `T?` admits either a value of `T` or the special value `null`. `T` and `T?` are distinct types: `T` widens to `T?` implicitly; `T?` does not narrow to `T` without a check (NULL-06) or an assertion (NULL-07).
-
-`T` must be a reference type. Nullable primitive types (`int?`, `long?`, `boolean?`, etc.) are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`Integer?`, `Boolean?`, …). The compiler does not auto-box at the type-suffix level. `@Nullable T` (NULL-02 in `.java` mode, per COMP-06) obeys the same rule.
-
-```laterita
-String? maybeName = lookup(id);
-print(maybeName.length());   // ERROR: requires null check
-```
-
-### NULL-03 — `null` literal
-
-The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is not assignable to a non-nullable type.
-
-### NULL-04 — Safe call `?.`
-
-`expr?.method(args)` evaluates to `null` if `expr` is `null`, otherwise invokes `method` on `expr`. The result type is `R?` where `R` is the method's return type.
-
-```laterita
-String? upper = maybeName?.toUpperCase();
-```
-
-### NULL-05 — Elvis operator `?:`
-
-`a ?: b` evaluates to `a` if `a` is non-null, otherwise to `b`. The result type is the common type of the non-nullable form of `a` and the type of `b`.
-
-```laterita
-String shown = maybeName ?: "anonymous";
-```
-
-### NULL-06 — Smart narrowing on null check
-
-After a control-flow narrowing (e.g., `if (x != null) { ... }`, `if (x == null) return;`), the binding's type within the proven-non-null region is `T`, not `T?`. Calls that require `T` are permitted without further annotation.
-
-```laterita
-if (maybeName != null) {
-    print(maybeName.length());   // OK: narrowed to String
-}
-```
-
-### NULL-07 — Null assertion `!!`
-
-`expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing. `java.util.Objects.requireNonNull(expr)` is the `.java`-mode form (COMP-06); the laterita compiler attaches the same `T? → T` narrowing to a recognized call of it.
-
-### NULL-08 — Field default is non-nullable
-
-Fields obey NULL-01: a field declared `T` is non-nullable, and BIND-04's "assigned exactly once in every constructor" requirement guarantees no observable `null`. A nullable field is declared `T?`.
-
-```laterita
-class User {
-    String name;            // non-nullable
-    String? nickname;       // nullable
-}
-```
-
-### NULL-09 — `onDrop()` skips null
-
-When a binding of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional: if the value is `null`, no call is made; otherwise `onDrop()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment — the compiler already tracks per-binding "still live?" state.
-
-### NULL-10 — Move and borrow on `T?`
-
-`give(expr)` where `expr` has type `T?` transfers either the contained `T` (leaving the source as `null`) or transfers `null`. Borrow rules apply identically to `T?` and `T`. A borrow of a `T?` is itself a `T?`-borrow; null narrowing (NULL-06) on a borrowed binding narrows to a `T`-borrow.
+A type that needs to mutate its contents through a bare receiver must hold those contents inside `Cell<T>`. This is the only mechanism that bypasses MUT-01, and `Cell<T>` is an unsafe primitive (see UNS-02).
 
 ---
 
@@ -357,19 +290,7 @@ The variance rule mirrors Java's existing treatment of `throws`: an override may
 
 ---
 
-## 4. Mutability Rules (Cross-cutting)
-
-### MUT-01 — Immutability is transitive through borrows
-
-A shared (immutable) borrow grants no mutation rights regardless of any `@mut` markers on fields reached through it. Mutation through a borrow requires the borrow itself to be mutable.
-
-### MUT-02 — Interior mutability requires `Cell<T>`
-
-A type that needs to mutate its contents through a bare receiver must hold those contents inside `Cell<T>`. This is the only mechanism that bypasses MUT-01, and `Cell<T>` is an unsafe primitive (see UNS-02).
-
----
-
-## 5. Lifetimes
+## 4. Lifetimes
 
 ### LIFE-01 — No borrow may outlive its referent
 
@@ -427,7 +348,7 @@ The diagnostic identifies the contributing source the body actually uses, so the
 
 ---
 
-## 6. Scope-Exit Cleanup
+## 5. Scope-Exit Cleanup
 
 ### DROP-01 — Universal `onDrop()`
 
@@ -537,6 +458,44 @@ Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the cal
 
 ---
 
+## 6. Unreachability
+
+### UNR-01 — `broken()` declares a path unreachable
+
+`Intrinsics.broken()` (declared in `laterita.lang.Intrinsics` and normally statically imported as `broken`) declares that the enclosing path must not be reachable. The optional overload `Intrinsics.broken(String reason)` attaches an explanatory message. The compiler must reject any program in which the call can be reached on a path it cannot prove dead.
+
+The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
+
+```laterita
+class File {
+    Heap<FileHandle> handle;
+    @Override File clone() {
+        broken("files cannot be copied");
+    }
+}
+
+<T> List<T> deepCopy(List<T> source) {
+    var result = new List<T>();
+    for (T item : source) {
+        result.add(item.clone());
+    }
+    return give(result);
+}
+
+deepCopy(users);   // OK: User.clone() is the synthesized form
+deepCopy(files);   // ERROR: File.clone() reaches broken()
+```
+
+Diagnostics must identify the reachable path that leads to `broken()` and report the reason string when one was provided.
+
+A conditional form is expressible as an `if` guarding `broken()`; the compiler's standard dead-code analysis determines whether the path is reachable:
+
+```laterita
+if (n < 0) broken("n must be non-negative");
+```
+
+---
+
 ## 7. Copying
 
 ### OBJ-01 — Auto-generated copy constructor
@@ -599,108 +558,108 @@ A class opts out of copying by overriding `clone()` with a body that reaches `br
 
 ---
 
-## 8. Unreachability
+## 8. Optionality
 
-### UNR-01 — `broken()` declares a path unreachable
+The syntactic forms `T?`, `?.`, `?:`, and `!!` introduced in this section are accepted only in `.lat` sources; COMP-06 tabulates the `.java`-mode equivalents.
 
-`Intrinsics.broken()` (declared in `laterita.lang.Intrinsics` and normally statically imported as `broken`) declares that the enclosing path must not be reachable. The optional overload `Intrinsics.broken(String reason)` attaches an explanatory message. The compiler must reject any program in which the call can be reached on a path it cannot prove dead.
+### NULL-01 — Types are non-nullable by default
 
-The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
-
-```laterita
-class File {
-    Heap<FileHandle> handle;
-    @Override File clone() {
-        broken("files cannot be copied");
-    }
-}
-
-<T> List<T> deepCopy(List<T> source) {
-    var result = new List<T>();
-    for (T item : source) {
-        result.add(item.clone());
-    }
-    return give(result);
-}
-
-deepCopy(users);   // OK: User.clone() is the synthesized form
-deepCopy(files);   // ERROR: File.clone() reaches broken()
-```
-
-Diagnostics must identify the reachable path that leads to `broken()` and report the reason string when one was provided.
-
-A conditional form is expressible as an `if` guarding `broken()`; the compiler's standard dead-code analysis determines whether the path is reachable:
+A bare type `T` excludes the null state. A binding of type `T` always holds a valid value after initialization, and methods on `T` may be invoked without a null check.
 
 ```laterita
-if (n < 0) broken("n must be non-negative");
+String name = "Alice";
+print(name.length());       // always safe
 ```
+
+### NULL-02 — `?` suffix denotes a nullable type
+
+The type `T?` admits either a value of `T` or the special value `null`. `T` and `T?` are distinct types: `T` widens to `T?` implicitly; `T?` does not narrow to `T` without a check (NULL-06) or an assertion (NULL-07).
+
+`T` must be a reference type. Nullable primitive types (`int?`, `long?`, `boolean?`, etc.) are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`Integer?`, `Boolean?`, …). The compiler does not auto-box at the type-suffix level. `@Nullable T` (NULL-02 in `.java` mode, per COMP-06) obeys the same rule.
+
+```laterita
+String? maybeName = lookup(id);
+print(maybeName.length());   // ERROR: requires null check
+```
+
+### NULL-03 — `null` literal
+
+The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is not assignable to a non-nullable type.
+
+### NULL-04 — Safe call `?.`
+
+`expr?.method(args)` evaluates to `null` if `expr` is `null`, otherwise invokes `method` on `expr`. The result type is `R?` where `R` is the method's return type.
+
+```laterita
+String? upper = maybeName?.toUpperCase();
+```
+
+### NULL-05 — Elvis operator `?:`
+
+`a ?: b` evaluates to `a` if `a` is non-null, otherwise to `b`. The result type is the common type of the non-nullable form of `a` and the type of `b`.
+
+```laterita
+String shown = maybeName ?: "anonymous";
+```
+
+### NULL-06 — Smart narrowing on null check
+
+After a control-flow narrowing (e.g., `if (x != null) { ... }`, `if (x == null) return;`), the binding's type within the proven-non-null region is `T`, not `T?`. Calls that require `T` are permitted without further annotation.
+
+```laterita
+if (maybeName != null) {
+    print(maybeName.length());   // OK: narrowed to String
+}
+```
+
+### NULL-07 — Null assertion `!!`
+
+`expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing. `java.util.Objects.requireNonNull(expr)` is the `.java`-mode form (COMP-06); the laterita compiler attaches the same `T? → T` narrowing to a recognized call of it.
+
+### NULL-08 — Field default is non-nullable
+
+Fields obey NULL-01: a field declared `T` is non-nullable, and BIND-04's "assigned exactly once in every constructor" requirement guarantees no observable `null`. A nullable field is declared `T?`.
+
+```laterita
+class User {
+    String name;            // non-nullable
+    String? nickname;       // nullable
+}
+```
+
+### NULL-09 — `onDrop()` skips null
+
+When a binding of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional: if the value is `null`, no call is made; otherwise `onDrop()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment — the compiler already tracks per-binding "still live?" state.
+
+### NULL-10 — Move and borrow on `T?`
+
+`give(expr)` where `expr` has type `T?` transfers either the contained `T` (leaving the source as `null`) or transfers `null`. Borrow rules apply identically to `T?` and `T`. A borrow of a `T?` is itself a `T?`-borrow; null narrowing (NULL-06) on a borrowed binding narrows to a `T`-borrow.
 
 ---
 
-## 9. Strings
+## 9. Exceptions
 
-### STR-01 — `String` is a normal class
+### EXC-01 — Existing Java exception syntax is preserved
 
-`String` is not final. Classes may extend it. The compiler must permit user-defined subclasses such as `class Email extends String`.
+This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
 
-### STR-02 — Strings are tracked as owned or borrowed per binding
+### EXC-02 — Cleanup runs on exception unwind
 
-A `String` binding is either an owned heap allocation or a borrowed view into another `String`'s storage. The compiler tracks this per-binding and applies lifetime rules to borrowed instances.
+When an exception propagates out of a scope, all `onDrop()` calls required by DROP-01 through DROP-04 must execute as part of the unwind, before the exception reaches the next handler. If an `onDrop()` invocation throws, DROP-07 applies.
 
-### STR-03 — Slice methods return borrows
+### EXC-03 — Drop flags participate in unwind
 
-Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) declare the borrow with `@bound` on the return type per LIFE-02.
+DROP-04's drop flags must be consulted during exception unwind, not only on normal exit.
 
-```laterita
-class String {
-    @bound String substring(int start, int end);
-    @bound String trim();
-}
-```
+### EXC-04 — Lazy stack-trace resolution
 
-### STR-04 — Allocating methods return owned strings
+When an exception is thrown, the runtime must capture the current call stack as raw return addresses. Symbol resolution (mapping addresses to source locations) must be deferred until the trace is inspected. The captured trace is owned by the exception object and freed with it.
 
-Methods that produce new storage (e.g., `toUpperCase`, `concat`) return an owned `String` with no lifetime tie to the receiver.
+### EXC-05 — All exceptions are unchecked
 
-### STR-05 — User-defined subclasses are owned
+The compiler performs no checked-exception analysis. Any throwable type may be thrown from any method without a corresponding declaration, and callers are never required to catch a particular exception type or re-declare it on their own signatures. Java's distinction between `Exception` and `RuntimeException` carries no language-level significance in Laterita; the entire `Throwable` hierarchy is uniformly unchecked.
 
-Subclasses of `String` declared by user code are owned. They cannot be returned as borrows into other storage.
-
-### STR-06 — String literals are static borrows
-
-A string literal expression has type `@bound String` with a static lifetime. A binding initialized from a literal is borrowed; to obtain owned storage, call `.clone()` (OBJ-02).
-
-```laterita
-String greeting = "hello";              // borrowed, static lifetime
-String owned = "hello".clone();         // owned heap allocation
-@take String s = give(greeting);        // ERROR: greeting is borrowed
-@take String u = give("hello");         // ERROR: literal is borrowed (give(...) on a borrow per MOVE-02)
-@take String t = "hello".clone();       // OK
-void inspect(String s);                 // accepts a literal directly (borrow)
-void store(@take String s);             // requires `.clone()` on a literal
-```
-
-### STR-07 — Standard `String` exposes no `@mut` methods
-
-The standard library `String` declares no methods with a `@mut String this` receiver. A binding or field may still be declared `@mut String` per BIND-02 (and reassigned), but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`.
-
-```laterita
-@mut String s = readLine();       // declaration permitted
-s = readLine();                   // OK: reassigning a @mut binding
-// no in-place mutation method exists on String
-```
-
-### STR-08 — Default receiver mode of `String` methods is borrow
-
-Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`@take String this`) are rare and explicitly marked; per STR-07, no `@mut`-receiver methods exist.
-
-```laterita
-class String {
-    @bound String trim();            // borrow this, return slice
-    String toUpperCase();            // borrow this, return owned
-    int length();                    // borrow this
-}
-```
+The `throws` clause is permitted as documentation. A method may list the exception types it expects to propagate, and tooling (IDEs, generated documentation) may surface that list. The list is not enforced: declaring `throws X` does not commit the method to throwing only `X`, and omitting the clause does not prevent any exception from propagating.
 
 ---
 
@@ -934,29 +893,70 @@ A closure value carries the lifetimes of every binding it captures by borrow. Th
 
 ---
 
-## 12. Exceptions
+## 12. Strings
 
-### EXC-01 — Existing Java exception syntax is preserved
+### STR-01 — `String` is a normal class
 
-This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
+`String` is not final. Classes may extend it. The compiler must permit user-defined subclasses such as `class Email extends String`.
 
-### EXC-02 — Cleanup runs on exception unwind
+### STR-02 — Strings are tracked as owned or borrowed per binding
 
-When an exception propagates out of a scope, all `onDrop()` calls required by DROP-01 through DROP-04 must execute as part of the unwind, before the exception reaches the next handler. If an `onDrop()` invocation throws, DROP-07 applies.
+A `String` binding is either an owned heap allocation or a borrowed view into another `String`'s storage. The compiler tracks this per-binding and applies lifetime rules to borrowed instances.
 
-### EXC-03 — Drop flags participate in unwind
+### STR-03 — Slice methods return borrows
 
-DROP-04's drop flags must be consulted during exception unwind, not only on normal exit.
+Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) declare the borrow with `@bound` on the return type per LIFE-02.
 
-### EXC-04 — Lazy stack-trace resolution
+```laterita
+class String {
+    @bound String substring(int start, int end);
+    @bound String trim();
+}
+```
 
-When an exception is thrown, the runtime must capture the current call stack as raw return addresses. Symbol resolution (mapping addresses to source locations) must be deferred until the trace is inspected. The captured trace is owned by the exception object and freed with it.
+### STR-04 — Allocating methods return owned strings
 
-### EXC-05 — All exceptions are unchecked
+Methods that produce new storage (e.g., `toUpperCase`, `concat`) return an owned `String` with no lifetime tie to the receiver.
 
-The compiler performs no checked-exception analysis. Any throwable type may be thrown from any method without a corresponding declaration, and callers are never required to catch a particular exception type or re-declare it on their own signatures. Java's distinction between `Exception` and `RuntimeException` carries no language-level significance in Laterita; the entire `Throwable` hierarchy is uniformly unchecked.
+### STR-05 — User-defined subclasses are owned
 
-The `throws` clause is permitted as documentation. A method may list the exception types it expects to propagate, and tooling (IDEs, generated documentation) may surface that list. The list is not enforced: declaring `throws X` does not commit the method to throwing only `X`, and omitting the clause does not prevent any exception from propagating.
+Subclasses of `String` declared by user code are owned. They cannot be returned as borrows into other storage.
+
+### STR-06 — String literals are static borrows
+
+A string literal expression has type `@bound String` with a static lifetime. A binding initialized from a literal is borrowed; to obtain owned storage, call `.clone()` (OBJ-02).
+
+```laterita
+String greeting = "hello";              // borrowed, static lifetime
+String owned = "hello".clone();         // owned heap allocation
+@take String s = give(greeting);        // ERROR: greeting is borrowed
+@take String u = give("hello");         // ERROR: literal is borrowed (give(...) on a borrow per MOVE-02)
+@take String t = "hello".clone();       // OK
+void inspect(String s);                 // accepts a literal directly (borrow)
+void store(@take String s);             // requires `.clone()` on a literal
+```
+
+### STR-07 — Standard `String` exposes no `@mut` methods
+
+The standard library `String` declares no methods with a `@mut String this` receiver. A binding or field may still be declared `@mut String` per BIND-02 (and reassigned), but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`.
+
+```laterita
+@mut String s = readLine();       // declaration permitted
+s = readLine();                   // OK: reassigning a @mut binding
+// no in-place mutation method exists on String
+```
+
+### STR-08 — Default receiver mode of `String` methods is borrow
+
+Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`@take String this`) are rare and explicitly marked; per STR-07, no `@mut`-receiver methods exist.
+
+```laterita
+class String {
+    @bound String trim();            // borrow this, return slice
+    String toUpperCase();            // borrow this, return owned
+    int length();                    // borrow this
+}
+```
 
 ---
 

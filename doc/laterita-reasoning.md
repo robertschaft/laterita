@@ -66,25 +66,11 @@ If a `var` binding could call `@mut` methods, immutability would mean nothing �
 
 ---
 
-## Optionality (NULL-01 through NULL-10)
+## Mutability (MUT-01, MUT-02)
 
-### Why non-nullable by default
+### Why `Cell<T>` is the only escape hatch (MUT-02)
 
-NPE remains the dominant runtime failure in Java codebases despite decades of static-analysis tooling. Laterita has the option Java didn't: make non-nullable the default and require a syntactic marker to opt in to absence. Kotlin (2011) and Swift (2014) made the same call, with well-validated safety gains.
-
-The rule turns NPE from "any reference might fault at any time" into "only `T?` references might be null, and you can't dereference one without proving it isn't." The compiler does the proof.
-
-### Why Kotlin's model rather than Optional<T> or Rust's Option<T>
-
-`Optional<T>` is verbose, doesn't compose with collections (`List<Optional<String>>`), and doesn't help fields whose underlying type is still nullable. Rust's `Option<T>` is sound but presupposes a pattern-matching story Java doesn't have. Kotlin's type-level nullability — `T` and `T?` as distinct types, with flow-sensitive smart casts — preserves Java's surface (`String name`, not `Option<String> name`), needs no pattern matching to be useful, and the `?.`/`?:`/`!!` operators visually localize null-handling decisions. NULL-06 smart-cast narrowing makes "null-check then use" read like ordinary Java.
-
-### Why `onDrop()` is null-aware
-
-NULL-09 specifies that scope-exit `onDrop()` on a `T?` skips `null` and dispatches on the contained value otherwise. This composes with DROP-04's drop-flag machinery — the compiler already had to track per-binding "still owned?" state; "is this `T?` non-null?" is the same shape of conditional cleanup. No new runtime mechanism is introduced.
-
-### Why no separate Optional<T>
-
-With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `T?` is shorter, more idiomatic, and avoids `Optional<Optional<T>>` confusion when generics nest. STD-03's `WeakReference<T>::get()` returns `Rc<T>?` rather than `Optional<Rc<T>>` for this reason.
+There are real cases where a class is logically immutable but has internal caching (lazy initialization, memoization, mutex-protected state). Rust's answer is `UnsafeCell<T>`, the one type the compiler treats specially as a hole in the rules. Laterita adopts the same model: a single primitive marks the spot, every other interior-mutability mechanism is built on top of it. Concentrating the unsafe assumption in one place is what makes the rest of the language safely checkable.
 
 ---
 
@@ -153,14 +139,6 @@ Once `@take` is part of the signature and `@mut` is not, the override rules fall
 `@mut` is contravariant: an override may drop `@mut`, not add it. An interface that promises "I might mutate your argument" may be implemented by a class that doesn't; any caller satisfying the inherited `@mut` requirement automatically satisfies the override's bare one. The reverse is unsound: a `@mut`-demanding override cannot stand behind an inherited bare signature, because callers through the interface would supply only an immutable borrow.
 
 The Java parallel — `throws` relaxes on overrides; parameter types stay invariant — names the pattern: modifier strength relaxes, identity does not. `@mut` is a strength; `@take` is identity.
-
----
-
-## Mutability (MUT-01, MUT-02)
-
-### Why `Cell<T>` is the only escape hatch (MUT-02)
-
-There are real cases where a class is logically immutable but has internal caching (lazy initialization, memoization, mutex-protected state). Rust's answer is `UnsafeCell<T>`, the one type the compiler treats specially as a hole in the rules. Laterita adopts the same model: a single primitive marks the spot, every other interior-mutability mechanism is built on top of it. Concentrating the unsafe assumption in one place is what makes the rest of the language safely checkable.
 
 ---
 
@@ -287,6 +265,34 @@ The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantic
 
 ---
 
+## Unreachability (UNR-01)
+
+### Why `broken()` for opt-out
+
+A class that can't be copied (a file handle, a single-use resource, anything wrapping `Heap<T>`) needs a way to say so. Three options were on the table:
+
+1. **Throw at runtime.** Override the copy constructor to throw `UnsupportedOperationException`. Java's traditional approach. Fails late, surfaces at the wrong place, and bypasses any compile-time guarantee about which types are copyable.
+2. **Opt-in interface (`Cloneable<T>`).** Type-safe but adds bound-noise to every generic signature, and makes the dominant case ("yes I'm copyable") explicit when it should be implicit.
+3. **Compile-time opt-out via `broken()`.** A statement that declares the path unreachable; the compiler rejects calls that can reach it. Failure is at the actual problem site (the instantiation that triggers it).
+
+The third option lets the dominant case (copyable) stay implicit while making the rare case (non-copyable) surface as a compile error rather than a runtime throw. Generic signatures stay clean — no `extends Cloneable<T>` bounds — and per-monomorphization checking (COMP-02) localizes the diagnostic.
+
+### Precedent
+
+`broken()` is essentially C++'s `= delete` generalized to a statement position. C++ uses `= delete` for exactly this purpose — declaring a copy constructor (or any function) intentionally unavailable, with calls rejected at compile time. The C++ pattern has worked well for over a decade for the special-member-deletion use case (Rule of Zero/Three/Five).
+
+Adjacent ideas exist in other languages: Rust's `!` (never type) and `unreachable!()` macro for divergence; refinement types in Liquid Haskell, F\*, and Idris for conditional unreachability with static checking. The unconditional form specified here is closest to `= delete` in spirit.
+
+### Why not just throw
+
+A throw is a runtime contract; `broken()` is a compile-time contract. The difference matters because generic code over a type parameter can't tell at definition time whether a particular instantiation will be valid — but with `broken()` and per-monomorphization checking, the *user* of the generic with a non-copyable type sees the error at their call site, not in production. This is the same trade Rust makes with trait bounds, achieved here without the bound boilerplate.
+
+### Why a statement, not a method modifier
+
+C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered something equivalent at the method-signature level. A statement-form `broken()` call turned out to compose better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case.
+
+---
+
 ## Copying (OBJ-01, OBJ-02)
 
 ### Why a copy constructor and a `clone()` method
@@ -322,85 +328,60 @@ If a field type's `clone()` is `broken()` (as `Heap<T>.clone()` is, per STD-06),
 
 ---
 
-## Unreachability (UNR-01)
+## Optionality (NULL-01 through NULL-10)
 
-### Why `broken()` for opt-out
+### Why non-nullable by default
 
-A class that can't be copied (a file handle, a single-use resource, anything wrapping `Heap<T>`) needs a way to say so. Three options were on the table:
+NPE remains the dominant runtime failure in Java codebases despite decades of static-analysis tooling. Laterita has the option Java didn't: make non-nullable the default and require a syntactic marker to opt in to absence. Kotlin (2011) and Swift (2014) made the same call, with well-validated safety gains.
 
-1. **Throw at runtime.** Override the copy constructor to throw `UnsupportedOperationException`. Java's traditional approach. Fails late, surfaces at the wrong place, and bypasses any compile-time guarantee about which types are copyable.
-2. **Opt-in interface (`Cloneable<T>`).** Type-safe but adds bound-noise to every generic signature, and makes the dominant case ("yes I'm copyable") explicit when it should be implicit.
-3. **Compile-time opt-out via `broken()`.** A statement that declares the path unreachable; the compiler rejects calls that can reach it. Failure is at the actual problem site (the instantiation that triggers it).
+The rule turns NPE from "any reference might fault at any time" into "only `T?` references might be null, and you can't dereference one without proving it isn't." The compiler does the proof.
 
-The third option lets the dominant case (copyable) stay implicit while making the rare case (non-copyable) surface as a compile error rather than a runtime throw. Generic signatures stay clean — no `extends Cloneable<T>` bounds — and per-monomorphization checking (COMP-02) localizes the diagnostic.
+### Why Kotlin's model rather than Optional<T> or Rust's Option<T>
 
-### Precedent
+`Optional<T>` is verbose, doesn't compose with collections (`List<Optional<String>>`), and doesn't help fields whose underlying type is still nullable. Rust's `Option<T>` is sound but presupposes a pattern-matching story Java doesn't have. Kotlin's type-level nullability — `T` and `T?` as distinct types, with flow-sensitive smart casts — preserves Java's surface (`String name`, not `Option<String> name`), needs no pattern matching to be useful, and the `?.`/`?:`/`!!` operators visually localize null-handling decisions. NULL-06 smart-cast narrowing makes "null-check then use" read like ordinary Java.
 
-`broken()` is essentially C++'s `= delete` generalized to a statement position. C++ uses `= delete` for exactly this purpose — declaring a copy constructor (or any function) intentionally unavailable, with calls rejected at compile time. The C++ pattern has worked well for over a decade for the special-member-deletion use case (Rule of Zero/Three/Five).
+### Why `onDrop()` is null-aware
 
-Adjacent ideas exist in other languages: Rust's `!` (never type) and `unreachable!()` macro for divergence; refinement types in Liquid Haskell, F\*, and Idris for conditional unreachability with static checking. The unconditional form specified here is closest to `= delete` in spirit.
+NULL-09 specifies that scope-exit `onDrop()` on a `T?` skips `null` and dispatches on the contained value otherwise. This composes with DROP-04's drop-flag machinery — the compiler already had to track per-binding "still owned?" state; "is this `T?` non-null?" is the same shape of conditional cleanup. No new runtime mechanism is introduced.
 
-### Why not just throw
+### Why no separate Optional<T>
 
-A throw is a runtime contract; `broken()` is a compile-time contract. The difference matters because generic code over a type parameter can't tell at definition time whether a particular instantiation will be valid — but with `broken()` and per-monomorphization checking, the *user* of the generic with a non-copyable type sees the error at their call site, not in production. This is the same trade Rust makes with trait bounds, achieved here without the bound boilerplate.
-
-### Why a statement, not a method modifier
-
-C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered something equivalent at the method-signature level. A statement-form `broken()` call turned out to compose better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case.
+With nullable types in the language, `Optional<T>` and `T?` are isomorphic and `T?` is shorter, more idiomatic, and avoids `Optional<Optional<T>>` confusion when generics nest. STD-03's `WeakReference<T>::get()` returns `Rc<T>?` rather than `Optional<Rc<T>>` for this reason.
 
 ---
 
-## Strings (STR-01 through STR-08)
+## Exceptions (EXC-01 through EXC-05)
 
-### Why `String` is no longer final (STR-01)
+### Why preserve Java's exception syntax (EXC-01)
 
-The `final String` decision in Java 1.0 was driven by 2000-era constraints: string interning for `==`, immutability guarantees in a GC'd world, hash caching, JIT optimization assumptions. Modern JVMs handle all of these without `final`. Modern AOT compilers handle them with monomorphization.
+A Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching was considered and dropped. None of it is *forced* by ownership — they're orthogonal improvements with their own costs. Sealed error types need a pattern-matching story Java doesn't have; mandatory call-site `try` is a substantial syntactic change for marginal gain; exhaustive catch makes wide-net handlers more awkward, not less.
 
-What `final` *costs* is type safety in domain modeling. Modern Java APIs are full of `String` arguments where the compiler can't help — `createUser(String email, String name, String address)` — and the community has worked around this with Lombok's `@Value`, microtype libraries, and records wrapping single strings. Letting `String` be extended fixes this directly:
+The ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop-flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04). `try`/`catch`/`finally`, the `Throwable` hierarchy, and the `throw` keyword survive unchanged. The one Java-ergonomics fix that does make it into the spec is dropping the checked/unchecked distinction (EXC-05).
 
-```laterita
-class Email extends String { ... }
-class Name extends String { ... }
-public User createUser(Email email, Name name, Address address) { ... }
-```
+### Why no checked exceptions (EXC-05)
 
-The compiler now catches argument-order bugs that today are silent runtime errors.
+Java's checked-exception model has been a three-decade experiment that the field has rejected, and Laterita stops enforcing it. The evidence is unusually one-sided:
 
-### Why owned vs. borrowed strings tracked per-binding (STR-02 through STR-04)
+- **No mainstream language designed after Java adopted the model.** Hejlsberg's 2003 C# critique — versioning brittleness, the `throws Exception` escape valve, scaling failures across deep stacks — has held up; Kotlin, Scala, and Swift each declined.
+- **The Java ecosystem routes around the feature.** Spring wraps `SQLException` into unchecked `DataAccessException` on principle. Hibernate, Jackson, and modern Jakarta EE are unchecked-by-default. Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism. When the dominant ecosystem in the language is built on escape hatches, the feature isn't paying its rent.
+- **Lambdas broke the remaining case.** Java 8's `Function`/`Consumer`/`Supplier` don't declare exceptions, forcing every checked throw in a stream pipeline into a `RuntimeException` wrapper or a `CheckedFunction` shim. Laterita wants closures (CLO-01–06) to be ordinary; carrying a feature that fights closure interop is incoherent.
+- **Signature contagion is real.** The argument that made THR-08 unchecked generalizes: every checked exception pollutes signatures along its propagation path until some author writes `throws Exception` to escape, losing the precision the model meant to deliver.
 
-Real Java pretends `String` is one thing. It isn't — sometimes it's an independent allocation (`toUpperCase` result), sometimes it's a view (`substring` result, where reallocating the source is illegal while the view exists). Rust splits these into `String` and `&str`, two visibly different types.
+`throws` clauses remain legal as documentation, so existing Java signatures translate without edits. Replacing exceptions with `Result<T, E>` or Swift's call-site `try` would require pattern-matching infrastructure Java doesn't have and a much larger surface change for marginal additional benefit. Drop the checking, keep the syntax.
 
-We chose to keep them as one type at the source level, with the compiler tracking per-binding whether the string is owned or borrowed. This preserves Java's "everything is just a reference" feel — the user writes `String name` either way. The complexity moves into the compiler. The cost is internal complexity; the gain is that Java's surface syntax is preserved.
+### Why cleanup runs on unwind (EXC-02)
 
-The signature-level markers introduced for lifetimes (`@bound` per LIFE-02) and parameters (`@take` per MOVE-03) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
+This is the same problem C++ destructors solve and Rust's drop-on-unwind solves. Without it, exceptions through ownership transfers would leak. The user writes ordinary code; the compiler emits the cleanup along the unwind path.
 
-The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`). In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body reaches `broken()`, and it always returns an owned value. The diagnostic for any owned/borrowed mismatch is therefore uniform — *"this position needs an owned String; binding is borrowed — try `.clone()`"* — and the fix is one method call. With `clone()` as the universal escape valve, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
+### Why drop flags participate (EXC-03)
 
-### Why subclasses are owned (STR-05)
+Same reasoning as DROP-04 generalized: the unwinder must consult per-field move state, otherwise partial moves followed by exceptions either leak (no cleanup) or double-free (cleanup on already-moved fields). The flags are already there from DROP-04; the unwind path just consults them.
 
-A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` could be a borrow into a mutable buffer, the buffer's owner could break the invariant from underneath. Forcing user-defined subclasses to be owned is the simplest rule that prevents this. The standard library's `String` itself can have borrowed instances because `String` has no invariant beyond "valid UTF-8" that holding a slice could break.
+### Why lazy stack-trace resolution (EXC-04)
 
-### Why string literals are borrowed, not owned (STR-06)
+In real Java today, `fillInStackTrace` is one of the more expensive things a program does, because the JVM walks the stack and resolves symbols at throw time. In an AOT-compiled language without a JVM, we have the option of decoupling capture from resolution. Capture is cheap (frame-pointer walk, ~100ns); resolution is the expensive part (symbol table lookup), and most exceptions are caught and discarded without anyone reading the trace.
 
-A literal lives in the program's read-only static segment, not on the heap. Treating it as owned would either lie about ownership (no allocation took place) or force every literal expression to allocate a heap copy — both unacceptable. Borrowing is the honest description: the literal owns itself, every binding onto it is a view. The static lifetime is universal, so a literal flows freely into any borrow context, and the few sites that need owned storage call `.clone()` (STR-02).
-
-This makes the spec's earlier example `String greeting = "hello"` a borrowed binding, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in MOVE-01 and STR-02 like any other borrow.
-
-### Why `String` exposes no mut methods (STR-07)
-
-`mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
-
-A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mut`-receiver method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
-
-### Why default receiver mode is borrow (STR-08)
-
-The same Java-feel argument that motivates non-final classes (STR-01) and per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case — methods that consume `this` (rare; terminal conversions) — carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
-
-### Why `String` needs no splitting machinery
-
-A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
-
-Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is OQ-19.
+Lazy resolution gives near-zero cost in the common case (throw, catch, recover) and full information in the rare case (throw, log, debug). Rust's `Backtrace` does this; Laterita adopts the same model.
 
 ---
 
@@ -466,38 +447,57 @@ A closure that borrows `name` cannot outlive `name`. This is the same lifetime-b
 
 ---
 
-## Exceptions (EXC-01 through EXC-04)
+## Strings (STR-01 through STR-08)
 
-### Why preserve Java's exception syntax (EXC-01)
+### Why `String` is no longer final (STR-01)
 
-A Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching was considered and dropped. None of it is *forced* by ownership — they're orthogonal improvements with their own costs. Sealed error types need a pattern-matching story Java doesn't have; mandatory call-site `try` is a substantial syntactic change for marginal gain; exhaustive catch makes wide-net handlers more awkward, not less.
+The `final String` decision in Java 1.0 was driven by 2000-era constraints: string interning for `==`, immutability guarantees in a GC'd world, hash caching, JIT optimization assumptions. Modern JVMs handle all of these without `final`. Modern AOT compilers handle them with monomorphization.
 
-The ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop-flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04). `try`/`catch`/`finally`, the `Throwable` hierarchy, and the `throw` keyword survive unchanged. The one Java-ergonomics fix that does make it into the spec is dropping the checked/unchecked distinction (EXC-05).
+What `final` *costs* is type safety in domain modeling. Modern Java APIs are full of `String` arguments where the compiler can't help — `createUser(String email, String name, String address)` — and the community has worked around this with Lombok's `@Value`, microtype libraries, and records wrapping single strings. Letting `String` be extended fixes this directly:
 
-### Why no checked exceptions (EXC-05)
+```laterita
+class Email extends String { ... }
+class Name extends String { ... }
+public User createUser(Email email, Name name, Address address) { ... }
+```
 
-Java's checked-exception model has been a three-decade experiment that the field has rejected, and Laterita stops enforcing it. The evidence is unusually one-sided:
+The compiler now catches argument-order bugs that today are silent runtime errors.
 
-- **No mainstream language designed after Java adopted the model.** Hejlsberg's 2003 C# critique — versioning brittleness, the `throws Exception` escape valve, scaling failures across deep stacks — has held up; Kotlin, Scala, and Swift each declined.
-- **The Java ecosystem routes around the feature.** Spring wraps `SQLException` into unchecked `DataAccessException` on principle. Hibernate, Jackson, and modern Jakarta EE are unchecked-by-default. Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism. When the dominant ecosystem in the language is built on escape hatches, the feature isn't paying its rent.
-- **Lambdas broke the remaining case.** Java 8's `Function`/`Consumer`/`Supplier` don't declare exceptions, forcing every checked throw in a stream pipeline into a `RuntimeException` wrapper or a `CheckedFunction` shim. Laterita wants closures (CLO-01–06) to be ordinary; carrying a feature that fights closure interop is incoherent.
-- **Signature contagion is real.** The argument that made THR-08 unchecked generalizes: every checked exception pollutes signatures along its propagation path until some author writes `throws Exception` to escape, losing the precision the model meant to deliver.
+### Why owned vs. borrowed strings tracked per-binding (STR-02 through STR-04)
 
-`throws` clauses remain legal as documentation, so existing Java signatures translate without edits. Replacing exceptions with `Result<T, E>` or Swift's call-site `try` would require pattern-matching infrastructure Java doesn't have and a much larger surface change for marginal additional benefit. Drop the checking, keep the syntax.
+Real Java pretends `String` is one thing. It isn't — sometimes it's an independent allocation (`toUpperCase` result), sometimes it's a view (`substring` result, where reallocating the source is illegal while the view exists). Rust splits these into `String` and `&str`, two visibly different types.
 
-### Why cleanup runs on unwind (EXC-02)
+We chose to keep them as one type at the source level, with the compiler tracking per-binding whether the string is owned or borrowed. This preserves Java's "everything is just a reference" feel — the user writes `String name` either way. The complexity moves into the compiler. The cost is internal complexity; the gain is that Java's surface syntax is preserved.
 
-This is the same problem C++ destructors solve and Rust's drop-on-unwind solves. Without it, exceptions through ownership transfers would leak. The user writes ordinary code; the compiler emits the cleanup along the unwind path.
+The signature-level markers introduced for lifetimes (`@bound` per LIFE-02) and parameters (`@take` per MOVE-03) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
 
-### Why drop flags participate (EXC-03)
+The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`). In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body reaches `broken()`, and it always returns an owned value. The diagnostic for any owned/borrowed mismatch is therefore uniform — *"this position needs an owned String; binding is borrowed — try `.clone()`"* — and the fix is one method call. With `clone()` as the universal escape valve, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
 
-Same reasoning as DROP-04 generalized: the unwinder must consult per-field move state, otherwise partial moves followed by exceptions either leak (no cleanup) or double-free (cleanup on already-moved fields). The flags are already there from DROP-04; the unwind path just consults them.
+### Why subclasses are owned (STR-05)
 
-### Why lazy stack-trace resolution (EXC-04)
+A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` could be a borrow into a mutable buffer, the buffer's owner could break the invariant from underneath. Forcing user-defined subclasses to be owned is the simplest rule that prevents this. The standard library's `String` itself can have borrowed instances because `String` has no invariant beyond "valid UTF-8" that holding a slice could break.
 
-In real Java today, `fillInStackTrace` is one of the more expensive things a program does, because the JVM walks the stack and resolves symbols at throw time. In an AOT-compiled language without a JVM, we have the option of decoupling capture from resolution. Capture is cheap (frame-pointer walk, ~100ns); resolution is the expensive part (symbol table lookup), and most exceptions are caught and discarded without anyone reading the trace.
+### Why string literals are borrowed, not owned (STR-06)
 
-Lazy resolution gives near-zero cost in the common case (throw, catch, recover) and full information in the rare case (throw, log, debug). Rust's `Backtrace` does this; Laterita adopts the same model.
+A literal lives in the program's read-only static segment, not on the heap. Treating it as owned would either lie about ownership (no allocation took place) or force every literal expression to allocate a heap copy — both unacceptable. Borrowing is the honest description: the literal owns itself, every binding onto it is a view. The static lifetime is universal, so a literal flows freely into any borrow context, and the few sites that need owned storage call `.clone()` (STR-02).
+
+This makes the spec's earlier example `String greeting = "hello"` a borrowed binding, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in MOVE-01 and STR-02 like any other borrow.
+
+### Why `String` exposes no mut methods (STR-07)
+
+`mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
+
+A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mut`-receiver method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
+
+### Why default receiver mode is borrow (STR-08)
+
+The same Java-feel argument that motivates non-final classes (STR-01) and per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case — methods that consume `this` (rare; terminal conversions) — carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
+
+### Why `String` needs no splitting machinery
+
+A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
+
+Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is OQ-19.
 
 ---
 
