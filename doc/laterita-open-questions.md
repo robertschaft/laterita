@@ -47,7 +47,7 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 2. ~~Class with static function `T give(@take T x) { return x; }` as a temporary drop in for the `give` keyword in expressions.~~ Resolved — declared as `laterita.lang.Intrinsics.give` per §17.
 3. A tool that enhances java classes with the spec's annotations best-effort. It adds `@Nullable` wherever required.
 4. A java compiler plugin that simulates the borrow checker based on the annotations above, so developers can improve their Java code before fully migrating.
-5. A tool that converts annotated Java code to a `.lt` source (or keeps it as `.java`; both are valid laterita source). It assumes items 3 and 4 have already been executed.
+5. A tool that converts annotated Java code to a `.lat` source (or keeps it as `.java`; both are valid laterita source per COMP-06). It assumes items 3 and 4 have already been executed.
 6. A laterita formatter that formats laterita always in the same manner. It should allow only very few formatting freedoms to developers (e.g. it wouldn't remove some additional line breaks).
 
 ## OQ-19 — Ownership splitting of mut arrays: required, and what shape?

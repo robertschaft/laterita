@@ -57,7 +57,7 @@ Only one mutable borrow may exist at a time. No other borrows (mutable or immuta
 A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `BIND-03`.
 
 ### functional interface (also "function type")
-An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline: `(P1, P2, ...) -> R`. Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
+An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline: `(P1, P2, ...) -> R` (`.lat`-only per COMP-06; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is `@take` on an explicit `this` parameter (BIND-07).
@@ -73,6 +73,12 @@ The ability to mutate an object's contents through a non-`@mut` (immutable) bind
 
 ### invariantly
 An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `MOVE-10`. (Contrast with contravariance.)
+
+### .lat / .java (source file extensions)
+The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the substitutions are tabulated in `COMP-06`. Both extensions share the same type system, annotations, and intrinsics.
+
+### latc (laterita compiler)
+The reference laterita compiler. Accepts `.lat` and `.java` in a single compilation unit, dispatches by extension per `COMP-06`, and emits artifacts per `COMP-01`–`COMP-04`. See `COMP-07`.
 
 ### lifetime
 The span of time during which a binding is valid. A borrowed binding's lifetime is bounded by the binding it borrows from; it cannot outlive the referent. A compiler error to use a binding after the value it refers to is dropped. See `LIFE-01`.
@@ -95,8 +101,8 @@ A mutual-exclusion primitive wrapping an owned value. Access is scoped to a clos
 ### @nonlocal (annotation)
 Used with `@unsafe` to explicitly declare that a class is safe to move across thread boundaries despite containing `@local` fields. The class internally synchronizes access. Applied to standard library types like `Arc<T>` and `Mutex<T>`. See `STD-07`.
 
-### nullable type (also `T?`)
-A type that admits both a value and the special value `null`. Written as `T?` where `T` is the value type. Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`.
+### nullable type (also `T?` / `@Nullable T`)
+A type that admits both a value and the special value `null`. Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`). Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`, `COMP-06`.
 
 ### onDrop()
 A method the compiler invokes to clean up a value. Only a `final` class may implement it with a body (`DROP-09`); a class without an implementation contributes no body. The compiler runs the implementation (if any) as step 1 of the value's drop sequence (`DROP-05`: own body, then own fields in reverse, then each superclass), and triggers the drop sequence on every binding that leaves scope, in reverse declaration order (`DROP-01`, `DROP-02`).
@@ -188,8 +194,8 @@ A non-owning reference to a value managed by `Rc<T>` or `Arc<T>`. The weak refer
 | Notation | Meaning |
 |----------|---------|
 | `T`, `U`, etc. | Type variable; represents any type |
-| `T?` | Nullable version of type `T` |
-| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R` |
+| `T?` | Nullable version of type `T` (`.lat` form; `.java` writes `@Nullable T` per COMP-06) |
+| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R` (`.lat`-only per COMP-06) |
 | `binding:` or `method:` or `parameter:` | Marks the following code snippet's scope (e.g., method signature, local binding) |
 
 ### Spec Code Prefixes

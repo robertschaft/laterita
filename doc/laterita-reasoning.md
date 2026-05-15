@@ -22,13 +22,19 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
-The migration win is concrete. A `.java` file annotated for laterita is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. Nothing else about the source has to change to remain parseable by the Java ecosystem.
+The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible subset enumerated in COMP-06, nothing else about it has to change to remain parseable by the Java ecosystem.
 
 The cost is visual heft: `void f(@bound @mut Buf b)` reads more loudly than `void f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
 Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
+
+### Two source surfaces: `.lat` and `.java` (COMP-06, COMP-07)
+
+Five forms in the spec — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators per NULL-02; inline FI types as the only escape from the interface-name explosion per FN-01), but each breaks the "still a `.java` file" promise.
+
+The spec splits the source surface in two rather than dropping either group. `.java` is the Java-compatible subset — exactly the surface the spec described before this section existed — and remains the migration on-ramp and IDE-compatible form. `.lat` is purely additive: any annotated `.java` source is also a valid `.lat` source via the COMP-06 table's reverse substitutions, and the compiler dispatches by extension. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file; the benefit is that the spec stops quietly assuming both surfaces at once.
 
 ---
 
