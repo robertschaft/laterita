@@ -75,10 +75,10 @@ The ability to mutate an object's contents through a non-`@mut` (immutable) bind
 An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `MOVE-10`. (Contrast with contravariance.)
 
 ### .lat / .java (source file extensions)
-The two file extensions accepted by `latc`. A `.lat` source admits the full laterita surface, including the non-Java forms `T?`, `?.`, `?:`, `!!`, and inline anonymous functional-interface types `(P1, …, Pn) -> R`. A `.java` source is the Java-compatible subset: those forms are written `@Nullable T`, nominal functional interfaces, and `Intrinsics.requireNonNull` (plus NULL-06 narrowing) instead. Both surfaces share the same type system, annotations, and intrinsics; the extension determines only which surface forms are accepted. See `COMP-06`.
+The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the substitutions are tabulated in `COMP-06`. Both extensions share the same type system, annotations, and intrinsics.
 
 ### latc (laterita compiler)
-The reference laterita compiler. Accepts `.lat` and `.java` sources in a single compilation unit and dispatches by file extension per `COMP-06`. Emits artifacts per `COMP-01` through `COMP-04`. See `COMP-07`.
+The reference laterita compiler. Accepts `.lat` and `.java` in a single compilation unit, dispatches by extension per `COMP-06`, and emits artifacts per `COMP-01`–`COMP-04`. See `COMP-07`.
 
 ### lifetime
 The span of time during which a binding is valid. A borrowed binding's lifetime is bounded by the binding it borrows from; it cannot outlive the referent. A compiler error to use a binding after the value it refers to is dropped. See `LIFE-01`.
