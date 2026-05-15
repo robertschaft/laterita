@@ -287,7 +287,7 @@ The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantic
 
 ---
 
-## Exceptions (EXC-01 through EXC-04)
+## Exceptions (EXC-01 through EXC-05)
 
 ### Why preserve Java's exception syntax (EXC-01)
 
