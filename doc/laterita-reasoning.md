@@ -104,7 +104,7 @@ This was a real finding from the verification work. A red-black tree node needs 
 
 ### Why disjoint slice borrows with `splitAt` for hard cases (MOVE-06)
 
-Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, a standard library `splitAt` provides safe sub-slices using `@unsafe` internally. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
+Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01, ARR-02) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
 ### Why partial-move tracking (MOVE-07)
 
