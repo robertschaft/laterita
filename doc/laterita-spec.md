@@ -19,7 +19,7 @@ The language provides exactly four local binding forms:
 | `@mut Type name = expr` | mutable, type explicit |
 | `@mut var name = expr` | mutable, type inferred |
 
-Java's `var` is reused for type inference (immutable by default in laterita mode per §17). Whether the binding holds an owned value or a borrow is determined by the RHS expression per MOVE-01 and MOVE-02.
+Java's `var` is reused for type inference (immutable by default in laterita mode per §18). Whether the binding holds an owned value or a borrow is determined by the RHS expression per MOVE-01 and MOVE-02.
 
 ```laterita
 String greeting = "hello";        // borrowed; static lifetime per STR-06
@@ -205,7 +205,7 @@ class Pair { @mut int left; @mut int right; }
 
 ### MOVE-06 — Disjoint array slice borrows
 
-Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the standard library must provide a `splitAt` operation that returns proven-disjoint sub-slices.
+Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the disjointness witness is supplied by the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01, ARR-02); each reduces to two ordinary slice expressions whose disjointness this rule already covers, requiring no `@unsafe` context.
 
 ```laterita
 int[] data = new int[100];
@@ -960,7 +960,96 @@ class String {
 
 ---
 
-## 13. Unsafe
+## 13. Arrays
+
+### ARR-01 — Array methods on `T[]` (`.lat` surface)
+
+The array type `T[]` exposes a small set of methods for borrow-checked slicing and chunked iteration. The methods are available in `.lat` sources only; the equivalent `.java` surface is `laterita.lang.Arrays` (ARR-02), because Java has no syntax for adding methods to `T[]` and no anonymous functional interface form (FN-01).
+
+```laterita
+class T[] {
+    @mut @bound ArraySplit<T> splitAt(int mid);
+
+    @mut void forEachChunk(
+            int chunkSize,
+            @mut (@bound @mut T[]) -> void body);
+
+    @mut void forEachChunkExact(
+            int chunkSize,
+            @mut (@bound @mut T[]) -> void body);
+
+    <R> @mut R reduceChunks(
+            int chunkSize,
+            @take R init,
+            @mut (@take R, @bound @mut T[]) -> R body);
+}
+```
+
+`splitAt(mid)` re-borrows the receiver per BIND-06 and returns an `ArraySplit<T>` whose `left` and `right` fields jointly cover the receiver's range. The record is `@bound` to the receiver's source; the receiver is frozen until both halves expire (LIFE-03), then reusable. `forEachChunk` invokes `body` once per chunk of length `chunkSize`; the final chunk may be shorter. `forEachChunkExact` yields only complete chunks; any trailing partial chunk is skipped. `reduceChunks` folds over chunks, threading an accumulator through each call.
+
+The chunk yielded to `body` is a `@bound @mut T[]` whose bound expires at the end of each invocation, so successively yielded chunks are pairwise disjoint by construction without further compiler obligation. The `body` slot is `@mut` because mutating closures must fill at least a `@mut` slot per FN-01 / CLO-03.
+
+No `@unsafe` is required at any point: each operation reduces to ordinary slice expressions whose disjointness MOVE-06 proves from the split index.
+
+### ARR-02 — `laterita.lang.Arrays` static surface (`.java` surface)
+
+The `.java` surface mirrors ARR-01 as static methods on `laterita.lang.Arrays`, paired with the named functional interfaces of ARR-03. Both surfaces compile to the same operations; the laterita compiler accepts either per COMP-06.
+
+```java
+package laterita.lang;
+
+public final class Arrays {
+    private Arrays() {}
+
+    public static <T> @bound ArraySplit<T> splitAt(
+            @bound @mut T[] arr, int mid);
+
+    public static <T> void forEachChunk(
+            @bound @mut T[] arr, int chunkSize,
+            @mut MutableConsumer<T[]> body);
+
+    public static <T> void forEachChunkExact(
+            @bound @mut T[] arr, int chunkSize,
+            @mut MutableConsumer<T[]> body);
+
+    public static <T, R> R reduceChunks(
+            @bound @mut T[] arr, int chunkSize,
+            @take R init,
+            @mut MutableReducer<T[], R> body);
+
+    public record ArraySplit<T>(
+            @bound @mut T[] left,
+            @bound @mut T[] right) {}
+}
+```
+
+The `arr` parameter is mut-borrowed for the duration of the call (and for `splitAt`, for the lifetime of the returned record). After the borrow expires, the caller's binding is reusable.
+
+### ARR-03 — `MutableConsumer<T>` and `MutableReducer<T, R>`
+
+Named functional interfaces for callback APIs that hand the body a mut borrow. They live in `laterita.lang` and substitute for `java.util.function.Consumer` / `BiFunction` in the `.java` surface, where anonymous functional interfaces (FN-01) are unavailable.
+
+```java
+package laterita.lang;
+
+@FunctionalInterface
+public interface MutableConsumer<T> {
+    void accept(@bound @mut T data);
+}
+
+@FunctionalInterface
+public interface MutableReducer<T, R> {
+    R apply(@take R accumulator, @bound @mut T data);
+}
+```
+
+The `@bound @mut` annotations live on the SAM's parameter declaration, not on the type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the underlying type `Foo[]` for `T` per standard generic substitution; the mut access is fixed by the interface declaration, not propagated from the caller's type argument.
+
+`MutableConsumer<T>` does not extend `java.util.function.Consumer<T>`, and `MutableReducer<T, R>` does not extend `java.util.function.BiFunction`. Narrowing the parameter to `@bound @mut T` in an override would violate parameter contravariance: a caller through the parent interface could supply a bare `T` value that the override's body would treat as `@mut`. They stand as sibling interfaces; a lambda literal at a call site selects the appropriate target by the receiving slot's declared type.
+
+---
+
+## 14. Unsafe
 
 ### UNS-01 — `@unsafe` is a private-method-only annotation
 
@@ -1003,7 +1092,7 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 
 ---
 
-## 14. Standard Library Types (Required)
+## 15. Standard Library Types (Required)
 
 ### STD-01 — `Rc<T>`
 
@@ -1095,7 +1184,7 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 ---
 
-## 15. Threads
+## 16. Threads
 
 ### THR-01 — `Thread` type
 
@@ -1184,7 +1273,7 @@ Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection
 
 ---
 
-## 16. Compilation Model
+## 17. Compilation Model
 
 ### COMP-01 — Native compilation, no GC
 
@@ -1223,7 +1312,7 @@ A laterita source file uses one of two extensions:
 | `expr!!` | `java.util.Objects.requireNonNull(expr)` | NULL-07 |
 | `(P1, …, Pn) -> R` | a nominal functional interface | FN-01 |
 
-`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§17), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
+`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 
@@ -1231,7 +1320,7 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ---
 
-## 17. Reserved Names
+## 18. Reserved Names
 
 The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per COMP-06. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
