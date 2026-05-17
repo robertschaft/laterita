@@ -205,7 +205,7 @@ class Pair { @mut int left; @mut int right; }
 
 ### MOVE-06 — Disjoint array slice borrows
 
-Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the disjointness witness is supplied by the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01, ARR-02); each reduces to two ordinary slice expressions whose disjointness this rule already covers, requiring no `@unsafe` context.
+Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the disjointness witness is supplied by ARR-01 / ARR-02, which reduce to ordinary slice expressions this rule already covers.
 
 ```laterita
 int[] data = new int[100];
@@ -964,36 +964,28 @@ class String {
 
 ### ARR-01 — Array methods on `T[]` (`.lat` surface)
 
-The array type `T[]` exposes a small set of methods for borrow-checked slicing and chunked iteration. The methods are available in `.lat` sources only; the equivalent `.java` surface is `laterita.lang.Arrays` (ARR-02), because Java has no syntax for adding methods to `T[]` and no anonymous functional interface form (FN-01).
+`T[]` exposes borrow-checked splitting and chunked iteration. The `.java` mirror is `laterita.lang.Arrays` (ARR-02).
 
 ```laterita
 class T[] {
     @mut @bound ArraySplit<T> splitAt(int mid);
 
-    @mut void forEachChunk(
-            int chunkSize,
+    @mut void forEachChunk(int chunkSize,
             @mut (@bound @mut T[]) -> void body);
 
-    @mut void forEachChunkExact(
-            int chunkSize,
+    @mut void forEachChunkExact(int chunkSize,
             @mut (@bound @mut T[]) -> void body);
 
-    <R> @mut R reduceChunks(
-            int chunkSize,
-            @take R init,
+    <R> @mut R reduceChunks(int chunkSize, @take R init,
             @mut (@take R, @bound @mut T[]) -> R body);
 }
 ```
 
-`splitAt(mid)` re-borrows the receiver per BIND-06 and returns an `ArraySplit<T>` whose `left` and `right` fields jointly cover the receiver's range. The record is `@bound` to the receiver's source; the receiver is frozen until both halves expire (LIFE-03), then reusable. `forEachChunk` invokes `body` once per chunk of length `chunkSize`; the final chunk may be shorter. `forEachChunkExact` yields only complete chunks; any trailing partial chunk is skipped. `reduceChunks` folds over chunks, threading an accumulator through each call.
-
-The chunk yielded to `body` is a `@bound @mut T[]` whose bound expires at the end of each invocation, so successively yielded chunks are pairwise disjoint by construction without further compiler obligation. The `body` slot is `@mut` because mutating closures must fill at least a `@mut` slot per FN-01 / CLO-03.
-
-No `@unsafe` is required at any point: each operation reduces to ordinary slice expressions whose disjointness MOVE-06 proves from the split index.
+`splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a `@bound @mut T[]` whose bound expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06.
 
 ### ARR-02 — `laterita.lang.Arrays` static surface (`.java` surface)
 
-The `.java` surface mirrors ARR-01 as static methods on `laterita.lang.Arrays`, paired with the named functional interfaces of ARR-03. Both surfaces compile to the same operations; the laterita compiler accepts either per COMP-06.
+`.java` mirror of ARR-01 as static methods, paired with ARR-03. Both surfaces compile to the same operations per COMP-06.
 
 ```java
 package laterita.lang;
@@ -1023,11 +1015,9 @@ public final class Arrays {
 }
 ```
 
-The `arr` parameter is mut-borrowed for the duration of the call (and for `splitAt`, for the lifetime of the returned record). After the borrow expires, the caller's binding is reusable.
-
 ### ARR-03 — `MutableConsumer<T>` and `MutableReducer<T, R>`
 
-Named functional interfaces for callback APIs that hand the body a mut borrow. They live in `laterita.lang` and substitute for `java.util.function.Consumer` / `BiFunction` in the `.java` surface, where anonymous functional interfaces (FN-01) are unavailable.
+The written-out form of the anonymous functional types used by ARR-01, for ARR-02 callers (FN-01 is `.lat`-only).
 
 ```java
 package laterita.lang;
@@ -1042,10 +1032,6 @@ public interface MutableReducer<T, R> {
     R apply(@take R accumulator, @bound @mut T data);
 }
 ```
-
-The `@bound @mut` annotations live on the SAM's parameter declaration, not on the type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the underlying type `Foo[]` for `T` per standard generic substitution; the mut access is fixed by the interface declaration, not propagated from the caller's type argument.
-
-`MutableConsumer<T>` does not extend `java.util.function.Consumer<T>`, and `MutableReducer<T, R>` does not extend `java.util.function.BiFunction`. Narrowing the parameter to `@bound @mut T` in an override would violate parameter contravariance: a caller through the parent interface could supply a bare `T` value that the override's body would treat as `@mut`. They stand as sibling interfaces; a lambda literal at a call site selects the appropriate target by the receiving slot's declared type.
 
 ---
 

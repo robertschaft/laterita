@@ -505,29 +505,15 @@ Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tra
 
 ### Why a dedicated section for arrays (resolving OQ-19)
 
-The same parallel that gives `String` its own section (§12) motivates one for `T[]`: the type is built into the language, the operations on it are load-bearing for real code, and the rules deserve to be stated together rather than scattered across MOVE-06 and stdlib commentary. The mut-array splitting question OQ-19 left open is settled here.
+Parallel to `String` (§12): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across MOVE-06 and stdlib commentary.
 
-Surveying the Rust ecosystem confirmed the primitive is load-bearing. `rayon`'s entire parallel-iterator abstraction is built on `split_at_mut`-style producers; `core::slice::sort` uses it for quicksort partitioning; `image` and the FFT crates use `chunks_mut` pervasively for per-row and per-tile iteration; `bytes` and `tokio-util` reimplement the concept as `split_to`/`split_off` for protocol buffer carving. Several major crates — `ndarray::multi_slice_mut!`, `nalgebra::MatrixViewMut`, `BytesMut`, `hashbrown` — ship their own variants because the standard slice API doesn't fit their layout. A language without a splitting primitive forces every serious library to fall back on `from_raw_parts_mut` plus borrow laundering, exactly the `@unsafe` propagation Laterita is trying to avoid.
+A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving. Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering — exactly the `@unsafe` propagation Laterita is avoiding.
 
-### Why two surfaces (ARR-01 and ARR-02)
+### Why two surfaces and a record return (ARR-01, ARR-02)
 
-Laterita accepts both `.lat` and `.java` sources per COMP-06, but the surfaces diverge on two features that affect array APIs: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. The `.lat` surface uses both — methods on `T[]` taking `(@bound @mut T[]) -> void` parameters — for the natural in-language reading. The `.java` surface uses static methods on `laterita.lang.Arrays` with named functional interfaces (ARR-03) for migration compatibility: a Java developer can write the same algorithm in `.java`, pass it through the laterita compiler, and get the same borrow-checked behavior the `.lat` version would.
+The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. ARR-01 uses both; ARR-02 substitutes static methods and named FIs (ARR-03). Migration tooling per OQ-15 translates between them.
 
-The duplication is regrettable but bounded — four operations on each side, with `ArraySplit<T>` shared between them — and motivated entirely by Java compatibility. Migration tooling per OQ-15 can mechanically translate between the two forms.
-
-### Why the record-return shape (`ArraySplit<T>`)
-
-OQ-19 considered three shapes for the two-way split: continuation-passing (a lambda receiving both halves), record return, and a multi-return language feature. The continuation-passing form is the smallest language addition but forces every call site to introduce a lambda for what is otherwise an ordinary binding step:
-
-```laterita
-arr.splitAt(mid, (left, right) -> {
-    spawnWorker(give(left));
-    processLocally(give(right));
-    return null;
-});
-```
-
-vs.
+For the two-way split OQ-19 considered three shapes — continuation-passing, record return, multi-return language feature. The record form reads as ordinary Java:
 
 ```laterita
 var s = arr.splitAt(mid);
@@ -535,33 +521,27 @@ spawnWorker(give(s.left));
 processLocally(give(s.right));
 ```
 
-The record form reads as ordinary Java. The multi-return language feature would add the most surface for the narrowest benefit and was rejected. The record form does require that `@bound` propagates through a record's fields out to its consumers — a small generalization of LIFE-03 already implicit in the existing lifetime rules.
+vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-03 already implicit in the lifetime rules.
 
-For per-chunk iteration the trade-off goes the other way: the chunk's lifetime is most naturally expressed as "valid for the duration of this callback," which is exactly what a lambda binding provides. `forEachChunk` / `forEachChunkExact` / `reduceChunks` use the continuation-passing form for that reason; the per-call chunk borrow expires at the end of each invocation, giving disjointness across successive yields without any explicit tracking.
+For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` / `reduceChunks` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 
-`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter requirement: only callers holding `@mut T` access can invoke it. Declaring `MutableConsumer<T> extends Consumer<T>` would let code holding a `Consumer<T>` reference call `accept(bare T)` on what is actually a `MutableConsumer<T>` whose body assumes `@mut` access — a contravariance violation, the same shape MOVE-10 forbids for `@mut`-narrowing overrides on classes.
-
-The reverse direction — `Consumer<T> extends MutableConsumer<T>` — would be sound, because a `Consumer` accepts strictly more than a `MutableConsumer` requires. But `Consumer` is in `java.util.function` and not modifiable. So `MutableConsumer` and `MutableReducer` stand as siblings of the JDK functional interfaces, not subtypes. A lambda literal at a call site selects the appropriate target by the receiving slot's declared type; no shared supertype is needed because the call-site type is always known from the surrounding signature.
+`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape MOVE-10 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
 ### Why no binding modifiers in type arguments
 
-A `List<@mut Foo>`-style annotation — placing `@mut` on a generic type argument rather than on a binding — would let a `@bound List<@mut Foo>` view grant `@mut Foo` element access by propagating the type-argument annotation into the substituted method signatures. The expressiveness is real (worker pools, grids, frames where the container shape is fixed but contents change), and Laterita's binding-mode model could in principle support it where Rust's reference-and-lifetime model cannot. We considered and rejected it.
+A `List<@mut Foo>` annotation would let a `@bound List<@mut Foo>` view grant `@mut Foo` element access by propagating the type-argument annotation into substituted method signatures. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), but the hazard is aliasing: two callers each holding `@bound List<@mut Foo>` would each call `list.get(0)` and both receive a `@mut Foo` to the same slot.
 
-The hazard is aliasing through shared borrows. Two callers each holding `@bound List<@mut Foo>` would each call `list.get(0)` and both receive a `@mut Foo` to the same slot. Avoiding this requires per-element exclusivity tracking — either statically, via a new piece of borrow-checker analysis that knows shared container views grant mutually-exclusive element borrows, or at runtime, via `RefCell`-style panic-on-double-borrow. Rust avoided the question by tying mutability to references and lifetimes and offering `Cell<T>` (`!Sync`, single-threaded) as the explicit interior-mutability escape hatch. Laterita follows the same discipline.
-
-The rule that falls out: binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, and the parameter/return slots of anonymous functional interfaces — never on a generic type argument. `MutableConsumer<T>` carries `@bound @mut` on the SAM's parameter declaration, fixed by the interface; instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]` for `T`, not the annotation. This keeps the substitution rule mechanically simple and rules out the parallel-`get(0)` hazard at the language level. Cases that genuinely need shared-container-with-mut-elements continue to use `Cell<T>` (STD-05) explicitly, paying the `@unsafe` cost visibly at the storage site.
+Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline: binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@bound @mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
 
 ### Why `T[]` is the canonical contiguous-mut backing
 
-When a stdlib container needs `@mut` element access through any binding to the container, the cheapest path is a `T[]` field. Java arrays expose slot writes through any reference, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap`'s bucket arrays, and the rest of the array-backed stdlib fit this pattern naturally. Reaching for `Cell<T>` is required only for non-array layouts — linked-list nodes, tree nodes — where the mut element lives behind an object field rather than an array slot.
+Java array slots write through any reference, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.
 
-### Why the cross-thread story is deferred
+### Why the cross-thread story is deferred (OQ-21)
 
-The ARR-01 / ARR-02 surface covers any in-place divide-and-conquer, any per-chunk iteration, any in-place fold on a single mut array — provided both halves of every split are processed in the same thread, possibly via a callback. It does not cover the case where the two halves are sent to *different* threads with independent ownership and independent drop. A `@bound @mut T[]` slice is a non-owning borrow tied to some upstream owner; moving it across a thread boundary requires escaping that bound, but the bound is exactly what guarantees the slice cannot outlive its source.
-
-Plain `Arc<T[]>` (STD-02) does not solve this: both `Arc<T[]>` handles share the *whole* allocation, not disjoint ranges, so mut access through them would require per-element `Mutex<T>` and defeat the disjointness story. The right primitive is a refcounted segmented owning slice — each handle carrying `(allocation_ptr, offset, length)` plus a share of the refcount, with the type-system invariant guaranteeing no two live handles overlap. This is the shape of Rust's `BytesMut::split_off` and underpins the zero-copy network buffer crates. It is deferred to OQ-21 because it adds a dedicated stdlib type and a non-trivial disjointness invariant, neither of which the single-thread case needs.
+ARR-01 / ARR-02 cover any in-place divide-and-conquer, per-chunk iteration, or in-place fold where both halves of every split stay in one thread (possibly via callback). They do not cover sending the halves to *different* threads with independent ownership — `@bound @mut T[]` is non-owning and cannot escape its source. Plain `Arc<T[]>` (STD-02) shares the whole allocation, not disjoint ranges; mut access would need per-element `Mutex<T>`. The right primitive is a refcounted segmented owning slice (`BytesMut::split_off` shape), deferred to OQ-21.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 

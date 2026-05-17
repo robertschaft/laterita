@@ -52,23 +52,23 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 
 ## OQ-21 — Cross-thread ownership of split mut-slices
 
-**Surfaced when:** resolving OQ-19. The single-thread splitting story (ARR-01, ARR-02) covers in-place divide-and-conquer where both halves are processed in the same thread, possibly via callbacks (`Arrays.forEachChunk`, `splitAt` followed by structured-concurrency scoped work). It does not cover the case where the two halves are sent to **different** threads with independent ownership and independent drop.
+**Surfaced when:** resolving OQ-19. ARR-01 / ARR-02 cover in-thread splitting (both halves processed in one thread, possibly via callback). They do not cover sending the halves to *different* threads with independent ownership.
 
-**The issue.** A `@bound @mut T[]` slice is a non-owning borrow tied to some upstream owner. To move it across a thread boundary it must escape that bound — but the bound is exactly what guarantees the slice cannot outlive its source. Plain `Arc<T[]>` (STD-02) does not help: both handles reach the *whole* allocation, not disjoint ranges, so mut access through them would require per-element `Mutex<T>` and defeat the disjointness story.
+**The issue.** `@bound @mut T[]` is a non-owning borrow; moving it across a thread boundary requires escaping its bound, which is exactly what guarantees it cannot outlive its source. `Arc<T[]>` (STD-02) doesn't help — both handles reach the whole allocation, not disjoint ranges, so mut access would need per-element `Mutex<T>` and defeat the disjointness story.
 
-What is needed is a refcounted **segmented owning slice**: each handle carries `(allocation_ptr, offset, length)` plus a share of the refcount on the backing allocation. The type-system invariant guarantees no two live handles overlap; mut access through a handle is then safe because the disjointness is structural. The allocation is freed when the last handle drops. This is the shape of Rust's `BytesMut::split_off`, and it underpins the zero-copy network buffer crates (`hyper`, `tokio-util`, `quinn`) and shared-arena patterns in DSP and image processing.
+The right primitive is a refcounted **segmented owning slice**: each handle carries `(allocation_ptr, offset, length)` plus a share of the refcount; the type-system invariant forbids overlapping live handles; allocation freed when the last handle drops. Shape of Rust's `BytesMut::split_off`; underpins zero-copy network buffer crates and shared-arena patterns in DSP and image processing.
 
-**The candidates.**
+**Candidates.**
 
-a. **Defer to per-element `Mutex<T>` and `Arc<T[]>`** — the conservative answer. Two threads `share()` the same `Arc<T[]>` and lock each element individually as they touch it. Correct, simple, slow (atomic per element), and forces synchronization on writes that are statically disjoint.
+a. **Per-element `Mutex<T>` over `Arc<T[]>`** — conservative, correct, slow (atomic per element), forces synchronization on statically-disjoint writes.
 
-b. **A dedicated `SharedSlice<T>` stdlib type** — refcounted segmented owning slice, with a `splitAt` that consumes the receiver and returns two `SharedSlice<T>` halves over disjoint ranges of the same backing allocation. Each half is movable across thread boundaries (non-`@local` per STD-07), borrowable as a `@bound @mut T[]` for the duration of work, and drops the allocation cooperatively via atomic refcount.
+b. **Dedicated `SharedSlice<T>` stdlib type** — segmented owning slice, `splitAt` consumes the receiver and returns two halves over disjoint ranges. Each half non-`@local` (STD-07), borrowable as `@bound @mut T[]` during work.
 
-c. **An owning-array generalization** — extend `Arc<T[]>` with range metadata and a splitting API, fusing (b) into the existing stdlib type rather than adding a new one. Simpler surface, complicates `Arc<T>`'s semantics for non-array `T`.
+c. **Extend `Arc<T[]>` with range metadata** — fuses (b) into the existing type; simpler surface, complicates `Arc<T>` semantics for non-array `T`.
 
-**Why it matters.** Determines whether thread-spawn-and-join parallelism over a single owned array — the rayon idiom in its full form — is expressible without per-element locking. The single-thread story (OQ-19 resolution) already covers callback-based parallelism via `Arrays.forEachChunk` and structured-concurrency-style scoped workers. The unresolved case is true `Thread.start(...)` with each thread fully owning its half of the data for the duration.
+**Why it matters.** Determines whether `Thread.start(...)`-style parallel-decomposition over one owned array — the full rayon idiom — is expressible without per-element locking. Callback-based parallelism is already covered by the OQ-19 resolution.
 
-**Related codes:** ARR-01, ARR-02, STD-02 (Arc), STD-09 (Mutex), STD-07 (`@local`), THR-01.
+**Related codes:** ARR-01, ARR-02, STD-02, STD-07, STD-09, THR-01.
 
 # Resolved Questions
 
