@@ -385,13 +385,13 @@ Lazy resolution gives near-zero cost in the common case (throw, catch, recover) 
 
 ---
 
-## Functional Interfaces (FN-01 through FN-03)
+## Functional Interfaces (FN-01)
 
 ### Why "functional interface" rather than "function type"
 
 Earlier drafts called this construct a "function type," following Scala / Kotlin / TypeScript usage. The Java audience reads "functional interface" more directly: it is the term for "interface with one abstract method" they have used since Java 8, and the construct here is exactly that with the *interface declaration* elided. Calling it a functional interface — anonymous and structural — costs nothing and lands faster than introducing a parallel vocabulary.
 
-The "anonymous" qualifier matters when distinguishing from Java's nominal functional interfaces. Both forms coexist: a `Function<T, R>` declaration is still a functional interface; `(T) -> R` is an anonymous functional interface that has the same shape without the published name. FN-02 keeps them as distinct types; the user picks which one to use based on whether the contract deserves a name.
+The "anonymous" qualifier matters when distinguishing from Java's nominal functional interfaces. Both forms coexist: a `Function<T, R>` declaration is still a functional interface; `(T) -> R` is an anonymous functional interface that has the same shape without the published name. CLO-07 keeps them as distinct types; the user picks which one to use based on whether the contract deserves a name.
 
 ### Why structural rather than nominal (FN-01)
 
@@ -405,19 +405,13 @@ The trade-off is that source-level `import` of an anonymous functional interface
 
 OQ-05 is dissolved by this decision: there are no closure-interface names to fix because there are no closure interfaces.
 
-### Why functional interfaces are kept separate from closures (FN vs CLO)
+### Why FN covers only the type-syntax shorthand
 
-A functional interface is a type-system concept; a closure is a value-construction concept. The type `(int) -> int` exists independent of how its values are produced — a method reference, a lambda, or any other future construction yields the same type. Putting the type-system rules in FN and the value-construction rules in CLO mirrors the conceptual boundary.
-
-The slot-mode rule (CLO-03) and the override/overload variance for FI parameters (CLO-05) live on the closure side because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. FN keeps the type syntax, identity, and synthesis; CLO covers everything that depends on the value living inside a binding.
-
-### Why anonymous synthesis (FN-03)
-
-Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail.
+FN-01 is intentionally narrow: it defines the anonymous type expression `(P1, …, Pn) -> R` as syntactic sugar for omitting a nominal interface declaration. All behavioral rules — how FI values are held and invoked through a binding (CLO-03), type identity (CLO-07), anonymous class synthesis (CLO-08), and the lambda-to-FI fit relation (CLO-04) — live in the closure chapter. The organizing principle is that the FN section answers "what does this type expression mean?" while the CLO section answers "what can you do with a value of that type?"
 
 ---
 
-## Closures (CLO-01 through CLO-06)
+## Closures (CLO-01 through CLO-08)
 
 ### Why three modes, inferred (CLO-01, CLO-02)
 
@@ -429,9 +423,9 @@ This is not a new rule — it falls directly out of BIND-06 and BIND-07. A funct
 
 ### Why lambdas inhabit functional interfaces (CLO-04)
 
-A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-side rules (FN-01 syntax, CLO-03 slot mode). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
+A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-syntax shorthand (FN-01) and slot mode (CLO-03). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
 
-We considered making lambdas the *only* construction (and so collapsing FN and CLO into one section). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side and value-side rules separate keeps the type-system surface stable as more value-constructions appear.
+We considered making lambdas the *only* construction (and so merging FN entirely into CLO). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. FN-01 retains a separate section because the type-expression syntax is a grammar concern that exists independent of any construction.
 
 ### Why slot-mode override variance is inverted (CLO-05)
 
@@ -444,6 +438,14 @@ For a functional-interface slot `mut (T) -> R fn`, the modifier still names the 
 ### Why closures carry capture lifetimes (CLO-06)
 
 A closure that borrows `name` cannot outlive `name`. This is the same lifetime-bounded-by-input principle from LIFE-02, applied to closures. Without it, you could create a closure, the captured variable would die, and calling the closure would deref freed memory. The standard ownership rules force this, but it's worth calling out as a separate requirement because closures are where it bites people.
+
+### Why FI type identity lives here (CLO-07)
+
+Identity of anonymous functional interfaces is defined in the closure chapter because it directly governs which closures fit which slots (CLO-04). Two FI types that differ in a parameter mode or `@bound` annotation accept different sets of closures; the identity rule makes that difference visible and prevents implicit conversion between them. Placing the rule near CLO-04 and CLO-05 keeps all fit-and-variance reasoning in one place.
+
+### Why anonymous synthesis lives here (CLO-08)
+
+Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail. The rule belongs in the closure chapter because synthesis is triggered by value-construction events (a lambda literal, a method reference), not by the mere appearance of a type expression.
 
 ---
 
