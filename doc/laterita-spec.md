@@ -970,7 +970,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 ```laterita
 class T[] {
-    @mut @bound ArraySplit<T> splitAt(int mid);
+    @mut @bound BoundPair<T[], T[]> splitAt(int mid);
 
     @mut void forEachChunk(int chunkSize,
             @mut (@mut T[]) -> void body);
@@ -978,7 +978,7 @@ class T[] {
     @mut void forEachChunkExact(int chunkSize,
             @mut (@mut T[]) -> void body);
 
-    ConcurrentArraySplit<T> splitOff(@take T[] this, int mid);
+    OwnedPair<T[], T[]> splitOff(@take T[] this, int mid);
 }
 ```
 
@@ -1009,7 +1009,7 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> ArraySplit<T> splitAt(
+    public static <T> BoundPair<T[], T[]> splitAt(
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
@@ -1020,7 +1020,7 @@ public final class Arrays {
             @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
 
-    public static <T> ConcurrentArraySplit<T> splitOff(
+    public static <T> OwnedPair<T[], T[]> splitOff(
             @take T[] arr, int mid);
 
     public static <T> Stream<@bound T> stream(@bound T[] arr);
@@ -1042,26 +1042,26 @@ public interface MutableConsumer<T> {
 }
 ```
 
-### ARR-04 — `ArraySplit<T>`
+### ARR-04 — `BoundPair<L, R>`
 
-Top-level record returned by `splitAt`.
+General-purpose record carrying a pair of borrowed mutable values. Returned by `splitAt` (instantiated as `BoundPair<T[], T[]>`); reusable by any future API returning a pair of `@bound @mut` values, including heterogeneous (`L ≠ R`) pairs.
 
 ```java
 package laterita.lang;
 
-public record ArraySplit<T>(
-        @bound @mut T[] left,
-        @bound @mut T[] right) {}
+public record BoundPair<L, R>(
+        @bound @mut L left,
+        @bound @mut R right) {}
 ```
 
-### ARR-05 — `ConcurrentArraySplit<T>`
+### ARR-05 — `OwnedPair<L, R>`
 
-Top-level record returned by `splitOff`. Components are owning `T[]` values over disjoint ranges of the source allocation; accessors participate in partial-move tracking (MOVE-07), so both `left()` and `right()` may be consumed from the same instance. The record itself is non-`@local`.
+General-purpose record carrying a pair of owned values. Returned by `splitOff` (instantiated as `OwnedPair<T[], T[]>`); reusable by any future API returning a pair of owned values. Accessors participate in partial-move tracking (MOVE-07), so both `left()` and `right()` may be consumed from the same instance. The record itself is non-`@local`.
 
 ```java
 package laterita.lang;
 
-public record ConcurrentArraySplit<T>(T[] left, T[] right) {}
+public record OwnedPair<L, R>(L left, R right) {}
 ```
 
 ---
