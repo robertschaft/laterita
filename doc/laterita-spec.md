@@ -667,7 +667,7 @@ The `throws` clause is permitted as documentation. A method may list the excepti
 
 ## 10. Functional Interfaces
 
-Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface. FN-01 defines this syntax as pure shorthand for avoiding a named interface declaration. The rules governing how FI values are held, invoked, typed, and synthesized live in the closure chapter (CLO-03 through CLO-08).
+Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface. FN-01 defines this syntax, FN-02 its type identity, and FN-03 its synthesis model. The rules governing how FI values are held and invoked through a binding live in the closure chapter (CLO-03 through CLO-06).
 
 ### FN-01 — Anonymous functional interface syntax
 
@@ -687,6 +687,14 @@ where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@m
 ```
 
 A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (COMP-06).
+
+### FN-02 — Identity
+
+Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
+
+### FN-03 — Anonymous synthesis per construction
+
+Each value-construction of an anonymous functional interface yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
 
 ---
 
@@ -780,7 +788,7 @@ A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional i
 - The target slot's expected type (target typing), when the lambda appears in a position with a known functional-interface expectation; or
 - Inference from the body together with any explicit parameter annotations otherwise.
 
-The lambda's capture mode (CLO-01) determines the receiver mode of the synthesized SAM (CLO-08), and the slot's mode (CLO-03) must admit that receiver mode for the assignment to type-check:
+The lambda's capture mode (CLO-01) determines the receiver mode of the synthesized SAM (FN-03), and the slot's mode (CLO-03) must admit that receiver mode for the assignment to type-check:
 
 | Closure capture mode | SAM receiver  | Bare slot | `@mut` slot | `@take` slot |
 |---|---|:---:|:---:|:---:|
@@ -879,19 +887,11 @@ class Bare<T> implements MutSource<T> {
 }
 ```
 
-The SAM type itself is invariant under override (CLO-07): two anonymous FIs whose parameter or return modes differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
+The SAM type itself is invariant under override (FN-02): two anonymous FIs whose parameter or return modes differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
 
 ### CLO-06 — Capture lifetimes propagate
 
 A closure value carries the lifetimes of every binding it captures by borrow. The closure cannot outlive any captured borrow. Lifetime intersection (LIFE-03) applies when multiple borrows are captured.
-
-### CLO-07 — FI type identity
-
-Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
-
-### CLO-08 — Anonymous FI synthesis per construction
-
-Each value-construction of an anonymous functional interface (most commonly a lambda literal per CLO-04, also a method reference) yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
 
 ---
 
