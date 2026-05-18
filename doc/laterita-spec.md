@@ -667,7 +667,7 @@ The `throws` clause is permitted as documentation. A method may list the excepti
 
 ## 10. Functional Interfaces
 
-Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface. FN-01 defines this syntax, FN-02 its type identity, and FN-03 its synthesis model. The rules governing how FI values are held and invoked through a binding live in the closure chapter (CLO-03 through CLO-06).
+Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface.
 
 ### FN-01 — Anonymous functional interface syntax
 
