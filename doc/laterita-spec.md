@@ -107,6 +107,14 @@ conn.close();        // OK: conn was owned; consumed by close()
 conn.use();          // ERROR: conn was consumed
 ```
 
+### BIND-08 — Binding modifiers are banned inside generic type arguments
+
+`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, local bindings, fields, and FI parameter/return slots — never on a generic type argument inside `<...>`.
+
+`List<@mut Foo>` and `Stream<@bound T>` are compile errors. The correct form annotates the binding that holds the generic type: `@mut List<Foo>`, `@bound Stream<T>`.
+
+The prohibition exists because a type-argument annotation would propagate into substituted method signatures and silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly.
+
 ---
 
 ## 2. Mutability Rules (Cross-cutting)
@@ -1027,7 +1035,7 @@ public final class Arrays {
 }
 ```
 
-`stream` borrows the receiver and exposes its elements as an `@bound Stream<T>` — the JDK `Stream<T>` type returned as a borrow tied to the source array (LIFE-02). The `@bound` sits on the return type itself, not on the type argument, in line with the rule that binding modifiers appear only at binding positions. Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and the stream does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
+`stream` borrows the receiver and exposes its elements as an `@bound Stream<T>` — the JDK `Stream<T>` type returned as a borrow tied to the source array (LIFE-02). The `@bound` sits on the return type itself, not on the type argument (BIND-08). Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and the stream does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
 
 ### ARR-03 — `MutableConsumer<T>`
 

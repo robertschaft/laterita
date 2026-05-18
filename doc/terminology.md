@@ -20,6 +20,9 @@ A binding that holds a reference to a value owned elsewhere, rather than owning 
 ### @bound (annotation on return types and parameters)
 An annotation marking that a returned value is a borrow, not an owned value. Placed on the return type (e.g., `@bound String substring(...)`) or on a parameter type (e.g., `@bound String s`). Tells the compiler that the return value's lifetime is limited to the lifetime of the marked source. See `LIFE-02`.
 
+### binding modifiers
+The three annotations `@bound`, `@mut`, and `@take` that carry ownership/lifetime semantics. They are legal only at *binding positions*: parameters, return types, local bindings, fields, and FI parameter/return slots. They are never permitted inside generic type argument brackets `<...>` (BIND-08). To annotate a generic return, place the modifier outside the angle brackets: `@bound Stream<T>`, not `Stream<@bound T>`.
+
 ### BoundPair<L, R>
 A general-purpose record in `laterita.lang` carrying two `@bound @mut` values. Returned by `T[].splitAt(int)` (and its static `laterita.lang.Arrays.splitAt` mirror) as `BoundPair<T[], T[]>`, where both halves are mutable borrows over disjoint ranges of the receiver, tied to the receiver's source and expiring together. Heterogeneous instantiations (`L ≠ R`) and future non-array uses are also supported. For the owning analog, see `OwnedPair<L, R>`. See `ARR-04`.
 
