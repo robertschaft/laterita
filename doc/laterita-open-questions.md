@@ -86,4 +86,4 @@ c. **Extend `Arc<T[]>` with range metadata** — fuses (b) into the existing typ
 * OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
 * OQ-17 — Public expression of buffer splitting for `String` (resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting resolved by OQ-19 → ARR-01/02)
 * OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
-* OQ-19 — Ownership splitting of mut arrays (resolved by ARR-01/02/03: methods on `T[]` and `laterita.lang.Arrays`, with `MutableConsumer`/`MutableReducer` for the `.java` surface; cross-thread independent-ownership case deferred to OQ-21)
+* OQ-19 — Ownership splitting of mut arrays (resolved by ARR-01/02/03/04: methods on `T[]` and `laterita.lang.Arrays`, `MutableConsumer` for the `.java` surface, top-level `ArraySplit<T>` record; cross-thread independent-ownership case deferred to OQ-21)

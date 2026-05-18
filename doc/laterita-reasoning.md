@@ -523,7 +523,9 @@ processLocally(give(s.right));
 
 vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-03 already implicit in the lifetime rules.
 
-For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` / `reduceChunks` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
+For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
+
+A dedicated `reduceChunks` was considered and rejected. Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...);` — the closure captures `acc` as a Mutate-mode binding (CLO-01) and the `@mut` body slot accepts mutating closures (FN-01). The only case `reduceChunks` covered uniquely was "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and doesn't appear in the Rust array idioms we surveyed. Dropping it kept the surface at three methods instead of four; callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 

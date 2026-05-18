@@ -964,7 +964,7 @@ class String {
 
 ### ARR-01 — Array methods on `T[]` (`.lat` surface)
 
-`T[]` exposes borrow-checked splitting and chunked iteration. The `.java` mirror is `laterita.lang.Arrays` (ARR-02).
+`T[]` exposes borrow-checked splitting and chunked iteration. The `.java` mirror is `laterita.lang.Arrays` (ARR-02). `ArraySplit<T>` is declared in ARR-04.
 
 ```laterita
 class T[] {
@@ -975,17 +975,16 @@ class T[] {
 
     @mut void forEachChunkExact(int chunkSize,
             @mut (@bound @mut T[]) -> void body);
-
-    <R> @mut R reduceChunks(int chunkSize, @take R init,
-            @mut (@take R, @bound @mut T[]) -> R body);
 }
 ```
 
 `splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a `@bound @mut T[]` whose bound expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06.
 
+Fold-style reductions over chunks are expressed by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
+
 ### ARR-02 — `laterita.lang.Arrays` static surface (`.java` surface)
 
-`.java` mirror of ARR-01 as static methods, paired with ARR-03. Both surfaces compile to the same operations per COMP-06.
+`.java` mirror of ARR-01 as static methods, paired with ARR-03 and ARR-04. Both surfaces compile to the same operations per COMP-06.
 
 ```java
 package laterita.lang;
@@ -1003,21 +1002,12 @@ public final class Arrays {
     public static <T> void forEachChunkExact(
             @bound @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
-
-    public static <T, R> R reduceChunks(
-            @bound @mut T[] arr, int chunkSize,
-            @take R init,
-            @mut MutableReducer<T[], R> body);
-
-    public record ArraySplit<T>(
-            @bound @mut T[] left,
-            @bound @mut T[] right) {}
 }
 ```
 
-### ARR-03 — `MutableConsumer<T>` and `MutableReducer<T, R>`
+### ARR-03 — `MutableConsumer<T>`
 
-The written-out form of the anonymous functional types used by ARR-01, for ARR-02 callers (FN-01 is `.lat`-only).
+The written-out form of the anonymous functional type used by ARR-01, for ARR-02 callers (FN-01 is `.lat`-only).
 
 ```java
 package laterita.lang;
@@ -1026,11 +1016,18 @@ package laterita.lang;
 public interface MutableConsumer<T> {
     void accept(@bound @mut T data);
 }
+```
 
-@FunctionalInterface
-public interface MutableReducer<T, R> {
-    R apply(@take R accumulator, @bound @mut T data);
-}
+### ARR-04 — `ArraySplit<T>`
+
+Top-level record returned by `splitAt` on both surfaces (ARR-01, ARR-02).
+
+```java
+package laterita.lang;
+
+public record ArraySplit<T>(
+        @bound @mut T[] left,
+        @bound @mut T[] right) {}
 ```
 
 ---
