@@ -501,7 +501,7 @@ Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tra
 
 ---
 
-## Arrays (ARR-01 through ARR-03)
+## Arrays (ARR-01 through ARR-06)
 
 ### Why a dedicated section for arrays (resolving OQ-19)
 
@@ -541,9 +541,21 @@ Rust avoids the question by tying mutability to references and offering `Cell<T>
 
 Java array slots write through any reference, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.
 
-### Why the cross-thread story is deferred (OQ-21)
+### Why the cross-thread story splits in two (ARR-05, resolving OQ-21)
 
-ARR-01 / ARR-02 cover any in-place divide-and-conquer, per-chunk iteration, or in-place fold where both halves of every split stay in one thread (possibly via callback). They do not cover sending the halves to *different* threads with independent ownership — `@bound @mut T[]` is non-owning and cannot escape its source. Plain `Arc<T[]>` (STD-02) shares the whole allocation, not disjoint ranges; mut access would need per-element `Mutex<T>`. The right primitive is a refcounted segmented owning slice (`BytesMut::split_off` shape), deferred to OQ-21.
+OQ-21 asked how a single owned array can be divided so the halves are independently usable by different threads. Two distinct usage shapes need different primitives, and trying to cover both with one API underweights whichever shape isn't its native fit.
+
+**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `ConcurrentArraySplit<T>` (ARR-06) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
+
+**Scoped massive parallelism.** GPUs and thread pools want to dispatch the same body across many chunks simultaneously and join before continuing. Each invocation is bounded, so borrowed slices suffice. `parallelForEachChunk` takes a bare-slot body (Read-mode per CLO-01, subject to STD-07's `@local` rules), partitions the receiver, and lets the runtime fan chunks out to any number of workers. CLO-01 explicitly admits concurrent invocation for Read-mode closures; the STD-07 condition restricts captures to non-`@local` types, which the body must satisfy. Disjointness is the same MOVE-06 witness as the sequential `forEachChunk`, lifted across threads by the slot mode and the join-before-return contract.
+
+The two shapes are intentionally separate APIs rather than a unified one. Owning splits pay refcount cost; chunk fan-out doesn't. Mixing them — say, "owning fan-out" — would be either a parallel-pool of refcounted slices (the refcount cost of (1) without the unboundedness payoff) or a `Future<T[]>` return shape that complicates the core array type. Keeping `splitOff` as a one-shot ownership transfer and `parallelForEachChunk` as a join-before-return iteration matches what real workloads need: rayon-style `Thread.start(give(half))` for unbounded workers, GPU/pool fan-out for scoped batches.
+
+The candidate options enumerated in OQ-21 ((a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata) all underweighted the second shape: each is a single owning-segment primitive that doesn't add the scoped-parallel surface. The chosen design folds the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) and adds the parallel iteration surface as a peer method. Callers see no new type for the slice — `T[]` *is* the owning slice — and one new record (`ConcurrentArraySplit<T>`) that mirrors `ArraySplit<T>`.
+
+Why not overload `splitAt` to cover both: the two forms differ only in receiver mode (`@mut` borrow vs `@take` consume), and MOVE-09 makes that distinction a different overload with no call-site disambiguator (no `give(this)` syntax exists). Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust-precedent (`BytesMut::split_off`) and the only spelling that resolves unambiguously at every call site.
+
+Reductions are not specified as a dedicated primitive because `Arc<Mutex<R>>` (STD-02 + STD-09) already composes correctly with the parallel iteration and keeps lock contention to one acquisition per chunk when the body folds chunk-locally before publishing the partial result. A bespoke reducer would either duplicate this composition or restrict to numeric types; the cost in API surface exceeds the ergonomic gain.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
@@ -760,5 +772,13 @@ It's worth being explicit about a few things this design deliberately doesn't do
 **Not a Rust replacement.** Rust is more permissive in some ways (raw `unsafe { }` blocks, multiple smart-pointer styles, no inheritance) and more disciplined in others (no exceptions, lifetimes always visible, no implicit conversions). Laterita makes different tradeoffs because its target audience is Java developers, not systems programmers coming from C++.
 
 **Not a fork of Java's standard library.** Most of Java's `java.util` would need to be reimplemented for Laterita's ownership rules. `ArrayList`, `HashMap`, `TreeMap`, `String`, `StringBuilder` — all have different semantics under ownership. The names are preserved; the implementations are new.
+
+---
+
+## Resolved Open Questions (Tombstones)
+
+Each entry below is a short tombstone: the resolution path is recorded above in the reasoning section it cites, and the full list of resolved OQs lives in `laterita-open-questions.md`. Tombstones are added here when an OQ is resolved so this document records the resolution at a glance.
+
+* **OQ-21** — Cross-thread ownership of split mut-slices. Resolved by ARR-05 / ARR-06: consuming `T[].splitOff` returns two owning halves wrapped in `ConcurrentArraySplit<T>` (long-lived workers), and `T[].parallelForEachChunk` covers scoped fan-out for thread pools and GPU compute queues. See *Why the cross-thread story splits in two* above.
 
 **Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Several of those questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.

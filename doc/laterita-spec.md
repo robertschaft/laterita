@@ -1032,6 +1032,83 @@ public record ArraySplit<T>(
         @bound @mut T[] right) {}
 ```
 
+### ARR-05 — Cross-thread split and parallel iteration
+
+`T[]` exposes two operations that lift array work across threads: a consuming `splitOff` that yields owning halves usable by independent long-lived threads, and a `parallelForEachChunk` that fans chunks out to a thread pool or GPU compute queue and joins before returning. Together they resolve OQ-21, completing the cross-thread story whose in-thread foundation is ARR-01 through ARR-04 (OQ-19).
+
+`.lat` surface:
+
+```laterita
+class T[] {
+    public ConcurrentArraySplit<T> splitOff(@take T[] this, int mid);
+
+    @mut void parallelForEachChunk(int chunkSize,
+            (@mut T[]) -> void body);
+}
+```
+
+`.java` mirror on `laterita.lang.Arrays` (paired with ARR-03 and ARR-06):
+
+```java
+public static <T> ConcurrentArraySplit<T> splitOff(
+        @take T[] arr, int mid);
+
+public static <T> void parallelForEachChunk(
+        @mut T[] arr, int chunkSize,
+        MutableConsumer<T[]> body);
+```
+
+**`splitOff`.** Consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`. Each half is a regular `T[]` — owning, non-`@local`, supporting the full ARR-01 / ARR-02 surface (further `splitOff`, `splitAt`, chunked iteration, element access). The halves share the underlying allocation through an internal refcount; the allocation is freed when the last half drops. The receiver binding is consumed (MOVE-02); subsequent uses are rejected. A different method name from `splitAt` (ARR-01) is required because the receiver mode differs and MOVE-09 would otherwise leave call sites without a disambiguator.
+
+**`parallelForEachChunk`.** Partitions the receiver into contiguous chunks of `chunkSize` elements (the trailing chunk may be smaller) and invokes `body` on each. The body slot is bare, so per CLO-01 / CLO-04 the body is a Read-mode closure that may be invoked concurrently from any number of threads. Chunks are pairwise disjoint by construction (MOVE-06); each chunk borrow expires before the call returns, so the receiver's borrow is intact at the return. The dispatch target is implementation-defined: worker-thread pool, virtual-thread fan-out, and GPU compute queue all satisfy this signature. Captures of the body must satisfy STD-07 (non-`@local`); the Read-mode rule already restricts them to immutable borrows.
+
+No dedicated reducer primitive is provided. Aggregation across chunks composes with `Mutex<R>` (STD-09) for stack-local reducers, with `Arc<Mutex<R>>` (STD-02 + STD-09) when the accumulator outlives the call, or with a stdlib atomic for numeric ones.
+
+**Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) and then moved into an independent thread that may live arbitrarily long; the allocation outlives both threads via the shared refcount. The pre-extraction is necessary because a closure cannot consume out of a captured record — each lambda captures and consumes only its own owning binding.
+
+```laterita
+@take int[] arr  = readInput();
+var split        = arr.splitOff(arr.length / 2);
+@take int[] left  = give(split.left());                  // partial move out of split
+@take int[] right = give(split.right());
+var t1 = Thread.ofVirtual().start(() -> heavy(give(left)));
+var t2 = Thread.ofVirtual().start(() -> heavy(give(right)));
+t1.join();
+t2.join();
+```
+
+**Example — modify chunks in parallel and accumulate.** Each worker mutates its own chunk in place (squaring the values) and contributes a partial sum to a shared `AtomicLong`. `AtomicLong` is `@nonlocal` and its mutation methods are bare-receiver in Laterita's binding (internally synchronized via atomic ops, the same shape as `Mutex.with`), so it composes with a Read-mode capture without lock or wrapper.
+
+```laterita
+@mut long[] data = readData();
+var sum = new AtomicLong(0L);
+
+data.parallelForEachChunk(1024, chunk -> {
+    @mut long chunkSum = 0L;
+    for (int i = 0; i < chunk.length; i++) {
+        chunk[i] = chunk[i] * chunk[i];                  // in-place mutation of the chunk
+        chunkSum = chunkSum + chunk[i];
+    }
+    sum.addAndGet(chunkSum);                             // contended once per chunk, not per element
+});
+
+long total = sum.get();
+```
+
+`chunk` is the SAM parameter (`@mut T[]`) and is independent across invocations, so the per-element writes never contend. Folding chunk-locally into `chunkSum` and publishing the partial result once per chunk limits the atomic-CAS contention to one operation per worker rather than one per element. `Mutex<R>` (STD-09) is the alternative when the reduction is not a single primitive — wrap a custom mutable accumulator (`Mutex<MyAcc>`); a bare `Mutex<Long>` does not work because `java.lang.Long` is immutable and exposes nothing to mutate through the `@bound @mut Long` the closure receives. For accumulators that need to outlive the call (e.g., handed to a long-lived background thread), wrap the value in `Arc` (e.g. `Arc<AtomicLong>` or `Arc<Mutex<MyAcc>>`) and share by `.share()` per STD-02.
+
+### ARR-06 — `ConcurrentArraySplit<T>`
+
+Top-level record returned by `splitOff` on both surfaces (ARR-05).
+
+```java
+package laterita.lang;
+
+public record ConcurrentArraySplit<T>(T[] left, T[] right) {}
+```
+
+Components are owning `T[]` values over disjoint ranges of the source allocation. Accessors yield owning components and participate in partial-move tracking (MOVE-07), so both `left()` and `right()` may be consumed from the same instance. The record itself is non-`@local`.
+
 ---
 
 ## 14. Unsafe
