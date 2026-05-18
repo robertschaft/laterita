@@ -385,7 +385,7 @@ Lazy resolution gives near-zero cost in the common case (throw, catch, recover) 
 
 ---
 
-## Functional Interfaces (FN-01 through FN-03)
+## Functional Interfaces (FN-01)
 
 ### Why "functional interface" rather than "function type"
 
@@ -405,15 +405,15 @@ The trade-off is that source-level `import` of an anonymous functional interface
 
 OQ-05 is dissolved by this decision: there are no closure-interface names to fix because there are no closure interfaces.
 
-### Why functional interfaces are kept separate from closures (FN vs CLO)
+### Why FN covers type syntax, identity, and synthesis — but not slot-mode behavior
 
-A functional interface is a type-system concept; a closure is a value-construction concept. The type `(int) -> int` exists independent of how its values are produced — a method reference, a lambda, or any other future construction yields the same type. Putting the type-system rules in FN and the value-construction rules in CLO mirrors the conceptual boundary.
+FN-01 through FN-03 address the type-system properties of anonymous functional interfaces: what the type expression means (FN-01), when two such types are the same (FN-02), and how values of that type are materialized (FN-03). These rules exist independent of how the value is used through a binding.
 
-The slot-mode rule (CLO-03) and the override/overload variance for FI parameters (CLO-05) live on the closure side because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. FN keeps the type syntax, identity, and synthesis; CLO covers everything that depends on the value living inside a binding.
+The slot-mode rules (CLO-03) and override/overload variance (CLO-05) live in the closure chapter because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. The organizing principle is that the FN section answers "what is this type?" while the CLO section answers "what can you do with a binding that holds a value of that type?"
 
-### Why anonymous synthesis (FN-03)
+### Why anonymous synthesis lives in FN (FN-03)
 
-Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail.
+Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail. The rule belongs in FN because synthesis is a property of the anonymous FI type, not of the binding that holds it.
 
 ---
 
@@ -429,9 +429,9 @@ This is not a new rule — it falls directly out of BIND-06 and BIND-07. A funct
 
 ### Why lambdas inhabit functional interfaces (CLO-04)
 
-A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-side rules (FN-01 syntax, CLO-03 slot mode). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
+A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-syntax shorthand (FN-01) and slot mode (CLO-03). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
 
-We considered making lambdas the *only* construction (and so collapsing FN and CLO into one section). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side and value-side rules separate keeps the type-system surface stable as more value-constructions appear.
+We considered making lambdas the *only* construction (and so collapsing FN and CLO into one section). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the type-system surface stable as more value-constructions appear.
 
 ### Why slot-mode override variance is inverted (CLO-05)
 
