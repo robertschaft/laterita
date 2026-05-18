@@ -303,6 +303,8 @@ A bare return type means the function gives the caller an owned value. To declar
 - **Parameter source**: annotate the parameter type with `@bound`. The return is bound to that parameter.
 - **Receiver source**: annotate the return type with `@bound`. The return is bound to `this`.
 
+`@bound` is meaningful only when there is something to bind. It requires a non-`void` return for the parameter-source form, and an instance method (not `static`) for the receiver-source form. Misuses are rejected.
+
 ```laterita
 String upperCase(String s);                          // owned return
 
@@ -971,14 +973,14 @@ class T[] {
     @mut @bound ArraySplit<T> splitAt(int mid);
 
     @mut void forEachChunk(int chunkSize,
-            @mut (@bound @mut T[]) -> void body);
+            @mut (@mut T[]) -> void body);
 
     @mut void forEachChunkExact(int chunkSize,
-            @mut (@bound @mut T[]) -> void body);
+            @mut (@mut T[]) -> void body);
 }
 ```
 
-`splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a `@bound @mut T[]` whose bound expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06.
+`splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06.
 
 Fold-style reductions over chunks are expressed by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
 
@@ -996,11 +998,11 @@ public final class Arrays {
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
-            @bound @mut T[] arr, int chunkSize,
+            @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
 
     public static <T> void forEachChunkExact(
-            @bound @mut T[] arr, int chunkSize,
+            @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
 }
 ```
@@ -1014,7 +1016,7 @@ package laterita.lang;
 
 @FunctionalInterface
 public interface MutableConsumer<T> {
-    void accept(@bound @mut T data);
+    void accept(@mut T data);
 }
 ```
 

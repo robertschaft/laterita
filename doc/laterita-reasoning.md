@@ -24,7 +24,7 @@ Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita 
 
 The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible subset enumerated in COMP-06, nothing else about it has to change to remain parseable by the Java ecosystem.
 
-The cost is visual heft: `void f(@bound @mut Buf b)` reads more loudly than `void f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
+The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
@@ -535,7 +535,7 @@ A dedicated `reduceChunks` was considered and rejected. Every in-place reduce ex
 
 A `List<@mut Foo>` annotation would let a `@bound List<@mut Foo>` view grant `@mut Foo` element access by propagating the type-argument annotation into substituted method signatures. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), but the hazard is aliasing: two callers each holding `@bound List<@mut Foo>` would each call `list.get(0)` and both receive a `@mut Foo` to the same slot.
 
-Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline: binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@bound @mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
+Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline: binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
 
 ### Why `T[]` is the canonical contiguous-mut backing
 
