@@ -667,7 +667,7 @@ The `throws` clause is permitted as documentation. A method may list the excepti
 
 ## 10. Functional Interfaces
 
-Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface. The rules in this section govern these anonymous functional interfaces as types — independent of how their values are constructed. A lambda literal (CLO-04) is one way to construct a value; a method reference is another. The slot-mode rules that govern how an FI value is held and invoked live with the closure rules (CLO-03, CLO-05).
+Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface.
 
 ### FN-01 — Anonymous functional interface syntax
 
@@ -688,13 +688,59 @@ where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@m
 
 A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (COMP-06).
 
+### FN-02 — Identity
+
+Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
+
+### FN-03 — Anonymous synthesis per construction
+
+Each value-construction of an anonymous functional interface yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
+
+---
+
+## 11. Closures
+
+### CLO-01 — Three capture modes
+
+Closures are classified by how they use captured bindings:
+
+- **Read** — captured bindings are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `@local` rules of STD-07).
+- **Mutate** — captured bindings include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
+- **Consume** — captured bindings include a moved value; closure may be invoked exactly once.
+
+### CLO-02 — Capture mode is inferred
+
+The compiler infers a closure's capture mode from the body. The user does not declare it.
+
+### CLO-03 — Slot mode controls invocation
+
+A binding of functional-interface type follows the standard parameter-modifier rules. The binding's mode controls which receiver-mode method on the held value may be invoked through it (BIND-06, BIND-07):
+
+| Slot mode | SAM receiver modes the slot can invoke   | Why (BIND-06 / BIND-07) |
+|---|---|---|
+| bare      | bare-receiver only                       | a bare binding cannot call `@mut` or receiver-consuming methods |
+| `@mut`    | bare- or mut-receiver                    | a `@mut` binding can call bare and `@mut` methods, but cannot consume the receiver |
+| `@take`   | any (bare-, mut-, or take-receiver)      | a `@take` binding owns the value and may consume it |
+
+```laterita
+(int, int) -> int adder;           // bare slot — bare-receiver SAMs only
+@mut (int, int) -> int counter;    // mut slot — bare or mut SAMs
+@take () -> void onClose;          // take slot — any SAM, including take-receiver
+
+counter(1, 2);                     // OK: @mut binding may invoke a bare- or @mut-receiver SAM
+adder(1, 2);                       // OK: bare binding invokes the bare-receiver SAM
+onClose();                         // OK: invokes the held SAM; the slot is consumed if the SAM is take-receiver
+```
+
+The slot mode bounds invocation; whether a *particular* construction (a lambda per CLO-04, or a method reference) yields a SAM whose receiver mode fits a given slot is governed by the fit relation in CLO-04.
+
 A binding of functional-interface type combines two layers of modifiers. The parameter `fn` in
 
 ```laterita
 <T, R> void process(@mut (@take T) -> R fn) { /* … */ }
 ```
 
-carries `@mut` as the **slot mode** on the binding (CLO-03), and `@take` as the **SAM-parameter mode** inside the type expression. The type expression is the same shape it would have if a nominal interface were declared and then used as the slot's type:
+carries `@mut` as the **slot mode** on the binding, and `@take` as the **SAM-parameter mode** inside the type expression. The type expression is the same shape it would have if a nominal interface were declared and then used as the slot's type:
 
 ```laterita
 interface F<T, R> { R apply(@take T); }
@@ -734,52 +780,6 @@ The outer `@bound` is **not** a slot mode — it is an orthogonal annotation dec
 ```
 
 A `@take` slot consumes the FI value on the call, so the return cannot reference the slot's lifetime; outer `@bound` does not combine with `@take`.
-
-### FN-02 — Identity
-
-Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
-
-### FN-03 — Anonymous synthesis per construction
-
-Each value-construction of an anonymous functional interface (most commonly a lambda literal per CLO-04, also a method reference) yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
-
----
-
-## 11. Closures
-
-### CLO-01 — Three capture modes
-
-Closures are classified by how they use captured bindings:
-
-- **Read** — captured bindings are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `@local` rules of STD-07).
-- **Mutate** — captured bindings include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
-- **Consume** — captured bindings include a moved value; closure may be invoked exactly once.
-
-### CLO-02 — Capture mode is inferred
-
-The compiler infers a closure's capture mode from the body. The user does not declare it.
-
-### CLO-03 — Slot mode controls invocation
-
-A binding of functional-interface type follows the standard parameter-modifier rules. The binding's mode controls which receiver-mode method on the held value may be invoked through it (BIND-06, BIND-07):
-
-| Slot mode | SAM receiver modes the slot can invoke   | Why (BIND-06 / BIND-07) |
-|---|---|---|
-| bare      | bare-receiver only                       | a bare binding cannot call `@mut` or receiver-consuming methods |
-| `@mut`    | bare- or mut-receiver                    | a `@mut` binding can call bare and `@mut` methods, but cannot consume the receiver |
-| `@take`   | any (bare-, mut-, or take-receiver)      | a `@take` binding owns the value and may consume it |
-
-```laterita
-(int, int) -> int adder;           // bare slot — bare-receiver SAMs only
-@mut (int, int) -> int counter;    // mut slot — bare or mut SAMs
-@take () -> void onClose;          // take slot — any SAM, including take-receiver
-
-counter(1, 2);                     // OK: @mut binding may invoke a bare- or @mut-receiver SAM
-adder(1, 2);                       // OK: bare binding invokes the bare-receiver SAM
-onClose();                         // OK: invokes the held SAM; the slot is consumed if the SAM is take-receiver
-```
-
-The slot mode bounds invocation; whether a *particular* construction (a lambda per CLO-04, or a method reference) yields a SAM whose receiver mode fits a given slot is governed by the fit relation in CLO-04.
 
 ### CLO-04 — Lambdas are values of functional interfaces
 
