@@ -1034,7 +1034,7 @@ public record ArraySplit<T>(
 
 ### ARR-05 — Cross-thread split and parallel iteration
 
-`T[]` exposes two operations that lift array work across threads: a consuming `splitOff` that yields owning halves usable by independent long-lived threads, and a `parallelForEachChunk` that fans chunks out to a thread pool or GPU compute queue and joins before returning. Together they resolve OQ-21, completing the cross-thread story whose in-thread foundation is ARR-01 through ARR-04 (OQ-19).
+`T[]` exposes two operations that lift array work across threads: a consuming `splitOff` that yields owning halves usable by independent long-lived threads, and a `parallelForEachChunk` that fans chunks out to a thread pool or GPU compute queue and joins before returning. Together they complete the cross-thread story whose in-thread foundation is ARR-01 through ARR-04.
 
 `.lat` surface:
 
@@ -1374,7 +1374,7 @@ A laterita source file uses one of two extensions:
 | `expr!!` | `java.util.Objects.requireNonNull(expr)` | NULL-07 |
 | `(P1, …, Pn) -> R` | a nominal functional interface | FN-01 |
 
-`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
+`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 
