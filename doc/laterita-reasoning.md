@@ -775,10 +775,4 @@ It's worth being explicit about a few things this design deliberately doesn't do
 
 ---
 
-## Resolved Open Questions (Tombstones)
-
-Each entry below is a short tombstone: the resolution path is recorded above in the reasoning section it cites, and the full list of resolved OQs lives in `laterita-open-questions.md`. Tombstones are added here when an OQ is resolved so this document records the resolution at a glance.
-
-* **OQ-21** — Cross-thread ownership of split mut-slices. Resolved by ARR-05 / ARR-06: consuming `T[].splitOff` returns two owning halves wrapped in `ConcurrentArraySplit<T>` (long-lived workers), and `T[].parallelForEachChunk` covers scoped fan-out for thread pools and GPU compute queues. See *Why the cross-thread story splits in two* above.
-
-**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Several of those questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.
+**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Tombstones for resolved questions live in `resolved-questions.md`. Several of the open questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.

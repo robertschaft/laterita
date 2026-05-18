@@ -49,22 +49,3 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 4. A java compiler plugin that simulates the borrow checker based on the annotations above, so developers can improve their Java code before fully migrating.
 5. A tool that converts annotated Java code to a `.lat` source (or keeps it as `.java`; both are valid laterita source per COMP-06). It assumes items 3 and 4 have already been executed.
 6. A laterita formatter that formats laterita always in the same manner. It should allow only very few formatting freedoms to developers (e.g. it wouldn't remove some additional line breaks).
-
-# Resolved Questions
-
-* OQ-01 — Panic safety and lock poisoning
-* OQ-02 — Exception ergonomics beyond what ownership forces
-* OQ-03 — Reflection model
-* OQ-04 — Cross-thread safety marker (resolved as `local`, STD-07)
-* OQ-05 — Closure interface names (dissolved by anonymous functional interfaces, FN-01)
-* OQ-07 — Method-level `mut` syntax
-* OQ-08 — Owned-vs-borrowed strings: one type or two
-* OQ-09 — Iterator.remove and ConcurrentModificationException
-* OQ-12 — Doubly-linked structures and graph data
-* OQ-13 — User-invoked `close()` and early cleanup
-* OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
-* OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
-* OQ-17 — Public expression of buffer splitting for `String` (resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting resolved by OQ-19 → ARR-01/02)
-* OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
-* OQ-19 — Ownership splitting of mut arrays (resolved by ARR-01/02/03/04: methods on `T[]` and `laterita.lang.Arrays`, `MutableConsumer` for the `.java` surface, top-level `ArraySplit<T>` record; cross-thread independent-ownership case resolved by ARR-05/06 per OQ-21)
-* OQ-21 — Cross-thread ownership of split mut-slices (resolved by ARR-05/06: consuming `T[].splitOff(int)` returns two owning halves backed by a shared refcounted allocation, wrapped in `ConcurrentArraySplit<T>` for partial-move extraction; `T[].parallelForEachChunk` covers GPU- and pool-style scoped fan-out via a bare-slot Read-mode body)
