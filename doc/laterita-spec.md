@@ -992,7 +992,7 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> @bound ArraySplit<T> splitAt(
+    public static <T> ArraySplit<T> splitAt(
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
