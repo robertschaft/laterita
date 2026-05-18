@@ -978,7 +978,7 @@ class T[] {
     @mut void forEachChunkExact(int chunkSize,
             @mut (@mut T[]) -> void body);
 
-    public ConcurrentArraySplit<T> splitOff(@take T[] this, int mid);
+    ConcurrentArraySplit<T> splitOff(@take T[] this, int mid);
 }
 ```
 
@@ -989,19 +989,19 @@ class T[] {
 **Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 
 ```laterita
-@take int[] arr  = readInput();
-var split        = arr.splitOff(arr.length / 2);
-@take int[] left  = give(split.left());
-@take int[] right = give(split.right());
-var t1 = Thread.ofVirtual().start(() -> heavy(give(left)));
-var t2 = Thread.ofVirtual().start(() -> heavy(give(right)));
+@take int[] arr   = readInput();
+var split         = arr.splitOff(arr.length / 2);
+@take int[] left  = split.left();
+@take int[] right = split.right();
+var t1 = Thread.ofVirtual().start(() -> heavy(left));
+var t2 = Thread.ofVirtual().start(() -> heavy(right));
 t1.join();
 t2.join();
 ```
 
 ### ARR-02 — `laterita.lang.Arrays` static surface (`.java` mirror)
 
-Static-method mirror of the ARR-01 instance surface for `.java` callers, plus `stream` for data-parallel processing via the JDK `Stream<T>` API.
+Static-method mirror of the ARR-01 instance surface for `.java` callers, plus `stream` for read-only parallel processing via the JDK `Stream<T>` API.
 
 ```java
 package laterita.lang;
@@ -1023,11 +1023,11 @@ public final class Arrays {
     public static <T> ConcurrentArraySplit<T> splitOff(
             @take T[] arr, int mid);
 
-    public static <T> Stream<T> stream(@take @mut T[] arr);
+    public static <T> Stream<@bound T> stream(@bound T[] arr);
 }
 ```
 
-`stream` consumes the receiver and exposes its elements as a JDK `Stream<T>`. Standard terminal operations (including `.parallel().forEach(...)`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice.
+`stream` borrows the receiver and exposes its elements as a JDK `Stream<@bound T>`. Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and `Stream<@bound T>` does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
 
 ### ARR-03 — `MutableConsumer<T>`
 
