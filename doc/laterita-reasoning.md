@@ -104,7 +104,7 @@ This was a real finding from the verification work. A red-black tree node needs 
 
 ### Why disjoint slice borrows with `splitAt` for hard cases (MOVE-06)
 
-Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01, ARR-02) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
+Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
 ### Why partial-move tracking (MOVE-07)
 
@@ -497,11 +497,11 @@ The same Java-feel argument that motivates non-final classes (STR-01) and per-bi
 
 A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
-Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01 and ARR-02.
+Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01.
 
 ---
 
-## Arrays (ARR-01 through ARR-06)
+## Arrays (ARR-01 through ARR-05)
 
 ### Why a dedicated section for arrays
 
@@ -509,9 +509,9 @@ Parallel to `String` (§12): the type is built in, the operations are load-beari
 
 A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving. Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering — exactly the `@unsafe` propagation Laterita is avoiding.
 
-### Why two surfaces and a record return (ARR-01, ARR-02)
+### Why two surfaces and a record return (ARR-01)
 
-The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. ARR-01 uses both; ARR-02 substitutes static methods and named FIs (ARR-03). Migration tooling translates between them.
+The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. The `.lat` surface uses both; the `.java` mirror substitutes static methods and named FIs (ARR-03). Migration tooling translates between them.
 
 For the two-way split, three shapes were considered — continuation-passing, record return, multi-return language feature. The record form reads as ordinary Java:
 
@@ -541,11 +541,11 @@ Rust avoids the question by tying mutability to references and offering `Cell<T>
 
 Java array slots write through any reference, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.
 
-### Why the cross-thread story splits in two (ARR-05)
+### Why the cross-thread story splits in two (ARR-02)
 
 A single owned array must be divisible so the halves are independently usable by different threads. Two distinct usage shapes need different primitives, and trying to cover both with one API underweights whichever shape isn't its native fit.
 
-**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `ConcurrentArraySplit<T>` (ARR-06) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
+**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `ConcurrentArraySplit<T>` (ARR-05) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
 
 **Scoped massive parallelism.** GPUs and thread pools want to dispatch the same body across many chunks simultaneously and join before continuing. Each invocation is bounded, so borrowed slices suffice. `parallelForEachChunk` takes a bare-slot body (Read-mode per CLO-01, subject to STD-07's `@local` rules), partitions the receiver, and lets the runtime fan chunks out to any number of workers. CLO-01 explicitly admits concurrent invocation for Read-mode closures; the STD-07 condition restricts captures to non-`@local` types, which the body must satisfy. Disjointness is the same MOVE-06 witness as the sequential `forEachChunk`, lifted across threads by the slot mode and the join-before-return contract.
 
