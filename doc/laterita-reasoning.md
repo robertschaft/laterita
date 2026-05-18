@@ -18,13 +18,13 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 ---
 
-## Surface Syntax — annotations and static methods (§17)
+## Surface Syntax — annotations and static methods (§18)
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
 The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible subset enumerated in COMP-06, nothing else about it has to change to remain parseable by the Java ecosystem.
 
-The cost is visual heft: `void f(@bound @mut Buf b)` reads more loudly than `void f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
+The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
@@ -104,7 +104,7 @@ This was a real finding from the verification work. A red-black tree node needs 
 
 ### Why disjoint slice borrows with `splitAt` for hard cases (MOVE-06)
 
-Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, a standard library `splitAt` provides safe sub-slices using `@unsafe` internally. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
+Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01, ARR-02) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
 ### Why partial-move tracking (MOVE-07)
 
@@ -497,11 +497,53 @@ The same Java-feel argument that motivates non-final classes (STR-01) and per-bi
 
 A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
-Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is OQ-19.
+Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01 and ARR-02.
 
 ---
 
-## Unsafe (UNS-01 through UNS-04)
+## Arrays (ARR-01 through ARR-03)
+
+### Why a dedicated section for arrays (resolving OQ-19)
+
+Parallel to `String` (§12): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across MOVE-06 and stdlib commentary.
+
+A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving. Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering — exactly the `@unsafe` propagation Laterita is avoiding.
+
+### Why two surfaces and a record return (ARR-01, ARR-02)
+
+The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. ARR-01 uses both; ARR-02 substitutes static methods and named FIs (ARR-03). Migration tooling per OQ-15 translates between them.
+
+For the two-way split OQ-19 considered three shapes — continuation-passing, record return, multi-return language feature. The record form reads as ordinary Java:
+
+```laterita
+var s = arr.splitAt(mid);
+spawnWorker(give(s.left));
+processLocally(give(s.right));
+```
+
+vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-03 already implicit in the lifetime rules.
+
+For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
+
+A dedicated `reduceChunks` was considered and rejected. Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...);` — the closure captures `acc` as a Mutate-mode binding (CLO-01) and the `@mut` body slot accepts mutating closures (FN-01). The only case `reduceChunks` covered uniquely was "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and doesn't appear in the Rust array idioms we surveyed. Dropping it kept the surface at three methods instead of four; callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
+
+### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
+
+`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape MOVE-10 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
+
+### Why no binding modifiers in type arguments
+
+A `List<@mut Foo>` annotation would let a `@bound List<@mut Foo>` view grant `@mut Foo` element access by propagating the type-argument annotation into substituted method signatures. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), but the hazard is aliasing: two callers each holding `@bound List<@mut Foo>` would each call `list.get(0)` and both receive a `@mut Foo` to the same slot.
+
+Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline: binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
+
+### Why `T[]` is the canonical contiguous-mut backing
+
+Java array slots write through any reference, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.
+
+### Why the cross-thread story is deferred (OQ-21)
+
+ARR-01 / ARR-02 cover any in-place divide-and-conquer, per-chunk iteration, or in-place fold where both halves of every split stay in one thread (possibly via callback). They do not cover sending the halves to *different* threads with independent ownership — `@bound @mut T[]` is non-owning and cannot escape its source. Plain `Arc<T[]>` (STD-02) shares the whole allocation, not disjoint ranges; mut access would need per-element `Mutex<T>`. The right primitive is a refcounted segmented owning slice (`BytesMut::split_off` shape), deferred to OQ-21.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 

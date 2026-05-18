@@ -2,7 +2,7 @@
 
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
 
-Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `FN` (functional interfaces), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model).
+Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `ARR` (arrays), `FN` (functional interfaces), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model).
 
 ---
 
@@ -19,7 +19,7 @@ The language provides exactly four local binding forms:
 | `@mut Type name = expr` | mutable, type explicit |
 | `@mut var name = expr` | mutable, type inferred |
 
-Java's `var` is reused for type inference (immutable by default in laterita mode per §17). Whether the binding holds an owned value or a borrow is determined by the RHS expression per MOVE-01 and MOVE-02.
+Java's `var` is reused for type inference (immutable by default in laterita mode per §18). Whether the binding holds an owned value or a borrow is determined by the RHS expression per MOVE-01 and MOVE-02.
 
 ```laterita
 String greeting = "hello";        // borrowed; static lifetime per STR-06
@@ -205,7 +205,7 @@ class Pair { @mut int left; @mut int right; }
 
 ### MOVE-06 — Disjoint array slice borrows
 
-Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the standard library must provide a `splitAt` operation that returns proven-disjoint sub-slices.
+Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the disjointness witness is supplied by ARR-01 / ARR-02, which reduce to ordinary slice expressions this rule already covers.
 
 ```laterita
 int[] data = new int[100];
@@ -302,6 +302,8 @@ A bare return type means the function gives the caller an owned value. To declar
 
 - **Parameter source**: annotate the parameter type with `@bound`. The return is bound to that parameter.
 - **Receiver source**: annotate the return type with `@bound`. The return is bound to `this`.
+
+`@bound` is meaningful only when there is something to bind. It requires a non-`void` return for the parameter-source form, and an instance method (not `static`) for the receiver-source form. Misuses are rejected.
 
 ```laterita
 String upperCase(String s);                          // owned return
@@ -960,7 +962,79 @@ class String {
 
 ---
 
-## 13. Unsafe
+## 13. Arrays
+
+### ARR-01 — Array methods on `T[]` (`.lat` surface)
+
+`T[]` exposes borrow-checked splitting and chunked iteration. The `.java` mirror is `laterita.lang.Arrays` (ARR-02). `ArraySplit<T>` is declared in ARR-04.
+
+```laterita
+class T[] {
+    @mut @bound ArraySplit<T> splitAt(int mid);
+
+    @mut void forEachChunk(int chunkSize,
+            @mut (@mut T[]) -> void body);
+
+    @mut void forEachChunkExact(int chunkSize,
+            @mut (@mut T[]) -> void body);
+}
+```
+
+`splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06.
+
+Fold-style reductions over chunks are expressed by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
+
+### ARR-02 — `laterita.lang.Arrays` static surface (`.java` surface)
+
+`.java` mirror of ARR-01 as static methods, paired with ARR-03 and ARR-04. Both surfaces compile to the same operations per COMP-06.
+
+```java
+package laterita.lang;
+
+public final class Arrays {
+    private Arrays() {}
+
+    public static <T> ArraySplit<T> splitAt(
+            @bound @mut T[] arr, int mid);
+
+    public static <T> void forEachChunk(
+            @mut T[] arr, int chunkSize,
+            @mut MutableConsumer<T[]> body);
+
+    public static <T> void forEachChunkExact(
+            @mut T[] arr, int chunkSize,
+            @mut MutableConsumer<T[]> body);
+}
+```
+
+### ARR-03 — `MutableConsumer<T>`
+
+The written-out form of the anonymous functional type used by ARR-01, for ARR-02 callers (FN-01 is `.lat`-only).
+
+```java
+package laterita.lang;
+
+@FunctionalInterface
+public interface MutableConsumer<T> {
+    void accept(@mut T data);
+}
+```
+
+### ARR-04 — `ArraySplit<T>`
+
+Top-level record returned by `splitAt` on both surfaces (ARR-01, ARR-02).
+
+```java
+package laterita.lang;
+
+public record ArraySplit<T>(
+        @bound @mut T[] left,
+        @bound @mut T[] right) {}
+```
+
+---
+
+## 14. Unsafe
 
 ### UNS-01 — `@unsafe` is a private-method-only annotation
 
@@ -1003,7 +1077,7 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 
 ---
 
-## 14. Standard Library Types (Required)
+## 15. Standard Library Types (Required)
 
 ### STD-01 — `Rc<T>`
 
@@ -1095,7 +1169,7 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 ---
 
-## 15. Threads
+## 16. Threads
 
 ### THR-01 — `Thread` type
 
@@ -1184,7 +1258,7 @@ Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection
 
 ---
 
-## 16. Compilation Model
+## 17. Compilation Model
 
 ### COMP-01 — Native compilation, no GC
 
@@ -1223,7 +1297,7 @@ A laterita source file uses one of two extensions:
 | `expr!!` | `java.util.Objects.requireNonNull(expr)` | NULL-07 |
 | `(P1, …, Pn) -> R` | a nominal functional interface | FN-01 |
 
-`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§17), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
+`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 
@@ -1231,7 +1305,7 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ---
 
-## 17. Reserved Names
+## 18. Reserved Names
 
 The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per COMP-06. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 

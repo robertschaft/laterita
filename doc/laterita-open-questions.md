@@ -41,40 +41,34 @@ Resolving any of these requires a separate decision; the spec deliberately leave
 
 ## OQ-15 — Migration tooling for existing Java code
 
-Items 1 and 2 below are no longer migration scaffolding — they were absorbed into the main spec (§17). Laterita's surface *is* Java + annotations + stdlib static methods, with no new keywords. What remains open is the tooling.
+Items 1 and 2 below are no longer migration scaffolding — they were absorbed into the main spec (§18). Laterita's surface *is* Java + annotations + stdlib static methods, with no new keywords. What remains open is the tooling.
 
-1. ~~Java Annotations like `@mut` or `@take` that reflect the new keywords.~~ Resolved — these are the spec (§17, BIND-02, MOVE-03, LIFE-02, DROP-06, UNS-01, STD-07).
-2. ~~Class with static function `T give(@take T x) { return x; }` as a temporary drop in for the `give` keyword in expressions.~~ Resolved — declared as `laterita.lang.Intrinsics.give` per §17.
+1. ~~Java Annotations like `@mut` or `@take` that reflect the new keywords.~~ Resolved — these are the spec (§18, BIND-02, MOVE-03, LIFE-02, DROP-06, UNS-01, STD-07).
+2. ~~Class with static function `T give(@take T x) { return x; }` as a temporary drop in for the `give` keyword in expressions.~~ Resolved — declared as `laterita.lang.Intrinsics.give` per §18.
 3. A tool that enhances java classes with the spec's annotations best-effort. It adds `@Nullable` wherever required.
 4. A java compiler plugin that simulates the borrow checker based on the annotations above, so developers can improve their Java code before fully migrating.
 5. A tool that converts annotated Java code to a `.lat` source (or keeps it as `.java`; both are valid laterita source per COMP-06). It assumes items 3 and 4 have already been executed.
 6. A laterita formatter that formats laterita always in the same manner. It should allow only very few formatting freedoms to developers (e.g. it wouldn't remove some additional line breaks).
 
-## OQ-19 — Ownership splitting of mut arrays: required, and what shape?
+## OQ-21 — Cross-thread ownership of split mut-slices
 
-**Surfaced when:** resolving OQ-17. Once `String` was shown not to need a public splitting API (STR-07 makes every `bound String` read-only, so repeated `substring` calls implement `String.split` / `Pattern.split` / `String.lines` / `URI` getters without any disjointness obligation), the remaining splitting question is about **mut** arrays: two simultaneous `mut T[]` slices over the same backing storage for parallel in-place algorithms. MOVE-06 currently posits a stdlib `splitAt` for this case using `unsafe` internally, but the design has not been settled.
+**Surfaced when:** resolving OQ-19. ARR-01 / ARR-02 cover in-thread splitting (both halves processed in one thread, possibly via callback). They do not cover sending the halves to *different* threads with independent ownership.
 
-**The issue.** Two sub-questions.
+**The issue.** `@bound @mut T[]` is a non-owning borrow; moving it across a thread boundary requires escaping its bound, which is exactly what guarantees it cannot outlive its source. `Arc<T[]>` (STD-02) doesn't help — both handles reach the whole allocation, not disjoint ranges, so mut access would need per-element `Mutex<T>` and defeat the disjointness story.
 
-1. **Is the primitive required at all?** MOVE-06 already permits two disjoint mut slices when the compiler can prove disjointness from constant or simple-arithmetic ranges. Pushing the prover slightly further — pairs `[0, mid)` and `[mid, length)` sharing a midpoint, ranges related by a chain of `≤` comparisons — would cover the bulk of real divide-and-conquer code without any explicit `splitAt` call. The remaining cases (slices indexed by independent variables with no compiler-visible ordering) may be rare enough not to justify a stdlib primitive.
+The right primitive is a refcounted **segmented owning slice**: each handle carries `(allocation_ptr, offset, length)` plus a share of the refcount; the type-system invariant forbids overlapping live handles; allocation freed when the last handle drops. Shape of Rust's `BytesMut::split_off`; underpins zero-copy network buffer crates and shared-arena patterns in DSP and image processing.
 
-2. **If required, what is its shape?** Three candidates:
+**Candidates.**
 
-   a. **Continuation-passing.** A single method taking the split point and a lambda receiving the two slices:
-   ```laterita
-   class T[] {
-       <R> R splitAt(int mid, mut (mut T[], mut T[]) -> R body);
-   }
-   ```
-   Uses FN-01 anonymous functional interfaces already in the language. Needs no multi-return feature, no record specialization per primitive element type, and no `unsafe` — the body is two `slice(0, mid)` / `slice(mid, length)` calls whose disjointness MOVE-06 already covers. The two slices cannot escape the lambda because they are typed `bound`. The divide-and-conquer pattern fits directly: each slice is `give`n to a different consumer (one to a thread, one processed locally) inside the body, and the lambda returns a single result.
+a. **Per-element `Mutex<T>` over `Arc<T[]>`** — conservative, correct, slow (atomic per element), forces synchronization on statically-disjoint writes.
 
-   b. **Record return.** `record ArraySplit<T>(bound mut T[] left, bound mut T[] right)` plus `ArraySplit<T> splitAt(int mid)`. More Java-idiomatic at the call site (two named bindings in the surrounding scope), but costs a record per primitive element type to avoid boxing, plus a rule for `bound` to propagate through a record's fields out to its consumers.
+b. **Dedicated `SharedSlice<T>` stdlib type** — segmented owning slice, `splitAt` consumes the receiver and returns two halves over disjoint ranges. Each half non-`@local` (STD-07), borrowable as `@bound @mut T[]` during work.
 
-   c. **Multi-return language feature.** A tuple-like return shape introduced solely to make `splitAt` natural. Adds the most language surface for the narrowest benefit.
+c. **Extend `Arc<T[]>` with range metadata** — fuses (b) into the existing type; simpler surface, complicates `Arc<T>` semantics for non-array `T`.
 
-**Why it matters.** Determines whether parallel-decomposition over **mut** arrays (in-place parallel sort, parallel fold over a working buffer, partition-based numerics) is expressible in safe code, and at what cost to the language surface. Also determines whether MOVE-06's "`splitAt` uses `unsafe` internally" framing survives, or whether the operation reduces to two ordinary `slice` calls.
+**Why it matters.** Determines whether `Thread.start(...)`-style parallel-decomposition over one owned array — the full rayon idiom — is expressible without per-element locking. Callback-based parallelism is already covered by the OQ-19 resolution.
 
-**Related codes:** MOVE-06, FN-01.
+**Related codes:** ARR-01, ARR-02, STD-02, STD-07, STD-09, THR-01.
 
 # Resolved Questions
 
@@ -90,5 +84,6 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 * OQ-13 — User-invoked `close()` and early cleanup
 * OQ-14 — Ownership of Strings (resolved by STR-06 literal-borrow rule, STR-07 closing the door on stdlib `String` mut methods, STR-08 borrow-by-default receiver; a remaining question on public buffer splitting is deferred to OQ-17)
 * OQ-16 — Mutable `String`: which methods belong where (resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`)
-* OQ-17 — Public expression of buffer splitting for `String` (resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting is OQ-19)
+* OQ-17 — Public expression of buffer splitting for `String` (resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting resolved by OQ-19 → ARR-01/02)
 * OQ-18 — `onDrop()` reaching already-dropped subclass state via virtual dispatch (resolved by DROP-09: `onDrop()` bodies only on `final` classes)
+* OQ-19 — Ownership splitting of mut arrays (resolved by ARR-01/02/03/04: methods on `T[]` and `laterita.lang.Arrays`, `MutableConsumer` for the `.java` surface, top-level `ArraySplit<T>` record; cross-thread independent-ownership case deferred to OQ-21)

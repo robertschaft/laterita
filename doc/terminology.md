@@ -21,7 +21,7 @@ A binding that holds a reference to a value owned elsewhere, rather than owning 
 An annotation marking that a returned value is a borrow, not an owned value. Placed on the return type (e.g., `@bound String substring(...)`) or on a parameter type (e.g., `@bound String s`). Tells the compiler that the return value's lifetime is limited to the lifetime of the marked source. See `LIFE-02`.
 
 ### buffer splitting
-Dividing a single borrowed region of memory into two non-overlapping borrowed views. For arrays, `splitAt` produces this effect (MOVE-06). `String` needs no public splitting API: since `bound String` is read-only, `String`'s own methods (`substring`, `Pattern.split`, `String.lines`, `URI` getters) implement as repeated `substring` calls without `@unsafe` (OQ-17 resolution). The mut-array case is OQ-19.
+Dividing a single borrowed region of memory into two non-overlapping borrowed views. For arrays, `T[].splitAt` and the `forEachChunk` family produce this effect (ARR-01, ARR-02; resolution of OQ-19). `String` needs no public splitting API: since `bound String` is read-only, `String`'s own methods (`substring`, `Pattern.split`, `String.lines`, `URI` getters) implement as repeated `substring` calls without `@unsafe` (OQ-17 resolution). The cross-thread independent-ownership case (one allocation, halves moving to different threads) is OQ-21.
 
 ### Cell<T>
 An interior-mutability primitive permitting mutation of contents through a non-`@mut` binding. The only way to implement mutable state inside a type that is otherwise immutable. Requires `@unsafe` context per `UNS-02`. Similar to Rust's `UnsafeCell<T>`.
@@ -213,6 +213,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `OBJ` | Copying, clone semantics |
 | `UNR` | Unreachable paths (`broken()`) |
 | `STR` | String ownership and slicing |
+| `ARR` | Array methods and the `laterita.lang.Arrays` static surface |
 | `FN` | Functional interfaces and anonymous function types |
 | `CLO` | Closures and lambda capture |
 | `EXC` | Exception handling and unwind semantics |
