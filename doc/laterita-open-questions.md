@@ -66,21 +66,27 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 
 **Related codes:** MOVE-01, MOVE-03, MOVE-07, DROP-04.
 
-## OQ-22 — Result-style recoverable errors alongside unchecked exceptions
+## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
-**Surfaced when:** noticing that EXC-05 makes every exception unchecked, while Rust's recoverable-error story is `Result<T, E>` plus the `?` propagation operator.
+**Surfaced when:** revisiting EXC-05 (all exceptions unchecked) against the observation that Rust's `Result<T, E>` + `?` is functionally checked exceptions — values whose handling the compiler enforces — and that Laterita's natural Java-shaped equivalent is `throws` + `try`/`catch` rather than a parallel `Result` machinery.
 
-**The issue.** Laterita has unchecked exceptions for failure plus structured unwind (EXC-02, EXC-03). That covers panics, IO errors, and most Java patterns. But the Rust pattern of "errors as values" — totality-checked by the compiler, propagated with `?`, mapped with `map_err` — is absent. A library author who wants to express "this returns either a value or one of these named failures" has no first-class form; they fall back to throwing.
+**The issue.** EXC-05 was adopted because Java's checked exceptions are a known ergonomic burden — they propagate badly through `Function<T, R>` and the rest of `java.util.function`, which declare no `throws`. The cost of that choice is that Laterita has no compile-time totality check on recoverable failures: any method may throw any unchecked exception, and the compiler cannot tell a caller "you forgot to handle `FileNotFoundException`." This is the property Rust users rely on, and the reason a Java-shaped language adopting Rust ownership should consider whether to restore it.
+
+The literature on the original Java pain isolates it to one specific spot: the JDK's `Function`/`Consumer`/`Supplier`/`Predicate` SAMs declare no `throws`, so a lambda body calling e.g. `Files.readString` (which `throws IOException`) cannot satisfy `Stream.map(Function<T, R>)`. See *Exceptions in Java Lambda Expressions* (Baeldung), *Handling checked exceptions in Java streams* (O'Reilly), *Handling Exceptions in Java Lambdas* (Foojay). Outside of generic SAM-based APIs, checked exceptions work fine — direct method calls, try-with-resources, ordinary control flow all carry them without friction.
+
+Laterita has a structural lever Java does not: FN-01 anonymous functional interfaces. A functional-interface type written `(P1, …, Pn) -> R` could be extended to `(P1, …, Pn) -> R throws E1, E2`, with the throws set being part of the structural type. A library API written generically over the throws set could then accept lambdas that throw, without each library declaring a parallel `ThrowingFunction` interface as Apache Commons `FailableStream` does today.
 
 **The question.**
-- Does the stdlib provide a `Result<T, E>` sealed type and a `laterita.lang.Intrinsics.tryGet(Result<T, E>) → T` (or equivalent annotation/intrinsic) that desugars to "unwrap or return the error" — the `?` operator without a new keyword?
-- How does `Result` interoperate with `@take` and `@bound`: is `Result<@bound T, E>` meaningful, and does the borrow on the `Ok` arm extend to the consumer?
-- When should a library author choose `throws RuntimeException` versus `Result`? Is there a guideline analogous to "errors that callers must handle" → `Result`, "programmer bugs" → exception?
-- How does `Result` interact with `onDrop` for unconsumed values (drop-on-floor of an unread `Err` — warn? error?)?
+- Is EXC-05 reversed: does Laterita restore Java's distinction between checked and unchecked exceptions, with `throws` declarations required on method signatures for checked exceptions?
+- Does FN-01 admit a structural throws clause (`(P1, …, Pn) -> R throws E1, E2`), and is the throws set part of FI subtype identity? Without this, restoring checked exceptions reintroduces the Java pain that motivated EXC-05.
+- Can library APIs be generic over the throws set the way Rust APIs are generic over the error type — e.g. a Laterita `Stream<T>.map((T) -> R throws E)` parametric in `E` — or is the structural form limited to one-shot use sites with throws polymorphism left out?
+- Does `InterruptedException` (THR-08) become checked again, or stay unchecked as a cancellation signal (the most-cited single case of checked-exception fatigue in Java)? A principled rule is needed.
+- How does the restoration interact with EXC-01 (Java exception syntax preserved) and Java interop: imported Java methods declaring `throws IOException` would, under restored semantics, propagate the checked obligation into Laterita callers — restoring exactly the burden EXC-05 erased. Is that acceptable, or does the boundary auto-unchecks?
+- Is OQ-22's original `Result<T, E>` proposal then dropped entirely, or kept as a non-stdlib idiom for the cases where errors-as-data is genuinely preferable (parser combinators, validation pipelines)?
 
-**Why it matters.** Without a `Result` story, Laterita force-channels every recoverable failure through the exception system, which is the opposite of Rust's design and weakens compile-time totality checking — one of the central reasons Java developers adopt Rust.
+**Why it matters.** Compile-time totality for recoverable failures is one of the central reasons Java developers reach for Rust. The Java-shaped delivery is checked exceptions, not a parallel `Result` type — provided FN-01 absorbs the throws clause so that generic functional APIs survive. If FN-01 cannot, the restoration is back to the original Java ergonomic dead-end and `Result<T, E>` becomes the only viable answer.
 
-**Related codes:** EXC-05, MOVE-03, LIFE-02, DROP-08.
+**Related codes:** EXC-01, EXC-05, FN-01, THR-08, COMP-06.
 
 ## OQ-23 — Channels and message-passing for inter-thread communication
 
