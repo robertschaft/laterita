@@ -94,11 +94,11 @@ class StringBuilder {
 
     public StringBuilder append(@take @mut StringBuilder this, String s) {  // consumes, mutates, returns new
         this.contents = this.contents + s;
-        return give(this);
+        return this;
     }
 
     public String build(@take StringBuilder this) {                   // consumes, yields String
-        return give(this.contents);
+        return this.contents;
     }
 }
 
@@ -109,7 +109,7 @@ conn.use();          // ERROR: conn was consumed
 
 ### BIND-08 — Binding modifiers are banned inside generic type arguments
 
-`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, local bindings, fields, and FI parameter/return slots — never on a generic type argument inside `<...>`.
+`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, fields, and FI parameter/return slots — never on a generic type argument inside `<...>`. Additionally, `@mut` and `@bound` (but not `@take`) may appear on local bindings; ownership of a local follows its RHS (MOVE-02) and is not declared at the LHS.
 
 `List<@mut Foo>` and `Stream<@bound T>` are compile errors. The correct form annotates the binding that holds the generic type: `@mut List<Foo>`, `@bound Stream<T>`.
 
@@ -153,13 +153,7 @@ var b = give(a);            // a is consumed
 print(b);                   // OK
 ```
 
-A binding declaration may use `@take` as a declarative prefix on the type, asserting that the LHS receives ownership. `@take` is documentary: it does not by itself trigger a move. The RHS must independently produce ownership (a `give(...)` call, or a producer expression such as a call, constructor, or literal). A `@take` LHS paired with a bare-binding RHS is a compile error per MOVE-01 (the bare RHS is a borrow, which `@take` rejects).
-
-```laterita
-var c = makeString();
-@take String d = give(c);   // both sides explicit; same operation as `var d = give(c)`
-@take String e = c;         // ERROR: bare RHS is a borrow per MOVE-01; @take demands ownership
-```
+A local binding's mode follows the RHS: a producer expression (call, constructor, literal, `give(x)`) yields an owned binding; a bare-binding RHS yields a shared borrow per MOVE-01. `@take` is not permitted on local binding declarations — ownership is determined by the producer's signature, not asserted at the LHS (BIND-08).
 
 ### MOVE-03 — Parameter ownership is declared in the signature
 
@@ -306,7 +300,9 @@ The compiler must reject any program in which a borrow is used after the binding
 
 ### LIFE-02 — Returns are owned by default
 
-A bare return type means the function gives the caller an owned value. To declare a borrowed return instead, the contributing source is marked with `@bound`:
+A bare return type means the function gives the caller an owned value. A bare `return x;` of an owned binding moves it; an explicit `return give(x);` is the same operation written for clarity. The mirror of MOVE-03 applies on the return side: signature drives transfer, no `give(...)` is required at the use site.
+
+To declare a borrowed return instead, the contributing source is marked with `@bound`:
 
 - **Parameter source**: annotate the parameter type with `@bound`. The return is bound to that parameter.
 - **Receiver source**: annotate the return type with `@bound`. The return is bound to `this`.
@@ -489,7 +485,7 @@ class File {
     for (T item : source) {
         result.add(item.clone());
     }
-    return give(result);
+    return result;
 }
 
 deepCopy(users);   // OK: User.clone() is the synthesized form
@@ -557,7 +553,7 @@ Every class has a public `Self clone()` method, synthesized as `return new Self(
     for (T item : source) {
         result.add(item.clone());
     }
-    return give(result);
+    return result;
 }
 
 deepCopy(users);       // OK
@@ -838,7 +834,7 @@ var r2 = fold(give(input), buf, (a, b) -> {
 });
 
 // Accepted — consume closure fits the @take slot of onClose.
-@take Logger log = openLog();
+var log = openLog();
 onClose(() -> { give(log); });
 
 // Rejected — consume closure does not fit a @mut slot.
@@ -939,9 +935,9 @@ A string literal expression has type `@bound String` with a static lifetime. A b
 ```laterita
 String greeting = "hello";              // borrowed, static lifetime
 String owned = "hello".clone();         // owned heap allocation
-@take String s = give(greeting);        // ERROR: greeting is borrowed
-@take String u = give("hello");         // ERROR: literal is borrowed (give(...) on a borrow per MOVE-02)
-@take String t = "hello".clone();       // OK
+var s = give(greeting);                 // ERROR: greeting is borrowed
+var u = give("hello");                  // ERROR: literal is borrowed (give(...) on a borrow per MOVE-02)
+var t = "hello".clone();                // OK: owned
 void inspect(String s);                 // accepts a literal directly (borrow)
 void store(@take String s);             // requires `.clone()` on a literal
 ```
@@ -997,10 +993,10 @@ class T[] {
 **Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 
 ```laterita
-@take int[] arr   = readInput();
-var split         = arr.splitOff(arr.length / 2);
-@take int[] left  = split.left();
-@take int[] right = split.right();
+var arr   = readInput();
+var split = arr.splitOff(arr.length / 2);
+var left  = split.left();
+var right = split.right();
 var t1 = Thread.ofVirtual().start(() -> heavy(left));
 var t2 = Thread.ofVirtual().start(() -> heavy(right));
 t1.join();
