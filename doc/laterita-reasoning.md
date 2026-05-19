@@ -104,7 +104,7 @@ This was a real finding from the verification work. A red-black tree node needs 
 
 ### Why disjoint slice borrows with `splitAt` for hard cases (MOVE-06)
 
-Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01, ARR-02) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
+Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
 ### Why partial-move tracking (MOVE-07)
 
@@ -243,15 +243,15 @@ Rust resolves the same tension by forbidding *any* move out of a field of a type
 
 This also explains why `StringBuilder.build()` (BIND-07) — `return give(this.contents);` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and the `give(this.contents)` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
 
-### Why `onDrop()` is confined to `final` classes (DROP-09, resolving OQ-18)
+### Why `onDrop()` is confined to `final` classes (DROP-09)
 
-OQ-18 asked what discipline keeps an `onDrop()` body safe once inheritance is in play. The hazard is specific: a base class's `onDrop()` runs *after* the subclass's (reverse-construction order, DROP-05), by which point the subclass's fields are gone — so if the base body virtual-dispatches into a method the subclass overrode to touch those fields, it reads freed storage. C++ hit exactly this and grew a language rule for it: inside `~Base`, `this` "is" a `Base`, so virtual calls resolve to `Base`'s versions, never a derived override (Effective C++ Item 9; SEI CERT OOP50-CPP). That rule is alien to Java, where dispatch is always virtual — importing a static-dispatch mode into the one place a Java reader least expects one is a poor trade.
+The question is what discipline keeps an `onDrop()` body safe once inheritance is in play. The hazard is specific: a base class's `onDrop()` runs *after* the subclass's (reverse-construction order, DROP-05), by which point the subclass's fields are gone — so if the base body virtual-dispatches into a method the subclass overrode to touch those fields, it reads freed storage. C++ hit exactly this and grew a language rule for it: inside `~Base`, `this` "is" a `Base`, so virtual calls resolve to `Base`'s versions, never a derived override (Effective C++ Item 9; SEI CERT OOP50-CPP). That rule is alien to Java, where dispatch is always virtual — importing a static-dispatch mode into the one place a Java reader least expects one is a poor trade.
 
 So instead of changing dispatch, we removed the precondition. Surveying where a destructor or `Drop` is actually *needed* in mature code — C++ `lock_guard`/`unique_lock`/`unique_ptr`/`shared_ptr`/`fstream`, `std::jthread`, Qt's lockers, Boost.ScopeExit; Rust `MutexGuard`/`RwLock*Guard`/`Ref`/`RefMut`, `Box`/`Vec`/`String`/`Rc`/`Arc`, `File`/`TcpStream`, `tempfile::TempDir`, `rusqlite::Connection`, `memmap2::Mmap`, channel endpoints, `tracing` span guards, `scopeguard` — turns up exactly one pattern: a *leaf* type that owns a lock, a refcount, a buffer, an OS/FFI handle, a channel end, or a scope-bound ambient state, and releases it. Not one of them is an extensible base class whose `onDrop()` calls a hook a subclass customizes; that shape essentially does not occur, and C++'s own guidance is to avoid it — "call a nonvirtual private function instead; each class releases its own resources." The cases that *look* like base-class cleanup hooks — buffered-IO flush, `fsync`, the error-returning `TempDir::close()` — are the *fallible* operations both languages deliberately keep out of the destructor, which is THR-05's `close()`/`onDrop()` split already.
 
 DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `final` class. A `final` class has no subclass, so no override of anything it calls on `this` can exist below it; combined with DROP-06 (no user-invoked `onDrop()`), the down-dispatch hazard is structurally impossible — no static-dispatch mode needed, because there is nothing to dispatch into. The Java idiom of overriding a cleanup hook in an open base class is replaced by composition: an extensible class holds its resources through `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose own `onDrop()`s do the release during field teardown (DROP-05, step 2). Rust's ecosystem is structured the same way — `Drop` lives on leaf newtypes, not on trait-object hierarchies — so the discipline is proven.
 
-With at most one user `onDrop()` body per instance, several candidate rules from OQ-18's earlier options collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`. DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
+With at most one user `onDrop()` body per instance, several candidate rules collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`. DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
 
 The orthogonal cleanup rules — DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 moved-out fields, DROP-10 no-escape-of-this, THR-05 no-blocking — all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
 
@@ -395,7 +395,7 @@ The "anonymous" qualifier matters when distinguishing from Java's nominal functi
 
 ### Why structural rather than nominal (FN-01)
 
-Earlier drafts planned a small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc. The unresolved question (OQ-05) was only their names. Once parameter modes (`@take`, `@mut`, `@bound`) entered the type system, the count exploded: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
+Earlier drafts planned a small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc. The unresolved question was only their names. Once parameter modes (`@take`, `@mut`, `@bound`) entered the type system, the count exploded: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
 
 The anonymous structural form resolves the explosion at the source. The type *is* the signature: `(take A, mut B) -> R` is a distinct type from `(bound A, B) -> R` not because two interfaces were declared, but because the type expressions differ. The compiler compares structurally, the same way `int[]` and `String[]` are different without a separate interface for each. No stdlib zoo, no naming committee, no question of which canonical interface a value targets.
 
@@ -403,7 +403,7 @@ The cost is one new kind of type expression in the grammar. Laterita's type syst
 
 The trade-off is that source-level `import` of an anonymous functional interface isn't possible — there is no name to import. We accept this. Reusable function-shaped contracts in real code almost always have richer obligations than a SAM expresses (a name, documentation, related methods), and those still want a nominal interface. What the anonymous form fixes is the ergonomic wart of "I just need a callback parameter" requiring a published interface to land in.
 
-OQ-05 is dissolved by this decision: there are no closure-interface names to fix because there are no closure interfaces.
+This dissolves the question: there are no closure-interface names to fix because there are no closure interfaces.
 
 ### Why FN covers type syntax, identity, and synthesis — but not slot-mode behavior
 
@@ -497,13 +497,13 @@ The same Java-feel argument that motivates non-final classes (STR-01) and per-bi
 
 A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
-Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01 and ARR-02.
+Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01.
 
 ---
 
-## Arrays (ARR-01 through ARR-03)
+## Arrays (ARR-01 through ARR-05)
 
-### Why a dedicated section for arrays (resolving OQ-19)
+### Why a dedicated section for arrays
 
 Parallel to `String` (§12): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across MOVE-06 and stdlib commentary.
 
@@ -511,9 +511,9 @@ A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayo
 
 ### Why two surfaces and a record return (ARR-01, ARR-02)
 
-The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. ARR-01 uses both; ARR-02 substitutes static methods and named FIs (ARR-03). Migration tooling per OQ-15 translates between them.
+The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`. The `.lat` surface uses both (ARR-01); the `.java` mirror substitutes static methods on `laterita.lang.Arrays` and named FIs (ARR-02, ARR-03). Migration tooling translates between them.
 
-For the two-way split OQ-19 considered three shapes — continuation-passing, record return, multi-return language feature. The record form reads as ordinary Java:
+For the two-way split, three shapes were considered — continuation-passing, record return, multi-return language feature. The record form reads as ordinary Java:
 
 ```laterita
 var s = arr.splitAt(mid);
@@ -531,19 +531,27 @@ A dedicated `reduceChunks` was considered and rejected. Every in-place reduce ex
 
 `MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape MOVE-10 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
-### Why no binding modifiers in type arguments
+### Why no binding modifiers in type arguments (BIND-08)
 
 A `List<@mut Foo>` annotation would let a `@bound List<@mut Foo>` view grant `@mut Foo` element access by propagating the type-argument annotation into substituted method signatures. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), but the hazard is aliasing: two callers each holding `@bound List<@mut Foo>` would each call `list.get(0)` and both receive a `@mut Foo` to the same slot.
 
-Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline: binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
+Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline (BIND-08): binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
 
 ### Why `T[]` is the canonical contiguous-mut backing
 
 Java array slots write through any reference, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.
 
-### Why the cross-thread story is deferred (OQ-21)
+### Why the cross-thread story splits in two (ARR-01, ARR-02)
 
-ARR-01 / ARR-02 cover any in-place divide-and-conquer, per-chunk iteration, or in-place fold where both halves of every split stay in one thread (possibly via callback). They do not cover sending the halves to *different* threads with independent ownership — `@bound @mut T[]` is non-owning and cannot escape its source. Plain `Arc<T[]>` (STD-02) shares the whole allocation, not disjoint ranges; mut access would need per-element `Mutex<T>`. The right primitive is a refcounted segmented owning slice (`BytesMut::split_off` shape), deferred to OQ-21.
+A single owned array must be divisible so the halves are independently usable by different threads, and a parallel iteration surface is needed for the data-parallel case. Two distinct usage shapes need different primitives, and trying to cover both with one API underweights whichever shape isn't its native fit.
+
+**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `OwnedPair<T[], T[]>` (ARR-05) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
+
+**Data-parallel iteration.** Rather than carry a bespoke `parallelForEachChunk` on `T[]`, the parallel path goes through `Arrays.stream(@bound T[])` returning a bare `Stream<T>` — the JDK type, bound to the source by the parameter-source form of LIFE-02 (static methods have no receiver, so `@bound` belongs on the parameter, not the return). `.parallel().forEach(...)` already exists on every Java developer's mental model, and the underlying `Spliterator` splits work the same way a hand-rolled chunk fan-out would. Callers who need a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. The cost is one extra abstraction layer (the stream) and a real limitation — the stream produces transformed/aggregated values but does not write back into the source — so the in-place parallel mutation case stays on the `splitOff` path. The win is no new language-level executor concept (no rayon-style `pool.install(...)` shim) and one fewer load-bearing primitive on `T[]`; for read-only parallel reductions (map / filter / reduce / sum / collect), the standard `Consumer<T>` / `Function<T,R>` / `Predicate<T>` interfaces from `java.util.function` accept `@bound T` parameters by default, so no parallel SAM hierarchy is required.
+
+Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mut` borrow vs `@take` consume), and MOVE-09 makes that distinction a different overload with no call-site disambiguator (no `give(this)` syntax exists). Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust-precedent (`BytesMut::split_off`) and the only spelling that resolves unambiguously at every call site.
+
+The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on two general-purpose records (`BoundPair<L, R>`, `OwnedPair<L, R>`) that any future API can reuse rather than minting a new domain record per call site.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
@@ -589,7 +597,7 @@ This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same ans
 
 The implication for COMP-01 is that "memory management determined statically" is not literally true for refcounted types — refcount reclamation is dynamic, and cycles are an unrecoverable leak. The spec acknowledges this explicitly rather than masking it.
 
-Doubly-linked structures and graph-shaped data (the concern surfaced as OQ-12) port using exactly these primitives: `Rc<T>` / `Arc<T>` on forward edges, `WeakReference<T>` on back edges. No additional standard-library type for graphs is introduced. The verbosity over a GC-tracked back-pointer is the deliberate cost of deterministic, refcount-based reclamation. Migration of doubly-linked lists, parent-pointer trees, and adjacency-list graphs is mechanical: each back-pointer becomes a `WeakReference<T>::get()` at use sites.
+Doubly-linked structures and graph-shaped data port using exactly these primitives: `Rc<T>` / `Arc<T>` on forward edges, `WeakReference<T>` on back edges. No additional standard-library type for graphs is introduced. The verbosity over a GC-tracked back-pointer is the deliberate cost of deterministic, refcount-based reclamation. Migration of doubly-linked lists, parent-pointer trees, and adjacency-list graphs is mechanical: each back-pointer becomes a `WeakReference<T>::get()` at use sites.
 
 ### Why race-safe upgrade (STD-04)
 
@@ -747,7 +755,7 @@ The exposure reason: unrestricted reflection has been a recurring source of vuln
 
 What is genuinely lost: loading arbitrary user-supplied bytecode at runtime (intentional — that's the security hazard), JRebel-style hot reload (mitigated by fast incremental rebuilds), and `Proxy.newProxyInstance` over interfaces unknown at compile time. The first is a feature, not a regression. The second is a developer-experience cost worth investing in fast compilation to offset. The third is rare in real codebases outside mocking and dynamic RPC stubs, both of which are codegen-able when the interface is known.
 
-The reflection question was OQ-03 in the open-questions document; it is now settled in favor of "none."
+The reflection question is settled in favor of "none."
 
 ---
 
@@ -761,4 +769,6 @@ It's worth being explicit about a few things this design deliberately doesn't do
 
 **Not a fork of Java's standard library.** Most of Java's `java.util` would need to be reimplemented for Laterita's ownership rules. `ArrayList`, `HashMap`, `TreeMap`, `String`, `StringBuilder` — all have different semantics under ownership. The names are preserved; the implementations are new.
 
-**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Several of those questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.
+---
+
+**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Tombstones for resolved questions live in `resolved-questions.md`. Several of the open questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.

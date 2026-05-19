@@ -107,6 +107,14 @@ conn.close();        // OK: conn was owned; consumed by close()
 conn.use();          // ERROR: conn was consumed
 ```
 
+### BIND-08 — Binding modifiers are banned inside generic type arguments
+
+`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, local bindings, fields, and FI parameter/return slots — never on a generic type argument inside `<...>`.
+
+`List<@mut Foo>` and `Stream<@bound T>` are compile errors. The correct form annotates the binding that holds the generic type: `@mut List<Foo>`, `@bound Stream<T>`.
+
+The prohibition exists because a type-argument annotation would propagate into substituted method signatures and silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly.
+
 ---
 
 ## 2. Mutability Rules (Cross-cutting)
@@ -205,7 +213,7 @@ class Pair { @mut int left; @mut int right; }
 
 ### MOVE-06 — Disjoint array slice borrows
 
-Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the disjointness witness is supplied by ARR-01 / ARR-02, which reduce to ordinary slice expressions this rule already covers.
+Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, the disjointness witness is supplied by ARR-01, which reduces to ordinary slice expressions this rule already covers.
 
 ```laterita
 int[] data = new int[100];
@@ -303,7 +311,7 @@ A bare return type means the function gives the caller an owned value. To declar
 - **Parameter source**: annotate the parameter type with `@bound`. The return is bound to that parameter.
 - **Receiver source**: annotate the return type with `@bound`. The return is bound to `this`.
 
-`@bound` is meaningful only when there is something to bind. It requires a non-`void` return for the parameter-source form, and an instance method (not `static`) for the receiver-source form. Misuses are rejected.
+`@bound` is meaningful only when there is something to bind. It requires a non-`void` return for the parameter-source form, and an instance method (not `static`) for the receiver-source form. Misuses are rejected. Concretely: `@bound` on a `void` return is rejected (no value to bind), and `@bound` on the return of a `static` method is rejected (no receiver to bind to) — for a static method that returns a borrow of one of its parameters, place `@bound` on that parameter and leave the return type bare, as in `String firstWord(@bound String s)` above.
 
 ```laterita
 String upperCase(String s);                          // owned return
@@ -964,29 +972,44 @@ class String {
 
 ## 13. Arrays
 
-### ARR-01 — Array methods on `T[]` (`.lat` surface)
+### ARR-01 — Methods on `T[]` (`.lat` surface)
 
-`T[]` exposes borrow-checked splitting and chunked iteration. The `.java` mirror is `laterita.lang.Arrays` (ARR-02). `ArraySplit<T>` is declared in ARR-04.
+The laterita compiler treats `T[]` as a class with the following methods (`.lat`-only; the `.java` mirror on `laterita.lang.Arrays` is ARR-02). Both surfaces compile to the same operations per COMP-06.
 
 ```laterita
 class T[] {
-    @mut @bound ArraySplit<T> splitAt(int mid);
+    @mut @bound BoundPair<T[], T[]> splitAt(int mid);
 
     @mut void forEachChunk(int chunkSize,
             @mut (@mut T[]) -> void body);
 
     @mut void forEachChunkExact(int chunkSize,
             @mut (@mut T[]) -> void body);
+
+    OwnedPair<T[], T[]> splitOff(@take T[] this, int mid);
 }
 ```
 
-`splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06.
+`splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
 
-Fold-style reductions over chunks are expressed by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
+`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. A different method name from `splitAt` is required because the receiver mode differs and MOVE-09 leaves call sites without a disambiguator.
 
-### ARR-02 — `laterita.lang.Arrays` static surface (`.java` surface)
+**Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 
-`.java` mirror of ARR-01 as static methods, paired with ARR-03 and ARR-04. Both surfaces compile to the same operations per COMP-06.
+```laterita
+@take int[] arr   = readInput();
+var split         = arr.splitOff(arr.length / 2);
+@take int[] left  = split.left();
+@take int[] right = split.right();
+var t1 = Thread.ofVirtual().start(() -> heavy(left));
+var t2 = Thread.ofVirtual().start(() -> heavy(right));
+t1.join();
+t2.join();
+```
+
+### ARR-02 — `laterita.lang.Arrays` static surface (`.java` mirror)
+
+Static-method mirror of the ARR-01 instance surface for `.java` callers, plus `stream` for read-only parallel processing via the JDK `Stream<T>` API.
 
 ```java
 package laterita.lang;
@@ -994,7 +1017,7 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> ArraySplit<T> splitAt(
+    public static <T> BoundPair<T[], T[]> splitAt(
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
@@ -1004,12 +1027,19 @@ public final class Arrays {
     public static <T> void forEachChunkExact(
             @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
+
+    public static <T> OwnedPair<T[], T[]> splitOff(
+            @take T[] arr, int mid);
+
+    public static <T> Stream<T> stream(@bound T[] arr);
 }
 ```
 
+`stream` borrows the source array and exposes its elements through the JDK `Stream<T>` type. The borrow lives on the parameter (`@bound T[] arr`), not on the return — `stream` is static, so the receiver-source `@bound` form on the return type does not apply per LIFE-02. The bare `Stream<T>` return is bound to `arr` by the parameter-source rule, as in `firstWord(@bound String s)` (LIFE-02). Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and the stream does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
+
 ### ARR-03 — `MutableConsumer<T>`
 
-The written-out form of the anonymous functional type used by ARR-01, for ARR-02 callers (FN-01 is `.lat`-only).
+The written-out form of the anonymous functional type `(@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (FN-01 is `.lat`-only).
 
 ```java
 package laterita.lang;
@@ -1020,16 +1050,26 @@ public interface MutableConsumer<T> {
 }
 ```
 
-### ARR-04 — `ArraySplit<T>`
+### ARR-04 — `BoundPair<L, R>`
 
-Top-level record returned by `splitAt` on both surfaces (ARR-01, ARR-02).
+General-purpose record carrying a pair of borrowed mutable values. Returned by `splitAt` (instantiated as `BoundPair<T[], T[]>`); reusable by any future API returning a pair of `@bound @mut` values, including heterogeneous (`L ≠ R`) pairs.
 
 ```java
 package laterita.lang;
 
-public record ArraySplit<T>(
-        @bound @mut T[] left,
-        @bound @mut T[] right) {}
+public record BoundPair<L, R>(
+        @bound @mut L left,
+        @bound @mut R right) {}
+```
+
+### ARR-05 — `OwnedPair<L, R>`
+
+General-purpose record carrying a pair of owned values. Returned by `splitOff` (instantiated as `OwnedPair<T[], T[]>`); reusable by any future API returning a pair of owned values. Accessors participate in partial-move tracking (MOVE-07), so both `left()` and `right()` may be consumed from the same instance. The record itself is non-`@local`.
+
+```java
+package laterita.lang;
+
+public record OwnedPair<L, R>(L left, R right) {}
 ```
 
 ---
@@ -1297,7 +1337,7 @@ A laterita source file uses one of two extensions:
 | `expr!!` | `java.util.Objects.requireNonNull(expr)` | NULL-07 |
 | `(P1, …, Pn) -> R` | a nominal functional interface | FN-01 |
 
-`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling per OQ-15 may mechanically translate between the two forms.
+`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 

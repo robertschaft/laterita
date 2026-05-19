@@ -4,4 +4,4 @@ Currently the spec in doc is work in progress and needs to mature.
 
 Do not change existing OQ numbers. For new questions just use unused numbers.
 
-If a question is resolved, ensure that the reasoning is documented. Then reduce the question to a tombstone remark in the list at the end of the reasoning document.
+If a question is resolved, ensure that the reasoning is documented in `doc/laterita-reasoning.md`. Then remove the question from `doc/laterita-open-questions.md` and add a tombstone remark to `doc/resolved-questions.md`.
