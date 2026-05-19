@@ -21,13 +21,13 @@ A binding that holds a reference to a value owned elsewhere, rather than owning 
 An annotation marking that a returned value is a borrow, not an owned value. Placed on the return type (e.g., `@bound String substring(...)`) or on a parameter type (e.g., `@bound String s`). Tells the compiler that the return value's lifetime is limited to the lifetime of the marked source. See `LIFE-02`.
 
 ### binding modifiers
-The three annotations `@bound`, `@mut`, and `@take` that carry ownership/lifetime semantics. They are legal only at *binding positions*: parameters, return types, local bindings, fields, and FI parameter/return slots. They are never permitted inside generic type argument brackets `<...>` (BIND-08). To annotate a generic return, place the modifier outside the angle brackets: `@bound Stream<T>`, not `Stream<@bound T>`.
+`@bound`, `@mut`, and `@take`. Legal only at binding positions (parameters, return types, locals, fields, FI parameter/return slots); never inside generic type argument brackets `<...>`. See `BIND-08`.
 
 ### BoundPair<L, R>
-A general-purpose record in `laterita.lang` carrying two `@bound @mut` values. Returned by `T[].splitAt(int)` (and its static `laterita.lang.Arrays.splitAt` mirror) as `BoundPair<T[], T[]>`, where both halves are mutable borrows over disjoint ranges of the receiver, tied to the receiver's source and expiring together. Heterogeneous instantiations (`L ≠ R`) and future non-array uses are also supported. For the owning analog, see `OwnedPair<L, R>`. See `ARR-04`.
+General-purpose record in `laterita.lang` carrying two `@bound @mut` values. Instantiated as `BoundPair<T[], T[]>` by `T[].splitAt` for in-thread disjoint-slice borrows. For the owning analog see `OwnedPair<L, R>`. See `ARR-04`.
 
 ### buffer splitting
-Dividing a single region of memory into two non-overlapping views. In a single thread, `T[].splitAt` returns a `BoundPair<T[], T[]>` carrying two `@bound @mut` halves of the receiver, and the `forEachChunk` family produces borrowed disjoint views via callback (ARR-01; resolution of OQ-19). Across threads, `T[].splitOff` consumes the receiver and returns two **owning** halves (an `OwnedPair<T[], T[]>` record) backed by a shared refcounted allocation; for read-only data-parallel processing, `Arrays.stream(@bound T[])` yields a JDK `Stream<T>` bound to the source array by the parameter-source form of LIFE-02, whose `.parallel()` form drives multithreading through the underlying `Spliterator` (ARR-01, ARR-02, ARR-05; resolution of OQ-21). In-place parallel mutation of the source stays on the `splitOff` path: the stream does not write back into the array it was opened from. `String` needs no public splitting API: since `bound String` is read-only, `String`'s own methods (`substring`, `Pattern.split`, `String.lines`, `URI` getters) implement as repeated `substring` calls without `@unsafe` (OQ-17 resolution).
+Dividing a contiguous region into two non-overlapping views. Single-thread: `T[].splitAt` → `BoundPair<T[], T[]>` (borrowed halves); `forEachChunk` → borrowed slices via callback. Cross-thread: `T[].splitOff` → `OwnedPair<T[], T[]>` (owning halves); `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`. See `ARR-01`, `ARR-02`, `ARR-04`, `ARR-05`.
 
 ### Cell<T>
 An interior-mutability primitive permitting mutation of contents through a non-`@mut` binding. The only way to implement mutable state inside a type that is otherwise immutable. Requires `@unsafe` context per `UNS-02`. Similar to Rust's `UnsafeCell<T>`.
@@ -117,7 +117,7 @@ A method the compiler invokes to clean up a value. Only a `final` class may impl
 "Open Question." A numbered entry in the open-questions document listing unresolved design decisions. Example: OQ-06 (Spring DI and compile-time annotation processing). Not part of the normative spec.
 
 ### OwnedPair<L, R>
-A general-purpose record in `laterita.lang` carrying two **owning** values. Returned by `T[].splitOff(int)` as `OwnedPair<T[], T[]>` whose halves are owning `T[]` values over disjoint ranges of the receiver's allocation; each half is independently movable into a long-lived thread (via `split.left()` and `split.right()`, MOVE-07), and the underlying allocation is freed when the last half drops. Heterogeneous instantiations (`L ≠ R`) and future non-array uses are also supported. For the borrowed analog, see `BoundPair<L, R>`. See `ARR-01`, `ARR-05`.
+General-purpose record in `laterita.lang` carrying two owned values. Instantiated as `OwnedPair<T[], T[]>` by `T[].splitOff` for cross-thread array splitting. Each accessor participates in partial-move tracking (MOVE-07). For the borrowed analog see `BoundPair<L, R>`. See `ARR-05`.
 
 ### ownership
 Having the right and obligation to drop (clean up) a value when done. An owned binding can move the value to another binding, pass it to a `@take` parameter, or drop it at scope exit. Only one binding can own a value at a time. See `MOVE-02`.
