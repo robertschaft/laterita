@@ -36,7 +36,7 @@ The annotation `@mut` denotes mutability in every position it appears: local bin
 
 Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits both reassignment and mutation through the binding.
 
-A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field can only be produced as a `@bound` value, with lifetime per LIFE-03 (this rule generalizes to `@bound`-substituted generic arguments per BIND-08). `@take` on a non-FI field is rejected as redundant — non-FI fields are owned by default. On an FI-typed field, `@take` is the slot mode per CLO-03 and is not redundant; the field is still owned storage.
+A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a non-FI field is rejected as redundant; on an FI-typed field `@take` is a slot-mode annotation (CLO-03), not an ownership marker.
 
 ```laterita
 class User {
@@ -117,7 +117,7 @@ conn.use();          // ERROR: conn was consumed
 
 `List<@mut Foo>` and `Pair<@take K, @take V>` are compile errors. `Pair<@bound K, @bound V>` is well-formed and denotes a pair of borrows; the correct form for a mutable list is `@mut List<Foo>`, not `List<@mut Foo>`.
 
-`@mut` is banned in argument position because substitution would silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly. `@take` is banned because it is a parameter mode, not a value attribute, and has no meaning as a type argument. `@bound` is permitted because it composes cleanly: a class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-03 (intersection of the contributing sources). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
+`@mut` is banned in argument position because substitution would silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly. `@take` is banned because it is a parameter mode, not a value attribute, and has no meaning as a type argument. `@bound` is permitted because it composes cleanly: a class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-03 (and the idempotence rule of LIFE-06 when `@bound` stacks). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
 
 ```laterita
 record Pair<L, R>(L left, R right) {}
@@ -164,7 +164,7 @@ var b = give(a);            // a is consumed
 print(b);                   // OK
 ```
 
-A local binding's mode follows the RHS: a producer expression (call, constructor, literal, `give(x)`) yields an owned binding; a bare-binding RHS yields a shared borrow per MOVE-01. `@take` is not permitted on local binding declarations — ownership is determined by the producer's signature, not asserted at the LHS (BIND-08).
+A local's mode follows the RHS: a producer expression (call, constructor, literal, `give(x)`) yields an owned binding; a bare-binding RHS yields a shared borrow per MOVE-01. The annotation positions permitted on locals are listed in BIND-08.
 
 ### MOVE-03 — Parameter ownership is declared in the signature
 
@@ -191,8 +191,7 @@ void store(@take String s, @mut List<String> into);      // takes ownership of s
 var name = makeName();
 inspect(name);              // OK: borrow
 inspect(makeName());        // OK: borrow of a temporary
-store(name, list);          // OK: implicit give; name no longer usable
-store(give(name), list);    // OK: explicit give; same operation
+store(name, list);          // OK: implicit give per @take; name no longer usable
 store(makeName(), list);    // OK: temporary moved in
 inspect(give(name));        // ERROR: inspect only borrows; do not transfer
 ```
@@ -311,7 +310,7 @@ The compiler must reject any program in which a borrow is used after the binding
 
 ### LIFE-02 — Returns are owned by default
 
-A bare return type means the function gives the caller an owned value. A bare `return x;` of an owned binding moves it; an explicit `return give(x);` is the same operation written for clarity. The mirror of MOVE-03 applies on the return side: signature drives transfer, no `give(...)` is required at the use site.
+A bare return type means the function gives the caller an owned value. Per MOVE-03 on the return side, a bare `return x;` of an owned binding moves it; `return give(x);` is accepted as explicit form.
 
 To declare a borrowed return instead, the contributing source is marked with `@bound`:
 
