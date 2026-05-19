@@ -113,7 +113,7 @@ conn.use();          // ERROR: conn was consumed
 
 ### BIND-08 — `@mut` and `@take` banned inside generic type arguments; `@bound` permitted
 
-`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, fields, and FI parameter/return slots. Inside a generic type argument (the `T` slot of `Foo<…T…>`), only `@bound` is admitted; `@mut` and `@take` are rejected. `@mut` and `@bound` (but not `@take`) may also appear on local bindings; ownership of a local follows its RHS (MOVE-02) and is not declared at the LHS.
+`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, fields, and FI parameter/return slots. Inside a generic type argument (the `T` slot of `Foo<…T…>`), only `@bound` is admitted; `@mut` and `@take` are rejected. On a local binding, only `@mut` is admitted; `@take` and `@bound` are documentary at best (the local's owned-vs-borrow mode follows its RHS per MOVE-02, and any borrow-substituted return is already `@bound` at the producer side) and are rejected to keep one canonical form.
 
 `List<@mut Foo>` and `Pair<@take K, @take V>` are compile errors. `Pair<@bound K, @bound V>` is well-formed and denotes a pair of borrows; the correct form for a mutable list is `@mut List<Foo>`, not `List<@mut Foo>`.
 
@@ -123,7 +123,7 @@ conn.use();          // ERROR: conn was consumed
 record Pair<L, R>(L left, R right) {}
 
 Pair<String, Int>                   p1 = new Pair("hello".clone(), 42);   // owned: constructor moves
-@bound Pair<@bound String, @bound Int> view = new Pair(name, count);       // bound: bare args borrow
+Pair<@bound String, @bound Int> view = new Pair(name, count);              // bound: bare args borrow; view's mode follows the RHS
 ```
 
 ---
@@ -362,6 +362,22 @@ The compiler must report an error when:
 - the body returns an owned value but the signature declares a `@bound` source.
 
 The diagnostic identifies the contributing source the body actually uses, so the user can either add the appropriate `@bound` marker or change the body to match the declared owned form.
+
+### LIFE-06 — `@bound` is idempotent
+
+`@bound` is a binding-mode marker, not a type constructor; it carries no "layer" to stack. When `@bound` appears in stacked position — typically through generic substitution, as in `@bound E` returned from a method on `Container<@bound T>`, which substitutes to `@bound @bound T` — the resulting form denotes the same shape as a single `@bound T`. Each `@bound` position contributes its source to LIFE-03's intersection.
+
+```laterita
+class ArrayList<E> {
+    @bound E get(int index);                         // outer @bound: bound to `this`
+}
+
+var list = new ArrayList<@bound String>();           // inner @bound: bound to whatever was added
+var got = list.get(0);                               // shape is @bound String;
+                                                     // lifetime = min(list, source-of-element)
+```
+
+The rule is what lets `Container<@bound T>` compose through any method whose return is `@bound E`: the doubly-marked form arising from substitution does not introduce a "borrow of a borrow" indirection — it accumulates lifetime constraints on a single borrow.
 
 ---
 

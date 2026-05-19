@@ -142,7 +142,7 @@ The Java parallel — `throws` relaxes on overrides; parameter types stay invari
 
 ---
 
-## Lifetimes (LIFE-01 through LIFE-05)
+## Lifetimes (LIFE-01 through LIFE-06)
 
 ### Why mark-borrow on returns (LIFE-02)
 
