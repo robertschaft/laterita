@@ -311,7 +311,7 @@ A bare return type means the function gives the caller an owned value. To declar
 - **Parameter source**: annotate the parameter type with `@bound`. The return is bound to that parameter.
 - **Receiver source**: annotate the return type with `@bound`. The return is bound to `this`.
 
-`@bound` is meaningful only when there is something to bind. It requires a non-`void` return for the parameter-source form, and an instance method (not `static`) for the receiver-source form. Misuses are rejected.
+`@bound` is meaningful only when there is something to bind. It requires a non-`void` return for the parameter-source form, and an instance method (not `static`) for the receiver-source form. Misuses are rejected. Concretely: `@bound` on a `void` return is rejected (no value to bind), and `@bound` on the return of a `static` method is rejected (no receiver to bind to) — for a static method that returns a borrow of one of its parameters, place `@bound` on that parameter and leave the return type bare, as in `String firstWord(@bound String s)` above.
 
 ```laterita
 String upperCase(String s);                          // owned return
@@ -1031,11 +1031,11 @@ public final class Arrays {
     public static <T> OwnedPair<T[], T[]> splitOff(
             @take T[] arr, int mid);
 
-    public static <T> @bound Stream<T> stream(@bound T[] arr);
+    public static <T> Stream<T> stream(@bound T[] arr);
 }
 ```
 
-`stream` borrows the receiver and exposes its elements as an `@bound Stream<T>` — the JDK `Stream<T>` type returned as a borrow tied to the source array (LIFE-02). The `@bound` sits on the return type itself, not on the type argument (BIND-08). Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and the stream does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
+`stream` borrows the source array and exposes its elements through the JDK `Stream<T>` type. The borrow lives on the parameter (`@bound T[] arr`), not on the return — `stream` is static, so the receiver-source `@bound` form on the return type does not apply per LIFE-02. The bare `Stream<T>` return is bound to `arr` by the parameter-source rule, as in `firstWord(@bound String s)` (LIFE-02). Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and the stream does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
 
 ### ARR-03 — `MutableConsumer<T>`
 
