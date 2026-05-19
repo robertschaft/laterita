@@ -36,11 +36,15 @@ The annotation `@mut` denotes mutability in every position it appears: local bin
 
 Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits both reassignment and mutation through the binding.
 
+A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a non-FI field is rejected as redundant; on an FI-typed field `@take` is a slot-mode annotation (CLO-03), not an ownership marker.
+
 ```laterita
 class User {
-    String name;                    // immutable field
-    @mut int loginCount;            // mutable field
+    String name;                    // immutable, owned field
+    @mut int loginCount;            // mutable, owned field
 }
+
+record EntryView<K, V>(@bound K key, @bound V value) {}   // borrow-view; instances must be @bound
 ```
 
 ### BIND-04 — Constructors initialize immutable fields
@@ -94,11 +98,11 @@ class StringBuilder {
 
     public StringBuilder append(@take @mut StringBuilder this, String s) {  // consumes, mutates, returns new
         this.contents = this.contents + s;
-        return give(this);
+        return this;
     }
 
     public String build(@take StringBuilder this) {                   // consumes, yields String
-        return give(this.contents);
+        return this.contents;
     }
 }
 
@@ -107,13 +111,20 @@ conn.close();        // OK: conn was owned; consumed by close()
 conn.use();          // ERROR: conn was consumed
 ```
 
-### BIND-08 — Binding modifiers are banned inside generic type arguments
+### BIND-08 — `@mut` and `@take` banned inside generic type arguments; `@bound` permitted
 
-`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, local bindings, fields, and FI parameter/return slots — never on a generic type argument inside `<...>`.
+`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, fields, and FI parameter/return slots. Inside a generic type argument (the `T` slot of `Foo<…T…>`), only `@bound` is admitted; `@mut` and `@take` are rejected. On a local binding, only `@mut` is admitted; `@take` and `@bound` are documentary at best (the local's owned-vs-borrow mode follows its RHS per MOVE-02, and any borrow-substituted return is already `@bound` at the producer side) and are rejected to keep one canonical form.
 
-`List<@mut Foo>` and `Stream<@bound T>` are compile errors. The correct form annotates the binding that holds the generic type: `@mut List<Foo>`, `@bound Stream<T>`.
+`List<@mut Foo>` and `Pair<@take K, @take V>` are compile errors. `Pair<@bound K, @bound V>` is well-formed and denotes a pair of borrows; the correct form for a mutable list is `@mut List<Foo>`, not `List<@mut Foo>`.
 
-The prohibition exists because a type-argument annotation would propagate into substituted method signatures and silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly.
+`@mut` is banned in argument position because substitution would silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly. `@take` is banned because it is a parameter mode, not a value attribute, and has no meaning as a type argument. `@bound` is permitted because it composes cleanly: a class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-03 (and the idempotence rule of LIFE-06 when `@bound` stacks). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
+
+```laterita
+record Pair<L, R>(L left, R right) {}
+
+Pair<String, Int>                   p1 = new Pair("hello".clone(), 42);   // owned: constructor moves
+Pair<@bound String, @bound Int> view = new Pair(name, count);              // bound: bare args borrow; view's mode follows the RHS
+```
 
 ---
 
@@ -153,13 +164,7 @@ var b = give(a);            // a is consumed
 print(b);                   // OK
 ```
 
-A binding declaration may use `@take` as a declarative prefix on the type, asserting that the LHS receives ownership. `@take` is documentary: it does not by itself trigger a move. The RHS must independently produce ownership (a `give(...)` call, or a producer expression such as a call, constructor, or literal). A `@take` LHS paired with a bare-binding RHS is a compile error per MOVE-01 (the bare RHS is a borrow, which `@take` rejects).
-
-```laterita
-var c = makeString();
-@take String d = give(c);   // both sides explicit; same operation as `var d = give(c)`
-@take String e = c;         // ERROR: bare RHS is a borrow per MOVE-01; @take demands ownership
-```
+A local's mode follows the RHS: a producer expression (call, constructor, literal, `give(x)`) yields an owned binding; a bare-binding RHS yields a shared borrow per MOVE-01. The annotation positions permitted on locals are listed in BIND-08.
 
 ### MOVE-03 — Parameter ownership is declared in the signature
 
@@ -186,8 +191,7 @@ void store(@take String s, @mut List<String> into);      // takes ownership of s
 var name = makeName();
 inspect(name);              // OK: borrow
 inspect(makeName());        // OK: borrow of a temporary
-store(name, list);          // OK: implicit give; name no longer usable
-store(give(name), list);    // OK: explicit give; same operation
+store(name, list);          // OK: implicit give per @take; name no longer usable
 store(makeName(), list);    // OK: temporary moved in
 inspect(give(name));        // ERROR: inspect only borrows; do not transfer
 ```
@@ -306,7 +310,9 @@ The compiler must reject any program in which a borrow is used after the binding
 
 ### LIFE-02 — Returns are owned by default
 
-A bare return type means the function gives the caller an owned value. To declare a borrowed return instead, the contributing source is marked with `@bound`:
+A bare return type means the function gives the caller an owned value. Per MOVE-03 on the return side, a bare `return x;` of an owned binding moves it; `return give(x);` is accepted as explicit form.
+
+To declare a borrowed return instead, the contributing source is marked with `@bound`:
 
 - **Parameter source**: annotate the parameter type with `@bound`. The return is bound to that parameter.
 - **Receiver source**: annotate the return type with `@bound`. The return is bound to `this`.
@@ -356,6 +362,22 @@ The compiler must report an error when:
 
 The diagnostic identifies the contributing source the body actually uses, so the user can either add the appropriate `@bound` marker or change the body to match the declared owned form.
 
+### LIFE-06 — `@bound` is idempotent
+
+`@bound` is a binding-mode marker, not a type constructor; it carries no "layer" to stack. When `@bound` appears in stacked position — typically through generic substitution, as in `@bound E` returned from a method on `Container<@bound T>`, which substitutes to `@bound @bound T` — the resulting form denotes the same shape as a single `@bound T`. Each `@bound` position contributes its source to LIFE-03's intersection.
+
+```laterita
+class ArrayList<E> {
+    @bound E get(int index);                         // outer @bound: bound to `this`
+}
+
+var list = new ArrayList<@bound String>();           // inner @bound: bound to whatever was added
+var got = list.get(0);                               // shape is @bound String;
+                                                     // lifetime = min(list, source-of-element)
+```
+
+The rule is what lets `Container<@bound T>` compose through any method whose return is `@bound E`: the doubly-marked form arising from substitution does not introduce a "borrow of a borrow" indirection — it accumulates lifetime constraints on a single borrow.
+
 ---
 
 ## 5. Scope-Exit Cleanup
@@ -392,7 +414,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 3. Step 2 repeated for `B`, then for each superclass up to `Object`.
 4. If the instance is heap-allocated, its storage is released.
 
-Fields that are moved-out (DROP-04) or `null` (NULL-09) are skipped in steps 2 and 3; each surviving field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
+Fields that are moved-out (DROP-04), `null` (NULL-09), or `@bound` (BIND-03) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
 
 ```laterita
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
@@ -489,7 +511,7 @@ class File {
     for (T item : source) {
         result.add(item.clone());
     }
-    return give(result);
+    return result;
 }
 
 deepCopy(users);   // OK: User.clone() is the synthesized form
@@ -557,7 +579,7 @@ Every class has a public `Self clone()` method, synthesized as `return new Self(
     for (T item : source) {
         result.add(item.clone());
     }
-    return give(result);
+    return result;
 }
 
 deepCopy(users);       // OK
@@ -838,7 +860,7 @@ var r2 = fold(give(input), buf, (a, b) -> {
 });
 
 // Accepted — consume closure fits the @take slot of onClose.
-@take Logger log = openLog();
+var log = openLog();
 onClose(() -> { give(log); });
 
 // Rejected — consume closure does not fit a @mut slot.
@@ -939,9 +961,9 @@ A string literal expression has type `@bound String` with a static lifetime. A b
 ```laterita
 String greeting = "hello";              // borrowed, static lifetime
 String owned = "hello".clone();         // owned heap allocation
-@take String s = give(greeting);        // ERROR: greeting is borrowed
-@take String u = give("hello");         // ERROR: literal is borrowed (give(...) on a borrow per MOVE-02)
-@take String t = "hello".clone();       // OK
+var s = give(greeting);                 // ERROR: greeting is borrowed
+var u = give("hello");                  // ERROR: literal is borrowed (give(...) on a borrow per MOVE-02)
+var t = "hello".clone();                // OK: owned
 void inspect(String s);                 // accepts a literal directly (borrow)
 void store(@take String s);             // requires `.clone()` on a literal
 ```
@@ -978,7 +1000,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 ```laterita
 class T[] {
-    @mut @bound BoundPair<T[], T[]> splitAt(int mid);
+    @mut @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(int mid);
 
     @mut void forEachChunk(int chunkSize,
             @mut (@mut T[]) -> void body);
@@ -986,7 +1008,7 @@ class T[] {
     @mut void forEachChunkExact(int chunkSize,
             @mut (@mut T[]) -> void body);
 
-    OwnedPair<T[], T[]> splitOff(@take T[] this, int mid);
+    Pair<T[], T[]> splitOff(@take T[] this, int mid);
 }
 ```
 
@@ -997,10 +1019,10 @@ class T[] {
 **Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 
 ```laterita
-@take int[] arr   = readInput();
-var split         = arr.splitOff(arr.length / 2);
-@take int[] left  = split.left();
-@take int[] right = split.right();
+var arr   = readInput();
+var split = arr.splitOff(arr.length / 2);
+var left  = split.left();
+var right = split.right();
 var t1 = Thread.ofVirtual().start(() -> heavy(left));
 var t2 = Thread.ofVirtual().start(() -> heavy(right));
 t1.join();
@@ -1017,7 +1039,7 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> BoundPair<T[], T[]> splitAt(
+    public static <T> @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
@@ -1028,7 +1050,7 @@ public final class Arrays {
             @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
 
-    public static <T> OwnedPair<T[], T[]> splitOff(
+    public static <T> Pair<T[], T[]> splitOff(
             @take T[] arr, int mid);
 
     public static <T> Stream<T> stream(@bound T[] arr);
@@ -1050,27 +1072,22 @@ public interface MutableConsumer<T> {
 }
 ```
 
-### ARR-04 — `BoundPair<L, R>`
+### ARR-04 — `Pair<L, R>`
 
-General-purpose record carrying a pair of borrowed mutable values. Returned by `splitAt` (instantiated as `BoundPair<T[], T[]>`); reusable by any future API returning a pair of `@bound @mut` values, including heterogeneous (`L ≠ R`) pairs.
-
-```java
-package laterita.lang;
-
-public record BoundPair<L, R>(
-        @bound @mut L left,
-        @bound @mut R right) {}
-```
-
-### ARR-05 — `OwnedPair<L, R>`
-
-General-purpose record carrying a pair of owned values. Returned by `splitOff` (instantiated as `OwnedPair<T[], T[]>`); reusable by any future API returning a pair of owned values. Accessors participate in partial-move tracking (MOVE-07), so both `left()` and `right()` may be consumed from the same instance. The record itself is non-`@local`.
+General-purpose record carrying two values. A single declaration covers owned, borrow, and mixed cases — the mode is driven by what is substituted for `L` and `R` (BIND-08).
 
 ```java
 package laterita.lang;
 
-public record OwnedPair<L, R>(L left, R right) {}
+public record Pair<L, R>(L left, R right) {}
 ```
+
+Instantiations encountered in this spec:
+
+- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Accessors `left()` and `right()` participate in partial-move tracking (MOVE-07), so both fields may be consumed from the same instance.
+- `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing binding is `@bound` because the instance contains `@bound`-substituted parameters (BIND-08); its lifetime is the intersection of the field sources (LIFE-03).
+
+The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
 ---
 

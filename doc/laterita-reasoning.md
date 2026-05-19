@@ -88,11 +88,11 @@ Two English verbs make the asymmetry first-class. `@take T name` on a parameter 
 
 We considered keeping ownership entirely at the call site (silent signatures) and rejected it. The function knows whether it needs ownership; that need is part of its public contract. A signature `void store(@take String s, ...)` says "s is consumed" without forcing the caller to read the body. The signature is the API.
 
-The two markers also support different inference at different positions. At a call site, the parameter declaration is canonical, so `give(...)` on the argument is optional — `store(name, list)` is unambiguous when `store`'s signature has `@take String s`. At a binding assignment, both sides are local and we want the marker on the side that *acts*: the source binding releasing ownership. So `var b = give(a)` is the explicit form; `@take String b = give(a)` is allowed for documentation but adds nothing operational; `@take String b = a` (bare RHS) is rejected because the bare RHS is a borrow per MOVE-01 and `@take` cannot infer a move from a borrowing source.
+The two markers support different inference at different positions. Where a method signature is in play — both at call sites (parameter `@take`) and at return statements (owned return type) — the signature is canonical, so `give(...)` is optional: `store(name, list)` is unambiguous when `store`'s parameter is `@take String s`, and `return result;` is unambiguous when the return type is owned. Local-to-local moves have no signature to lean on, so `var b = give(a);` keeps `give(...)` as the explicit marker — the only way to express a move from a borrowing default (MOVE-01).
 
-This asymmetry — `give(...)` optional at call sites, mandatory at assignments — is deliberate. The call site has a published contract to lean on; the assignment doesn't. Quiet by default at the boundary that has more information; explicit at the one that doesn't.
+We also considered allowing `@take` on local binding declarations as a documentary assertion. An earlier draft permitted `@take String b = give(a);` alongside `var b = give(a);`. The annotation added nothing operational — ownership of `b` is determined by the RHS — and writing it on every owned local would dominate the surface with marks the compiler already knows. The rule now: `@take` lives on parameters (including `this`) and fields, where it is a published contract; locals get their mode from the producer.
 
-Producer/consumer asymmetry runs through the rest of the language as well: bindings default to borrow on the consumer side (MOVE-01), expressions default to owned on the producer side (return values, constructors, computed expressions). `give(...)` and `@take` only appear at genuine ownership transfers, and the surrounding code reads like Java.
+This division — `give(...)` and `@take` only at signature boundaries; locals quiet — leans on the same producer/consumer asymmetry as the rest of the language: bindings default to borrow on the consumer side (MOVE-01), expressions default to owned on the producer side (return values, constructors, computed expressions). Ownership marks appear at genuine API boundaries; the inside of a function reads like Java.
 
 ### Why borrow exclusivity (MOVE-04)
 
@@ -142,7 +142,7 @@ The Java parallel — `throws` relaxes on overrides; parameter types stay invari
 
 ---
 
-## Lifetimes (LIFE-01 through LIFE-05)
+## Lifetimes (LIFE-01 through LIFE-06)
 
 ### Why mark-borrow on returns (LIFE-02)
 
@@ -241,7 +241,7 @@ Partial moves (MOVE-07) and a universal `onDrop()` (DROP-01) collide: after `giv
 
 Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). DROP-08 is the finer-grained version: Rust's prohibition attaches at the *type* level — a `Drop` type has all its fields locked, even those the drop never touches — whereas DROP-08 attaches at the *field* level, locking only fields the `onDrop()` body actually reads. A class without an `onDrop()` declaration (every record, every plain data carrier) reads nothing and stays fully splittable; a class that reads only some of its fields pins only those. The common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
 
-This also explains why `StringBuilder.build()` (BIND-07) — `return give(this.contents);` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and the `give(this.contents)` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
+This also explains why `StringBuilder.build()` (BIND-07) — `return this.contents;` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and the implicit move of `this.contents` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
 
 ### Why `onDrop()` is confined to `final` classes (DROP-09)
 
@@ -501,7 +501,7 @@ Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tra
 
 ---
 
-## Arrays (ARR-01 through ARR-05)
+## Arrays (ARR-01 through ARR-04)
 
 ### Why a dedicated section for arrays
 
@@ -545,13 +545,13 @@ Java array slots write through any reference, so `@bound @mut T[]` permits in-pl
 
 A single owned array must be divisible so the halves are independently usable by different threads, and a parallel iteration surface is needed for the data-parallel case. Two distinct usage shapes need different primitives, and trying to cover both with one API underweights whichever shape isn't its native fit.
 
-**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `OwnedPair<T[], T[]>` (ARR-05) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
+**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `Pair<T[], T[]>` (ARR-04) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
 
 **Data-parallel iteration.** Rather than carry a bespoke `parallelForEachChunk` on `T[]`, the parallel path goes through `Arrays.stream(@bound T[])` returning a bare `Stream<T>` — the JDK type, bound to the source by the parameter-source form of LIFE-02 (static methods have no receiver, so `@bound` belongs on the parameter, not the return). `.parallel().forEach(...)` already exists on every Java developer's mental model, and the underlying `Spliterator` splits work the same way a hand-rolled chunk fan-out would. Callers who need a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. The cost is one extra abstraction layer (the stream) and a real limitation — the stream produces transformed/aggregated values but does not write back into the source — so the in-place parallel mutation case stays on the `splitOff` path. The win is no new language-level executor concept (no rayon-style `pool.install(...)` shim) and one fewer load-bearing primitive on `T[]`; for read-only parallel reductions (map / filter / reduce / sum / collect), the standard `Consumer<T>` / `Function<T,R>` / `Predicate<T>` interfaces from `java.util.function` accept `@bound T` parameters by default, so no parallel SAM hierarchy is required.
 
 Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mut` borrow vs `@take` consume), and MOVE-09 makes that distinction a different overload with no call-site disambiguator (no `give(this)` syntax exists). Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust-precedent (`BytesMut::split_off`) and the only spelling that resolves unambiguously at every call site.
 
-The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on two general-purpose records (`BoundPair<L, R>`, `OwnedPair<L, R>`) that any future API can reuse rather than minting a new domain record per call site.
+The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per BIND-08 — `Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@bound @mut T[], @bound @mut T[]>` for the in-thread borrowed return — so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
