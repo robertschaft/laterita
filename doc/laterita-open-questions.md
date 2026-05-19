@@ -114,21 +114,6 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 
 **Related codes:** BIND-07, MOVE-03, MOVE-09.
 
-## OQ-25 — `Send`-style vs `Sync`-style separation
-
-**Surfaced when:** comparing STD-07's `@local` marker with Rust's twin auto-traits `Send` (movable across threads) and `Sync` (shareable by reference across threads).
-
-**The issue.** STD-07 introduces one marker (`@local` / inferred `nonlocal`) that gates whether a type may cross thread boundaries at all. Rust separates the two questions: a type may be movable across threads but not shareable (e.g. `Cell<T>` is `Send` but not `Sync`), or shareable but not movable (rare, but exists). Laterita's `Cell<T>` (STD-05) and any future interior-mutability type face the same distinction: sending the owned cell to another thread is fine; sharing a borrow of the cell across threads is a data race.
-
-**The question.**
-- Does Laterita need a second marker, e.g. `@localShare` / `@sharable`, distinguishing "can be moved across threads" from "a borrow of it can be observed from another thread"?
-- Or does STD-07 cover this by treating `Arc<Cell<T>>` itself as `@local` (so the borrow can never actually escape)?
-- How does `Mutex<T>` (STD-09) — the canonical `Sync`-but-not-`Send`-from-locked-state container — fit?
-
-**Why it matters.** Without the distinction, Laterita either over-restricts (banning useful single-thread interior mutability from being moved) or under-restricts (allowing a `&Cell<T>` to leak through a closure capture into a spawned thread).
-
-**Related codes:** STD-05, STD-07, STD-09, THR-02.
-
 ## OQ-26 — Newtype wrappers as zero-cost value classes
 
 **Surfaced when:** considering the Rust idiom `struct Meters(f64)` / `struct UserId(u64)` — a one-field tuple struct that the compiler erases to the inner representation but the type system treats as distinct.
