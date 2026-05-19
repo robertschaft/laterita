@@ -49,3 +49,113 @@ Items 1 and 2 below are no longer migration scaffolding — they were absorbed i
 4. A java compiler plugin that simulates the borrow checker based on the annotations above, so developers can improve their Java code before fully migrating.
 5. A tool that converts annotated Java code to a `.lat` source (or keeps it as `.java`; both are valid laterita source per COMP-06). It assumes items 3 and 4 have already been executed.
 6. A laterita formatter that formats laterita always in the same manner. It should allow only very few formatting freedoms to developers (e.g. it wouldn't remove some additional line breaks).
+
+## OQ-20 — Pattern matching and destructuring under ownership
+
+**Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
+
+**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each binding produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / MOVE-07)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+
+**The question.**
+- Do record-pattern bindings default to borrow (consistent with MOVE-01) or to move (consistent with the Rust idiom)?
+- Is there an opt-in `@take` form on a pattern binding to switch arms between borrow and consume?
+- How does exhaustiveness interact with partial moves: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
+- Do guards (`case P when cond`) re-borrow across the guard expression?
+
+**Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums; without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
+
+**Related codes:** MOVE-01, MOVE-03, MOVE-07, DROP-04.
+
+## OQ-22 — Result-style recoverable errors alongside unchecked exceptions
+
+**Surfaced when:** noticing that EXC-05 makes every exception unchecked, while Rust's recoverable-error story is `Result<T, E>` plus the `?` propagation operator.
+
+**The issue.** Laterita has unchecked exceptions for failure plus structured unwind (EXC-02, EXC-03). That covers panics, IO errors, and most Java patterns. But the Rust pattern of "errors as values" — totality-checked by the compiler, propagated with `?`, mapped with `map_err` — is absent. A library author who wants to express "this returns either a value or one of these named failures" has no first-class form; they fall back to throwing.
+
+**The question.**
+- Does the stdlib provide a `Result<T, E>` sealed type and a `laterita.lang.Intrinsics.tryGet(Result<T, E>) → T` (or equivalent annotation/intrinsic) that desugars to "unwrap or return the error" — the `?` operator without a new keyword?
+- How does `Result` interoperate with `@take` and `@bound`: is `Result<@bound T, E>` meaningful, and does the borrow on the `Ok` arm extend to the consumer?
+- When should a library author choose `throws RuntimeException` versus `Result`? Is there a guideline analogous to "errors that callers must handle" → `Result`, "programmer bugs" → exception?
+- How does `Result` interact with `onDrop` for unconsumed values (drop-on-floor of an unread `Err` — warn? error?)?
+
+**Why it matters.** Without a `Result` story, Laterita force-channels every recoverable failure through the exception system, which is the opposite of Rust's design and weakens compile-time totality checking — one of the central reasons Java developers adopt Rust.
+
+**Related codes:** EXC-05, MOVE-03, LIFE-02, DROP-08.
+
+## OQ-23 — Channels and message-passing for inter-thread communication
+
+**Surfaced when:** observing that §16 specifies threads, interruption, joining, and `Mutex<T>`, but no channel primitive — yet Rust's primary thread-communication idiom is `std::sync::mpsc` / `crossbeam` channels with move-on-send.
+
+**The issue.** Shared-state concurrency via `Arc<Mutex<T>>` is covered. Message-passing concurrency — sender moves a `@take` value into the channel, receiver gets ownership on the other side, no aliasing across threads — is not. The ownership model maps to channels especially cleanly: `Sender<T>.send(@take T)` and `Receiver<T>.recv() → T` are simply moves across a queue, with `@local` (STD-07) gating which `T` may be sent.
+
+**The question.**
+- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required stdlib (§15, Reserved Names §18) or a third-party library?
+- Bounded vs unbounded? SPSC vs MPSC vs MPMC? Does the stdlib commit to a single shape, or expose a hierarchy?
+- Is `send` an interruption point (THR-04)? Does dropping the last `Sender` close the channel (analog of Rust's `RecvError`)?
+- How does back-pressure surface — `BlockingQueue`-style `put`/`offer`, or a structured `trySend` returning the value back on full?
+
+**Why it matters.** Without a channel primitive, Laterita programs that want Rust-style "share by communicating" fall back to hand-rolled `Arc<Mutex<Queue<T>>>` and lose the static guarantee that a sent value is uniquely owned by the receiver.
+
+**Related codes:** STD-07, STD-09, THR-01, THR-04, MOVE-03.
+
+## OQ-24 — Operator overloading for arithmetic value types
+
+**Surfaced when:** considering value-typed math (`BigDecimal`, `Vec3`, `Money`, `Duration`) which in Rust uses `Add`/`Sub`/`Mul`/`Div` traits.
+
+**The issue.** Java has no operator overloading except `+` on `String`. Rust does, by trait. Without overloading, Laterita value types read `a.plus(b).times(c)` where Rust reads `(a + b) * c`. For a language whose elevator pitch is "Rust ergonomics in Java syntax," math-heavy code stays verbose.
+
+**The question.**
+- Does Laterita introduce a fixed-set annotation surface — e.g. `@operator(PLUS)` on a method named `plus` — that the parser desugars `a + b` into the annotated call, with overload resolution unchanged?
+- Which operators are eligible? At minimum `+ - * / %` and `== !=` (the latter via `Object.equals` already); what about `< <= > >=` (Rust's `PartialOrd`) and `[]` indexing (Rust's `Index`)?
+- How does ownership interact: do operator methods take `@bound this` by default (like Rust's `&self` reference forms), with `@take` versions opted in?
+- Does the form coexist with `String`'s built-in `+`, or replace it?
+
+**Why it matters.** Value-typed arithmetic is one of the most visible everyday differences between Rust and Java code. The decision affects how libraries like `java.math`, vector math, and unit-typed quantities look in Laterita.
+
+**Related codes:** BIND-07, MOVE-03, MOVE-09.
+
+## OQ-25 — `Send`-style vs `Sync`-style separation
+
+**Surfaced when:** comparing STD-07's `@local` marker with Rust's twin auto-traits `Send` (movable across threads) and `Sync` (shareable by reference across threads).
+
+**The issue.** STD-07 introduces one marker (`@local` / inferred `nonlocal`) that gates whether a type may cross thread boundaries at all. Rust separates the two questions: a type may be movable across threads but not shareable (e.g. `Cell<T>` is `Send` but not `Sync`), or shareable but not movable (rare, but exists). Laterita's `Cell<T>` (STD-05) and any future interior-mutability type face the same distinction: sending the owned cell to another thread is fine; sharing a borrow of the cell across threads is a data race.
+
+**The question.**
+- Does Laterita need a second marker, e.g. `@localShare` / `@sharable`, distinguishing "can be moved across threads" from "a borrow of it can be observed from another thread"?
+- Or does STD-07 cover this by treating `Arc<Cell<T>>` itself as `@local` (so the borrow can never actually escape)?
+- How does `Mutex<T>` (STD-09) — the canonical `Sync`-but-not-`Send`-from-locked-state container — fit?
+
+**Why it matters.** Without the distinction, Laterita either over-restricts (banning useful single-thread interior mutability from being moved) or under-restricts (allowing a `&Cell<T>` to leak through a closure capture into a spawned thread).
+
+**Related codes:** STD-05, STD-07, STD-09, THR-02.
+
+## OQ-26 — Newtype wrappers as zero-cost value classes
+
+**Surfaced when:** considering the Rust idiom `struct Meters(f64)` / `struct UserId(u64)` — a one-field tuple struct that the compiler erases to the inner representation but the type system treats as distinct.
+
+**The issue.** Java records always allocate (unless Valhalla value-classes apply). Laterita could offer the Rust newtype pattern as a guaranteed zero-overhead wrapper: `record Meters(double value) {}` compiles to the same memory layout as `double` when used as a field or parameter, with no separate object header, but the type system rejects mixing `Meters` with `Seconds`.
+
+**The question.**
+- Is there an annotation, e.g. `@newtype` or `@valuewrapper`, on single-field records that obligates the compiler to elide allocation and treat the wrapper as the inner type at the ABI level?
+- Does it inherit the inner type's ownership semantics automatically: `@newtype record Owned(String inner) {}` behaves as an owned `String` in move/borrow analysis?
+- How does it interact with sealed hierarchies — can a sealed type with all `@newtype` variants compile as a tagged union with discriminant + inner data, à la Rust enums?
+- Does it require Valhalla in the JVM-targeting story, or does AOT native compilation (COMP-01) sidestep that?
+
+**Why it matters.** The newtype pattern is the most cited Rust ergonomic improvement over Java for domain modelling ("type aliases are not types; newtype wrappers are"). Without a zero-cost form, Laterita developers will skip the pattern for performance and lose the type-safety benefit.
+
+**Related codes:** BIND-04, COMP-01, COMP-02.
+
+## OQ-27 — `From`/`Into`-style conversions and implicit-coercion control
+
+**Surfaced when:** noting that Rust's `From<T>`/`Into<U>` traits provide an ergonomic but controlled conversion surface (`let s: String = my_str.into();`), used heavily for error conversion in conjunction with the `?` operator.
+
+**The issue.** Java relies on explicit constructors and static factory methods (`String.valueOf`, `Integer.parseInt`) plus a fixed set of compiler-blessed primitive widenings. There is no extension point for "this type converts to that one in one well-defined step." Combined with OQ-22 (`Result`-style errors), the lack of `From` means error-type composition across libraries requires hand-written boilerplate per call site.
+
+**The question.**
+- Does Laterita introduce a `Conversion<F, T>` interface (or `@from` annotation on a constructor / static method) that the compiler may invoke implicitly in specific positions — at minimum on `?`-style propagation of `Result<_, E1>` into a function returning `Result<_, E2>`?
+- Are implicit conversions limited to error-propagation sites, or also available on assignment / argument passing? (Scala's experience suggests "only at error-propagation sites" is the safe choice.)
+- How does conversion interact with ownership: must `From::from` always be `@take`, or are borrowed conversions (`Into<&str>` analog) part of the surface?
+
+**Why it matters.** Without a conversion mechanism, the OQ-22 `Result` story is stunted: every error boundary needs an explicit `.mapErr(MyError::wrap)` call. With it, library composition tightens substantially.
+
+**Related codes:** MOVE-03, OQ-22.
