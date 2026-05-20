@@ -32,7 +32,7 @@ Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) ext
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, §19)
 
-Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators per NULL-02; inline FI types as the only escape from the interface-name explosion per FN-01), but each breaks the "still a `.java` file" promise.
+Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.
 
 The source surface is therefore split in two rather than dropping either group. `.java` is the Java-compatible subset — sections 1–18 of the spec — and is the migration on-ramp and IDE-compatible form. `.lat` is purely additive: it admits the five forms, and any annotated `.java` source is also a valid `.lat` source. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file.
 
@@ -334,7 +334,7 @@ If a field type's `clone()` is `broken()` (as `Heap<T>.clone()` is, per STD-06),
 
 ---
 
-## Optionality (NULL-01 through NULL-10)
+## Optionality (NULL-01 through NULL-10, LAT-01 through LAT-04)
 
 ### Why non-nullable by default
 
