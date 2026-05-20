@@ -1,35 +1,102 @@
 # Laterita
 
-**A modern Java that adopts Rust's memory model.**
+**Java's syntax. Rust's memory model. No garbage collector.**
 
-Laterita keeps Java's syntax, type system, and developer experience, and replaces tracing garbage collection with Rust's ownership-and-borrow discipline. The goal is a language a Java developer can read on day one, with the safety properties (no use-after-free, no data races, no unobserved nulls, deterministic cleanup) that Rust earned by taking those problems seriously.
+Laterita is a language that reads like Java and compiles like Rust. You write classes, methods, generics, and exceptions exactly as you always have — and the compiler hands you back the guarantees Rust earned: no use-after-free, no data races, no unobserved nulls, and deterministic cleanup at scope exit. There is no garbage collector to pause you, no `Send`/`Sync` vocabulary to learn, and no new keywords to memorize.
+
+If you can read Java, you can read Laterita on day one. The ownership rules ride on a handful of annotations, so a Laterita program is still ordinary, `javac`-parseable Java source — the borrow checker is the only thing that got smarter.
 
 The name comes from *laterite* — the rust-red, iron-rich tropical soil that volcanic islands grow coffee in.
 
-## Intent
+## Why Laterita
 
 Java has a mature ecosystem, a huge developer base, and a syntax those developers have internalized over decades. Rust has the memory model that has made systems software safer than any garbage-collected language can. Laterita is the attempt to give Java's developers Rust's guarantees without asking them to learn a new surface language.
 
-Concretely:
+## Highlights
 
-- **Ownership and borrowing instead of GC.** Values have a single owner; references are tracked borrows; cleanup is deterministic at scope exit.
-- **Non-nullable by default.** `T` excludes null; `T?` admits it. The compiler proves the rest.
-- **Mutability is explicit and transitive.** A single `mut` keyword marks every mutation point — bindings, fields, methods, parameters — and propagates through access paths.
-- **No data races by construction.** Thread-affine types are marked `local` and cannot cross thread boundaries; shared mutable state goes through `Mutex<T>`, which owns the data it protects.
-- **Java's syntactic vocabulary.** Types come first (`String name`), classes and methods look like Java, exceptions still exist where they earn their keep.
+- **Ownership and borrowing instead of GC.** Every value has a single owner; references are tracked borrows; cleanup is deterministic. When a binding leaves scope the compiler runs its `onDrop()` — no tracing collector, no finalizer surprises, no pauses.
+
+- **No new keywords.** Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@mut`, `@take`, `@bound`, `@local`, …) and two intrinsics (`give(x)`, `broken()`). The core language is annotated Java that `javac` parses unchanged.
+
+- **Mutability is explicit and transitive.** A single `@mut` marker covers bindings, fields, methods, and parameters, and it must be present at *every* level of an access path to mutate. Immutability is the default everywhere.
+
+- **Non-nullable by default.** A bare `T` excludes null and needs no null check; the nullable type admits it. The compiler proves the rest and narrows automatically after an `if (x != null)` check.
+
+- **Moves are visible.** Plain assignment borrows; `give(x)` transfers ownership and ends the source binding. A parameter declares in its signature whether it borrows or consumes (`@take`), so every ownership transfer is readable.
+
+- **No data races by construction.** Thread-affine types are marked `@local` and cannot cross thread boundaries. Shared mutable state goes through `Mutex<T>`, which owns the data it protects and hands it out only inside a scoped closure — there is no separate lock guard to leak or forget.
+
+- **Exceptions, simplified.** Java's `try`/`catch`/`finally` and the `Throwable` hierarchy stay. The checked/unchecked distinction is gone — every exception is unchecked and `throws` becomes documentation. Stack traces resolve lazily, so throwing stays cheap.
+
+- **Ahead-of-time, monomorphized, no reflection.** Laterita compiles natively with generic monomorphization and no runtime metadata. Reflection is removed; serializers, ORM mappers, and DI wiring are generated at build time by annotation processors instead.
+
+- **Two source surfaces, one language.** `.java` files are the Java-compatible surface; `.lat` files add pure syntactic sugar (below). The two are mechanically inter-convertible — the file extension never changes a program's meaning. The reference compiler is `latc`.
+
+## The `.lat` surface
+
+`.java` files keep Laterita strictly within what `javac` can parse, expressing every ownership concept through annotations. `.lat` files lift that restriction with five sugar-only forms. Each one desugars *exactly* to the `.java` surface before any analysis runs and adds no new semantics — `.lat` is purely about writing the same program with lighter syntax.
+
+### Nullable types — `T?`
+
+`T?` is the `.lat` spelling of `@Nullable T`.
+
+```java
+String? maybeName = lookup(id);      // @Nullable String
+String  name      = "Alice";         // never null — no check needed
+```
+
+### Safe call — `?.`
+
+Invoke a method only when the receiver is non-null; the expression yields `R?`.
+
+```java
+String? upper = maybeName?.toUpperCase();
+// desugars to: maybeName == null ? null : maybeName.toUpperCase()
+```
+
+### Elvis — `?:`
+
+Supply a fallback when the left side is null.
+
+```java
+String shown = maybeName ?: "anonymous";
+```
+
+### Null assertion — `!!`
+
+Convert `T?` to `T`, throwing `NullPointerException` if it really was null.
+
+```java
+String definitely = maybeName!!;     // desugars to Objects.requireNonNull(maybeName)
+```
+
+### Inline functional-interface types — `(P1, …, Pn) -> R`
+
+Write a single-abstract-method signature directly as a type — with full ownership modes — instead of declaring a named interface.
+
+```java
+(int, int) -> int                                  adder;
+@mut (@take String, @mut StringBuilder) -> String  appender;
+
+<R> Stream<R> map(@mut (@take T) -> R fn);
+```
+
+In `.java` files the same meaning is written by declaring a nominal functional interface at the same position.
 
 ## Documents
 
 | File | Purpose |
 |---|---|
-| [`doc/laterita-spec.md`](doc/laterita-spec.md) | The normative specification. Each requirement carries a mnemonic code (`BIND-01`, `MOVE-03`, …) grouped by area: bindings, optionality, move/borrow, mutability, lifetimes, cleanup, copying, unreachability, strings, closures, exceptions, unsafe, standard library, threads, compilation. This is what a compiler must implement. |
-| [`doc/laterita-reasoning.md`](doc/laterita-reasoning.md) | The design rationale. Section by section, it explains *why* each spec rule reads the way it does — the alternatives considered, the trade-offs taken, and the Java/Rust/Kotlin precedents being followed or rejected. Read this when the spec leaves you wondering "but why?". |
-| [`doc/laterita-open-questions.md`](doc/laterita-open-questions.md) | Issues raised during design that were *not* resolved. Each entry references the spec codes it touches and explains what would need to be decided to close it. Resolved questions are reduced to a one-line reminder at the bottom of the file. |
+| [`doc/laterita-spec.md`](doc/laterita-spec.md) | The normative specification. §1–18 are the Java-compatible surface — every rule expressible as annotated `.java` that `javac` parses. §19 (`LAT-*`) specifies the `.lat` sugar. Each requirement carries a mnemonic code (`BIND-01`, `MOVE-03`, …) grouped by area: bindings, optionality, move/borrow, mutability, lifetimes, cleanup, copying, strings, closures, exceptions, unsafe, standard library, threads, compilation. |
+| [`doc/laterita-reasoning.md`](doc/laterita-reasoning.md) | The design rationale. Section by section, it explains *why* each spec rule reads the way it does — the alternatives considered, the trade-offs taken, and the Java/Rust/Kotlin precedents followed or rejected. |
+| [`doc/laterita-open-questions.md`](doc/laterita-open-questions.md) | Language-design questions raised but not yet resolved (`OQ-NN`). Each entry references the spec codes it touches. |
+| [`doc/resolved-questions.md`](doc/resolved-questions.md) | Registry of closed decisions: rejected alternatives and resolved-OQ tombstones, so settled choices are not re-raised. |
+| [`doc/terminology.md`](doc/terminology.md) | Defined terms used across the spec and reasoning. |
 
 ## Reading order
 
-- New to the project: skim §1–§3 of the spec (bindings, optionality, move/borrow), then read the matching sections of the reasoning document.
-- Evaluating a design choice: open the reasoning document at the relevant section; cross-reference the spec codes it cites.
+- New to the project: skim §1–§3 of the spec (bindings, optionality, move/borrow) and §19 (`.lat` forms), then read the matching sections of the reasoning document.
+- Evaluating a design choice: open the reasoning document at the relevant section; cross-reference the spec codes it cites, and check `resolved-questions.md` for decisions already closed.
 - Looking for what's still undecided: start with the open-questions document.
 
 ## License
