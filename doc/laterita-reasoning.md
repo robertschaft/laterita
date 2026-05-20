@@ -22,7 +22,7 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
-The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible subset enumerated in COMP-06, nothing else about it has to change to remain parseable by the Java ecosystem.
+The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible surface (sections 1–18; COMP-06), nothing else about it has to change to remain parseable by the Java ecosystem.
 
 The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
@@ -30,11 +30,17 @@ Expression-position concepts can't be annotations — `@give x` would not parse 
 
 Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
 
-### Two source surfaces: `.lat` and `.java` (COMP-06, COMP-07)
+### Two source surfaces: `.lat` and `.java` (COMP-06, §19)
 
-Five forms in the spec — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators per NULL-02; inline FI types as the only escape from the interface-name explosion per FN-01), but each breaks the "still a `.java` file" promise.
+Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators per NULL-02; inline FI types as the only escape from the interface-name explosion per FN-01), but each breaks the "still a `.java` file" promise.
 
-The spec splits the source surface in two rather than dropping either group. `.java` is the Java-compatible subset — exactly the surface the spec described before this section existed — and remains the migration on-ramp and IDE-compatible form. `.lat` is purely additive: any annotated `.java` source is also a valid `.lat` source via the COMP-06 table's reverse substitutions, and the compiler dispatches by extension. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file; the benefit is that the spec stops quietly assuming both surfaces at once.
+The source surface is therefore split in two rather than dropping either group. `.java` is the Java-compatible subset — sections 1–18 of the spec — and is the migration on-ramp and IDE-compatible form. `.lat` is purely additive: it admits the five forms, and any annotated `.java` source is also a valid `.lat` source. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file.
+
+### Why the `.lat` surface is pure syntactic sugar (LAT-00)
+
+The five `.lat` forms are confined to §19, and §19 carries a hard constraint: every form in it is sugar with an exact desugaring to the §1–18 surface, and none introduces semantics of its own (LAT-00). This keeps the two surfaces from drifting into two languages. A `.lat` source and its desugared `.java` form are the same program; migration tooling rewrites one into the other mechanically in either direction.
+
+The constraint also resolves where a future feature belongs. A proposed addition that is genuinely just notation — a shorter spelling for something the annotation-and-intrinsic surface (§18) already expresses — goes in §19. A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar; it belongs in §1–18, expressed through annotations or intrinsics so that the `.java` surface carries it too. Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise — that the surfaces are interchangeable — would quietly fail.
 
 ---
 
@@ -82,15 +88,15 @@ Looking at real Java code, the overwhelming common case is "I want to read this,
 
 ### Why `give(...)` and `@take` instead of one shared marker (MOVE-02, MOVE-03)
 
-Giving up ownership and taking ownership are different actions, even though they are two ends of the same transfer. Earlier drafts used a single sigil (`^`) in both positions on the theory that "ownership crosses this boundary" was a unifying meaning. That meaning is real but stretched — the sigil reads as "out of this binding" at a use site and as "into this slot" at a parameter, which are inverse roles.
+Giving up ownership and taking ownership are different actions, even though they are two ends of the same transfer. A single sigil (`^`) in both positions — on the theory that "ownership crosses this boundary" is a unifying meaning — stretches that meaning too far: the sigil would read as "out of this binding" at a use site and as "into this slot" at a parameter, which are inverse roles.
 
 Two English verbs make the asymmetry first-class. `@take T name` on a parameter declares "this slot receives ownership"; `give(binding)` at a use site declares "this source releases ownership." The pairing is symmetric in the sense any sender/receiver pair is symmetric: same operation, two named ends, neither overloaded with the other's job.
 
-We considered keeping ownership entirely at the call site (silent signatures) and rejected it. The function knows whether it needs ownership; that need is part of its public contract. A signature `void store(@take String s, ...)` says "s is consumed" without forcing the caller to read the body. The signature is the API.
+Keeping ownership entirely at the call site (silent signatures) is rejected. The function knows whether it needs ownership; that need is part of its public contract. A signature `void store(@take String s, ...)` says "s is consumed" without forcing the caller to read the body. The signature is the API.
 
 The two markers support different inference at different positions. Where a method signature is in play — both at call sites (parameter `@take`) and at return statements (owned return type) — the signature is canonical, so `give(...)` is optional: `store(name, list)` is unambiguous when `store`'s parameter is `@take String s`, and `return result;` is unambiguous when the return type is owned. Local-to-local moves have no signature to lean on, so `var b = give(a);` keeps `give(...)` as the explicit marker — the only way to express a move from a borrowing default (MOVE-01).
 
-We also considered allowing `@take` on local binding declarations as a documentary assertion. An earlier draft permitted `@take String b = give(a);` alongside `var b = give(a);`. The annotation added nothing operational — ownership of `b` is determined by the RHS — and writing it on every owned local would dominate the surface with marks the compiler already knows. The rule now: `@take` lives on parameters (including `this`) and fields, where it is a published contract; locals get their mode from the producer.
+Allowing `@take` on local binding declarations as a documentary assertion — `@take String b = give(a);` alongside `var b = give(a);` — is rejected. The annotation adds nothing operational (ownership of `b` is determined by the RHS), and writing it on every owned local would dominate the surface with marks the compiler already knows. `@take` therefore lives on parameters (including `this`) and fields, where it is a published contract; locals get their mode from the producer.
 
 This division — `give(...)` and `@take` only at signature boundaries; locals quiet — leans on the same producer/consumer asymmetry as the rest of the language: bindings default to borrow on the consumer side (MOVE-01), expressions default to owned on the producer side (return values, constructors, computed expressions). Ownership marks appear at genuine API boundaries; the inside of a function reads like Java.
 
@@ -100,7 +106,7 @@ This is the rule that actually buys safety. It rules out data races at compile t
 
 ### Why disjoint field borrows (MOVE-05)
 
-This was a real finding from the verification work. A red-black tree node needs to access `left` and `right` independently while the tree is mutably borrowed. The naïve borrow check rejects this even though it's trivially sound — the two fields don't alias. Without disjoint field borrows, large parts of the standard library become unwriteable in safe code (TreeMap, doubly-linked structures, swap-based algorithms). Rust solved this; Laterita inherits the solution.
+A red-black tree node needs to access `left` and `right` independently while the tree is mutably borrowed. The naïve borrow check rejects this even though it's trivially sound — the two fields don't alias. Without disjoint field borrows, large parts of the standard library become unwriteable in safe code (TreeMap, doubly-linked structures, swap-based algorithms). Rust solved this; Laterita inherits the solution.
 
 ### Why disjoint slice borrows with `splitAt` for hard cases (MOVE-06)
 
@@ -128,7 +134,7 @@ The cost of this choice is asymmetric. Adding a same-type borrow overload to an 
 
 When a method's body needs `@mut` access to a parameter or needs to consume it, the signature should declare `@mut` or `@take` and the caller does the work of providing it — by holding `@mut`, by surrendering ownership with `give(...)`, or by cloning before the call. A method whose signature is `f(K)` should not internally clone or take a temporary `@mut` lock to do something the signature didn't ask for; if the body needs mut or ownership, the signature should say so.
 
-This is non-normative — methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`. The default mental model is what we are after: *the cost the caller can read from the signature is the cost the caller bears*. Rust's `HashMap::insert(k: K, v: V)` consumes both arguments and lets callers `.clone()` if they want to keep them; that is the idiom Laterita inherits, expressed in Java's overload-aware vocabulary rather than Rust's overload-free one.
+This is non-normative — methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`. The default mental model is the goal: *the cost the caller can read from the signature is the cost the caller bears*. Rust's `HashMap::insert(k: K, v: V)` consumes both arguments and lets callers `.clone()` if they want to keep them; that is the idiom Laterita inherits, expressed in Java's overload-aware vocabulary rather than Rust's overload-free one.
 
 ### Why override variance differs for `@take` and `@mut` (MOVE-10)
 
@@ -162,7 +168,7 @@ When a returned borrow is bound to several sources, its lifetime is the shortest
 
 ### Why unmarked sources are an error (LIFE-04)
 
-Earlier drafts treated the receiver as a default contributor — an instance method returning a borrow was implicitly tied to `this`. That made signatures silent in a way that hid information from the caller. The current rule is stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from. The fix is always local to the signature, and the caller-visible contract is always complete.
+Treating the receiver as a default contributor — an instance method returning a borrow implicitly tied to `this` — would make signatures silent in a way that hides information from the caller. The rule is therefore stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from. The fix is always local to the signature, and the caller-visible contract is always complete.
 
 ---
 
@@ -184,7 +190,7 @@ Java code that ports to Laterita already has `close()` methods on streams, socke
 
 ### Why `@internal` for compiler-only methods (DROP-06)
 
-Forbidden-by-convention versus forbidden-by-type-system is a real distinction. An earlier draft used `_dispose()` with a leading-underscore convention; the current design replaces convention with `@internal`, an annotation the compiler enforces, and lets `onDrop()` read like a normal method name.
+Forbidden-by-convention versus forbidden-by-type-system is a real distinction. A leading-underscore convention (`_dispose()`) is forbidden only by habit; `@internal` replaces convention with an annotation the compiler enforces, and lets `onDrop()` read like a normal method name.
 
 Reusing the word `internal` accepts a known clash: C# already uses `internal` to mean "assembly-scoped public," which is broader than Laterita's meaning. No other candidate was as natural at first reading — `lifecycle` is narrow, `intrinsic` suggests a compiler-provided body, `hidden` reads informally — and the C# reader recovers the meaning after the first encounter.
 
@@ -213,23 +219,23 @@ Forbidding it has two payoffs:
 1. **Double-drop can't be expressed.** Lifetime is exclusively scope-bound; the compiler emits exactly one drop per binding. A whole class of double-free-shaped bugs simply doesn't exist in Laterita source.
 2. **Type-system enforcement.** With `@internal` as a visibility modifier, the compiler rejects every illegal call site. There is no "did the author mean to call this here?" question.
 
-The cost is no early-cleanup mechanism: a binding lives until its scope ends, period. We considered an opt-in early-cleanup keyword (a `drop x;` form, sugar for "consume `x` and run its `onDrop`") and chose not to specify one. Real cases for early cleanup are rare; structuring scopes — extracting an inner block or a helper function — covers the cases that matter; and adding any escape hatch reintroduces the double-drop surface we just closed. If a future need is convincing, the keyword can be added later without breaking existing code.
+The cost is no early-cleanup mechanism: a binding lives until its scope ends, period. An opt-in early-cleanup keyword (a `drop x;` form, sugar for "consume `x` and run its `onDrop`") is deliberately not specified. Real cases for early cleanup are rare; structuring scopes — extracting an inner block or a helper function — covers the cases that matter; and any such escape hatch reintroduces the double-drop surface DROP-06 closes. If a future need proves convincing, the keyword can be added later without breaking existing code.
 
 ### Why `onDrop()` exceptions terminate the body but continue the drop sequence (DROP-07)
 
-The earliest draft made any exception from `onDrop()` abort the program. The motivation was preventing leaks — three concrete concerns drove the abort choice:
+One option is to make any exception from `onDrop()` abort the program. Aborting prevents leaks, and three concrete concerns motivate it:
 
 - Sibling bindings in the same scope: DROP-02 drops in reverse order, so a throw from the inner binding's `onDrop` would skip the outer's.
 - Drop sequence teardown (DROP-05): a throw from the body would skip the rest of the sequence — the class's remaining fields and every superclass subobject — leaking them.
 - Enclosing scope unwind (EXC-02): a throwing drop during exception unwind would interrupt the unwind itself.
 
-The current rule resolves all three differently. An exception terminates only the `onDrop()` *body* it escapes; field teardown of the same value, superclass teardown, sibling `onDrop()` invocations, and any in-progress exception unwind all continue. The drop-time exception then propagates at the binding's scope exit, joining the normal exception flow — the same shape Java's `finally` block gives a throw, with multi-throw accumulation following try-with-resources' `addSuppressed` convention.
+DROP-07 resolves all three differently. An exception terminates only the `onDrop()` *body* it escapes; field teardown of the same value, superclass teardown, sibling `onDrop()` invocations, and any in-progress exception unwind all continue. The drop-time exception then propagates at the binding's scope exit, joining the normal exception flow — the same shape Java's `finally` block gives a throw, with multi-throw accumulation following try-with-resources' `addSuppressed` convention.
 
 Two things make the looser rule sound. DROP-10 guarantees `this` does not escape the body, so no external reference to the value can survive into the rest of the drop sequence — the value remains unreachable regardless of whether the body threw. And the compiler-emitted drop sequence is the one paying attention to multi-throw accumulation, not user code: the first thrown exception is the propagating one; later throws attach via `addSuppressed` automatically. User code does not have to reason about suppressed exceptions to write a correct `onDrop()`.
 
-The trade against abort-on-throw is that drop-time exceptions are now a control-flow shape callers can observe — the same shape Java callers already see from `close()` inside try-with-resources. The benefit is that `onDrop()` bodies performing legitimately fallible operations (flush, fsync) can let exceptions reach a handler instead of being silently swallowed or fatally aborted, and the failure paths are testable in ordinary unit tests rather than crashing the test process. Rust chose abort because it had no exception machinery to integrate with; Laterita does, so it can use it.
+The trade against abort-on-throw is that drop-time exceptions are a control-flow shape callers can observe — the same shape Java callers already see from `close()` inside try-with-resources. The benefit is that `onDrop()` bodies performing legitimately fallible operations (flush, fsync) can let exceptions reach a handler instead of being silently swallowed or fatally aborted, and the failure paths are testable in ordinary unit tests rather than crashing the test process. Rust chose abort because it had no exception machinery to integrate with; Laterita does, so it can use it.
 
-A residual rule of thumb survives from the abort draft: `onDrop()` should still be best-effort cleanup. Fallible operations whose failure carries semantic meaning belong in an explicit `close()` (THR-05's split) where the caller has a clear handler; letting them escape `onDrop()` is the fallback when no such call site exists, not the primary contract.
+A rule of thumb still holds: `onDrop()` should be best-effort cleanup. Fallible operations whose failure carries semantic meaning belong in an explicit `close()` (THR-05's split) where the caller has a clear handler; letting them escape `onDrop()` is the fallback when no such call site exists, not the primary contract.
 
 ### Why `onDrop()` cannot observe moved-out fields (DROP-08)
 
@@ -237,7 +243,7 @@ Partial moves (MOVE-07) and a universal `onDrop()` (DROP-01) collide: after `giv
 
 1. **Forbid the partial move when `onDrop()` reads the field.** What DROP-08 picks.
 2. **Skip `onDrop()` entirely on a partial-move path, dropping only the survivors.** Rejected: partially moving one field would silently disable the whole object's destructor — a quiet correctness hole exactly where resource handling matters most.
-3. **Run `onDrop()` anyway and make a moved-out field read inside it a separate error.** Same observable rule as (1) — the body still can't touch a possibly-moved field — but the diagnostic surfaces at the `onDrop()` definition rather than at the move. We prefer the move site: that's where the programmer made the choice, and the body stays a normal method whose field reads need no special annotation.
+3. **Run `onDrop()` anyway and make a moved-out field read inside it a separate error.** Same observable rule as (1) — the body still can't touch a possibly-moved field — but the diagnostic surfaces at the `onDrop()` definition rather than at the move. DROP-08 prefers the move site: that's where the programmer made the choice, and the body stays a normal method whose field reads need no special annotation.
 
 Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). DROP-08 is the finer-grained version: Rust's prohibition attaches at the *type* level — a `Drop` type has all its fields locked, even those the drop never touches — whereas DROP-08 attaches at the *field* level, locking only fields the `onDrop()` body actually reads. A class without an `onDrop()` declaration (every record, every plain data carrier) reads nothing and stays fully splittable; a class that reads only some of its fields pins only those. The common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
 
@@ -289,7 +295,7 @@ A throw is a runtime contract; `broken()` is a compile-time contract. The differ
 
 ### Why a statement, not a method modifier
 
-C++ uses `= delete` as a definition syntax (`Foo() = delete;`). We considered something equivalent at the method-signature level. A statement-form `broken()` call turned out to compose better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case.
+C++ uses `= delete` as a definition syntax (`Foo() = delete;`). An equivalent at the method-signature level is the obvious alternative. A statement-form `broken()` call composes better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case.
 
 ---
 
@@ -310,19 +316,19 @@ The recursive step in OBJ-01 is `source.field.clone()`, not `new FieldType(sourc
 
 This also makes opt-out clean: a class that can't be copied overrides `clone()` with a `broken()` body, and the brokenness propagates transparently through any enclosing class's auto-generated copy constructor (which calls the field's `clone()`). No separate "this copy constructor is broken" channel is needed.
 
-We arrived at this two-layer design after walking through several alternatives.
+The two-layer design is what remains after ruling out three alternatives.
 
 **Universal `Object.clone()`.** Java's model. The clone method lives on Object; classes opt in via `Cloneable`. The API is famously broken — bit-copy semantics, post-construction mutation, `CloneNotSupportedException`. Reimplementing it in Laterita reproduced most of the same complications, since `super.clone()` chaining doesn't fit BIND-04. Rejected.
 
 **Opt-in `Cloneable<T>` interface.** Rust's approach. Generic functions constrain `T extends Cloneable<T>` and types implement the interface. Type-safe but noisy: the bound has to appear on every generic that touches potentially-cloneable values, and makes the dominant case (yes, this is copyable) explicit when it should be implicit. Rejected.
 
-**Copy constructor only, no `clone()`.** We tried this. Generic code would have to write `new T(element)`, which has two problems: the syntax is unfamiliar (Java forbids it because of erasure; even with monomorphization it's an unusual construct), and it constructs the *static* type — slicing any subtype data when `T` is held at a supertype. Rejected for ergonomics and for the polymorphism loss.
+**Copy constructor only, no `clone()`.** Generic code would then have to write `new T(element)`, which has two problems: the syntax is unfamiliar (Java forbids it because of erasure; even with monomorphization it's an unusual construct), and it constructs the *static* type — slicing any subtype data when `T` is held at a supertype. Rejected for ergonomics and for the polymorphism loss.
 
 The chosen design avoids all three pitfalls. The copy constructor does the real work and stays `protected` so external code can't bypass class-level invariants. `clone()` provides the public, virtually-dispatched API generic code wants. The synthesized `clone()` body is one line — `return new Self(this);` — so there is essentially no implementation surface to get wrong.
 
 ### Why no special-casing for `Rc` or `Arc`
 
-Earlier drafts of OBJ-01 named `Rc` and `Arc` explicitly: "primitives bitwise, `Rc`/`Arc` via their refcount-bumping copy constructors, other objects recursively." The list was redundant. `Rc` and `Arc` are just classes whose `clone()` happens to bump a refcount (using `@unsafe` internals per UNS-01). The recursive rule "copy each field via its type's `clone()`" picks them up uniformly. Future ownership wrappers — `Cow<T>`, weak handles, anything else — slot in the same way without amending OBJ-01.
+Naming `Rc` and `Arc` explicitly in OBJ-01 — "primitives bitwise, `Rc`/`Arc` via their refcount-bumping copy constructors, other objects recursively" — would be redundant. `Rc` and `Arc` are just classes whose `clone()` happens to bump a refcount (using `@unsafe` internals per UNS-01). The recursive rule "copy each field via its type's `clone()`" picks them up uniformly. Future ownership wrappers — `Cow<T>`, weak handles, anything else — slot in the same way without amending OBJ-01.
 
 If a field type's `clone()` is `broken()` (as `Heap<T>.clone()` is, per STD-06), the enclosing class's auto-generated copy constructor inherits the brokenness through the call chain. The compile error appears at the actual call site, with a path through the field. Same mechanism that handles direct `broken()`; no separate "synthesis fails" rule needed.
 
@@ -389,13 +395,13 @@ Lazy resolution gives near-zero cost in the common case (throw, catch, recover) 
 
 ### Why "functional interface" rather than "function type"
 
-Earlier drafts called this construct a "function type," following Scala / Kotlin / TypeScript usage. The Java audience reads "functional interface" more directly: it is the term for "interface with one abstract method" they have used since Java 8, and the construct here is exactly that with the *interface declaration* elided. Calling it a functional interface — anonymous and structural — costs nothing and lands faster than introducing a parallel vocabulary.
+Calling this construct a "function type," following Scala / Kotlin / TypeScript usage, is the obvious alternative. But the Java audience reads "functional interface" more directly: it is the term for "interface with one abstract method" they have used since Java 8, and the construct here is exactly that with the *interface declaration* elided. Calling it a functional interface — anonymous and structural — costs nothing and lands faster than introducing a parallel vocabulary.
 
 The "anonymous" qualifier matters when distinguishing from Java's nominal functional interfaces. Both forms coexist: a `Function<T, R>` declaration is still a functional interface; `(T) -> R` is an anonymous functional interface that has the same shape without the published name. FN-02 keeps them as distinct types; the user picks which one to use based on whether the contract deserves a name.
 
 ### Why structural rather than nominal (FN-01)
 
-Earlier drafts planned a small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc. The unresolved question was only their names. Once parameter modes (`@take`, `@mut`, `@bound`) entered the type system, the count exploded: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
+A small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc., is the obvious starting point — leaving only their names to settle. But once parameter modes (`@take`, `@mut`, `@bound`) enter the type system, the count explodes: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations. No naming convention survives that.
 
 The anonymous structural form resolves the explosion at the source. The type *is* the signature: `(take A, mut B) -> R` is a distinct type from `(bound A, B) -> R` not because two interfaces were declared, but because the type expressions differ. The compiler compares structurally, the same way `int[]` and `String[]` are different without a separate interface for each. No stdlib zoo, no naming committee, no question of which canonical interface a value targets.
 
@@ -431,7 +437,7 @@ This is not a new rule — it falls directly out of BIND-06 and BIND-07. A funct
 
 A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-syntax shorthand (FN-01) and slot mode (CLO-03). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
 
-We considered making lambdas the *only* construction (and so collapsing FN and CLO into one section). Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the type-system surface stable as more value-constructions appear.
+Making lambdas the *only* construction (collapsing FN and CLO into one section) is rejected. Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the type-system surface stable as more value-constructions appear.
 
 ### Why slot-mode override variance is inverted (CLO-05)
 
@@ -467,7 +473,7 @@ The compiler now catches argument-order bugs that today are silent runtime error
 
 Real Java pretends `String` is one thing. It isn't — sometimes it's an independent allocation (`toUpperCase` result), sometimes it's a view (`substring` result, where reallocating the source is illegal while the view exists). Rust splits these into `String` and `&str`, two visibly different types.
 
-We chose to keep them as one type at the source level, with the compiler tracking per-binding whether the string is owned or borrowed. This preserves Java's "everything is just a reference" feel — the user writes `String name` either way. The complexity moves into the compiler. The cost is internal complexity; the gain is that Java's surface syntax is preserved.
+They are kept as one type at the source level, with the compiler tracking per-binding whether the string is owned or borrowed. This preserves Java's "everything is just a reference" feel — the user writes `String name` either way. The complexity moves into the compiler. The cost is internal complexity; the gain is that Java's surface syntax is preserved.
 
 The signature-level markers introduced for lifetimes (`@bound` per LIFE-02) and parameters (`@take` per MOVE-03) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
 
@@ -525,7 +531,7 @@ vs. the continuation-passing form which forces a lambda for an otherwise straigh
 
 For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
 
-A dedicated `reduceChunks` was considered and rejected. Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...);` — the closure captures `acc` as a Mutate-mode binding (CLO-01) and the `@mut` body slot accepts mutating closures (FN-01). The only case `reduceChunks` covered uniquely was "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and doesn't appear in the Rust array idioms we surveyed. Dropping it kept the surface at three methods instead of four; callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
+A dedicated `reduceChunks` was considered and rejected. Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...);` — the closure captures `acc` as a Mutate-mode binding (CLO-01) and the `@mut` body slot accepts mutating closures (FN-01). The only case `reduceChunks` covers uniquely is "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms. Dropping it kept the surface at three methods instead of four; callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 
@@ -593,7 +599,7 @@ Three reasons:
 
 `Rc<T>` is reference-counted: when the last handle's `onDrop()` runs, the count reaches zero and the value is dropped. A cycle of strong handles never reaches zero — every handle is held up by another handle in the cycle, and none can decrement past one. The cycle leaks.
 
-This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same answer: `WeakReference<T>` (STD-03) for the back-edge in any structure that may form a cycle. We considered adding a cycle collector (a partial tracing GC) and rejected it on Rust's grounds — the runtime cost and complexity exceed the value, given that `WeakReference<T>` solves the common cases and acyclic ownership is the dominant pattern. Laterita does not aim to be better than Rust at memory management; it aims to give Java developers the same safety properties Rust gives systems programmers, in syntax they already know.
+This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same answer: `WeakReference<T>` (STD-03) for the back-edge in any structure that may form a cycle. Adding a cycle collector (a partial tracing GC) is rejected on Rust's grounds — the runtime cost and complexity exceed the value, given that `WeakReference<T>` solves the common cases and acyclic ownership is the dominant pattern. Laterita does not aim to be better than Rust at memory management; it aims to give Java developers the same safety properties Rust gives systems programmers, in syntax they already know.
 
 The implication for COMP-01 is that "memory management determined statically" is not literally true for refcounted types — refcount reclamation is dynamic, and cycles are an unrecoverable leak. The spec acknowledges this explicitly rather than masking it.
 
@@ -601,7 +607,7 @@ Doubly-linked structures and graph-shaped data port using exactly these primitiv
 
 ### Why race-safe upgrade (STD-04)
 
-You spotted this during the verification phase. A naïve `WeakReference::get` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory. Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it. Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
+A naïve `WeakReference::get` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory. Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it. Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
 
 ### Why `Cell<T>` and `Heap<T>` are unsafe primitives (STD-05, STD-06)
 
@@ -621,13 +627,13 @@ Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inf
 
 The cursor-that-mutates-its-container is one of the canonical patterns where ownership type systems reach for internal `@unsafe`. Generative lifetimes, region typing, and similar academic devices can defeat the issue but at a cost (proliferating type parameters, separate inference machinery) out of proportion for the use case. Rust shipped `Vec::retain`, `Vec::drain`, `extract_if`, and `LinkedList::cursor_mut` — all backed by `@unsafe`. Laterita follows the same shape: a small stdlib API implemented with `private unsafe`, with the audit boundary the four or five method bodies that compose it.
 
-The design choice that took the most thought was whether to introduce a new `Cursor<T>` type or reuse Java's existing `Iterator<T>` and `ListIterator<T>`. The case for a new type was that the borrow-checked semantics are a real change from Java; a new name would warn the reader. The case for reuse won: every method on `ListIterator` already has the right meaning, the loop shapes are identical, and inventing new vocabulary would force every Java reader to learn which iterator class to reach for in which situation. The borrow rules replace `modCount` and `ConcurrentModificationException` underneath, but the API surface above is the one Java developers already use.
+A central design choice is whether to introduce a new `Cursor<T>` type or reuse Java's existing `Iterator<T>` and `ListIterator<T>`. The case for a new type is that the borrow-checked semantics are a real change from Java; a new name would warn the reader. The case for reuse wins: every method on `ListIterator` already has the right meaning, the loop shapes are identical, and inventing new vocabulary would force every Java reader to learn which iterator class to reach for in which situation. The borrow rules replace `modCount` and `ConcurrentModificationException` underneath, but the API surface above is the one Java developers already use.
 
 The single signature deviation — `Iterator.remove()` and `ListIterator.remove()` returning an owned `T` rather than `void` — is forced by the ownership model. Java's void return reflects an assumption Laterita can't carry: that the caller "still has" the element from the prior `next()` call as a reference into the collection. In Laterita, `next()` returns a `@bound T` borrow tied to the iterator's position, and any mutating call on the iterator invalidates that borrow at the type level. Returning the removed element by ownership transfer is what restores the user's access to the value after the borrow is gone, and it incidentally folds Rust's separate `drain`/`extract_if` API into a one-liner over `remove()`. Statement-form `it.remove();` (ignoring the return) still compiles — the result drops via `onDrop`, matching Java's observable behavior.
 
 `ConcurrentModificationException` doesn't carry over. Its job — detecting "you mutated the collection while iterating" — is exactly what MOVE-04 enforces statically. The runtime category exists in Java because the language can't express the constraint at compile time. Laterita can, so the runtime exception becomes a compile error, and the `modCount` field can leave the standard library entirely.
 
-We considered keeping a separate `Cursor<T>` type for the cursor case anyway, on the theory that "iterator" connotes read-only iteration in many readers' heads. Decided against: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it. Two iterator types in Java's vocabulary, two iterator types in Laterita's — same names, sharper guarantees.
+Keeping a separate `Cursor<T>` type for the cursor case anyway — on the theory that "iterator" connotes read-only iteration in many readers' heads — is also rejected: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it. Two iterator types in Java's vocabulary, two iterator types in Laterita's — same names, sharper guarantees.
 
 ### Why `Mutex<T>` exposes its protected value through a closure (STD-09)
 
@@ -673,13 +679,13 @@ Modern Java (virtual threads, structured concurrency) has no remaining use case 
 
 ### Why interrupt is exposed but the flag operations are restricted (THR-07, THR-09)
 
-`Thread.interrupt()` is fine to expose because, with a sticky flag, it can't be silently lost. The flag is observable but not clearable; an external interrupt request cannot be "consumed" by code that catches the wrong exception. The bug class that motivated hiding `interrupt()` in earlier drafts is foreclosed by the flag semantics, not by API restrictions.
+`Thread.interrupt()` is fine to expose because, with a sticky flag, it can't be silently lost. The flag is observable but not clearable; an external interrupt request cannot be "consumed" by code that catches the wrong exception. The bug class that would otherwise motivate hiding `interrupt()` is foreclosed by the flag semantics, not by API restrictions.
 
 `Thread.interrupted()` is kept (Java compatibility) but redefined as a synonym of `isInterrupted()` — the clear-on-read behavior is the bug, not a feature worth preserving.
 
 ### Why `InterruptedException` is unchecked (THR-08)
 
-A special case of EXC-05: all exceptions are unchecked. The cancellation-specific argument — sticky-flag semantics make recoverable handling moot, and the signature contagion was severe in Java — was originally local to `InterruptedException` and is what motivated the eventual generalization to every exception type.
+A special case of EXC-05: all exceptions are unchecked. The cancellation-specific argument — sticky-flag semantics make recoverable handling moot, and signature contagion is severe — applies with particular force to `InterruptedException`, and generalizes to every exception type.
 
 ### Why `onDrop()` cannot block (THR-05)
 
@@ -771,4 +777,4 @@ It's worth being explicit about a few things this design deliberately doesn't do
 
 ---
 
-**Not finished.** This document and the spec describe the design we converged on. The open questions document records what we explicitly didn't settle. Tombstones for resolved questions live in `resolved-questions.md`. Several of the open questions are load-bearing — particularly around exceptions and Spring-style frameworks. Real implementations will need to make those choices.
+**Not finished.** This document and the spec describe the current design. `laterita-open-questions.md` records the language-design questions the spec deliberately leaves open; `resolved-questions.md` is the registry of closed decisions and rejected alternatives. Several open questions are load-bearing — particularly around exceptions. Real implementations will need to make those choices.

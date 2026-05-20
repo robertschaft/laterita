@@ -2,7 +2,9 @@
 
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
 
-Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `ARR` (arrays), `FN` (functional interfaces), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model).
+Sections 1 through 18 specify the Java-compatible surface: every rule there is expressible as annotated `.java` source that `javac` parses (COMP-06). Section 19 specifies the `.lat` surface forms — syntactic sugar that desugars to the Java-compatible surface and adds no semantics of its own (LAT-00).
+
+Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move/borrow), `MUT` (mutability), `LIFE` (lifetimes), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `ARR` (arrays), `FN` (functional interfaces), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model), `LAT` (`.lat` surface forms).
 
 ---
 
@@ -592,7 +594,7 @@ A class opts out of copying by overriding `clone()` with a body that reaches `br
 
 ## 8. Optionality
 
-The syntactic forms `T?`, `?.`, `?:`, and `!!` introduced in this section are accepted only in `.lat` sources; COMP-06 tabulates the `.java`-mode equivalents.
+Nullability is a property of types in both source surfaces. The `.lat` spelling `T?` and the operators `?.`, `?:`, and `!!` are syntactic sugar specified in §19; the rules below define nullability semantics independent of spelling.
 
 ### NULL-01 — Types are non-nullable by default
 
@@ -603,36 +605,22 @@ String name = "Alice";
 print(name.length());       // always safe
 ```
 
-### NULL-02 — `?` suffix denotes a nullable type
+### NULL-02 — Nullable types
 
-The type `T?` admits either a value of `T` or the special value `null`. `T` and `T?` are distinct types: `T` widens to `T?` implicitly; `T?` does not narrow to `T` without a check (NULL-06) or an assertion (NULL-07).
+A nullable type admits either a value of `T` or the special value `null`. Its canonical form is `@Nullable T` (`@Nullable` declared in `laterita.lang.annotation`); `.lat` sources may use the suffix spelling `T?` (LAT-01). The two spellings denote the same type. `T` and `@Nullable T` are distinct types: `T` widens to `@Nullable T` implicitly; `@Nullable T` does not narrow to `T` without a check (NULL-06) or an assertion (LAT-04).
 
-`T` must be a reference type. Nullable primitive types (`int?`, `long?`, `boolean?`, etc.) are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`Integer?`, `Boolean?`, …). The compiler does not auto-box at the type-suffix level. `@Nullable T` (NULL-02 in `.java` mode, per COMP-06) obeys the same rule.
+`T` must be a reference type. Nullable primitive types are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`@Nullable Integer`, `@Nullable Boolean`, …). The compiler does not auto-box at the type level.
 
 ```laterita
-String? maybeName = lookup(id);
-print(maybeName.length());   // ERROR: requires null check
+String? maybeName = lookup(id);   // .lat spelling of @Nullable String
+print(maybeName.length());        // ERROR: requires null check
 ```
 
 ### NULL-03 — `null` literal
 
 The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is not assignable to a non-nullable type.
 
-### NULL-04 — Safe call `?.`
-
-`expr?.method(args)` evaluates to `null` if `expr` is `null`, otherwise invokes `method` on `expr`. The result type is `R?` where `R` is the method's return type.
-
-```laterita
-String? upper = maybeName?.toUpperCase();
-```
-
-### NULL-05 — Elvis operator `?:`
-
-`a ?: b` evaluates to `a` if `a` is non-null, otherwise to `b`. The result type is the common type of the non-nullable form of `a` and the type of `b`.
-
-```laterita
-String shown = maybeName ?: "anonymous";
-```
+*NULL-04, NULL-05, NULL-07 — Relocated.* The safe-call (`?.`), elvis (`?:`), and null-assertion (`!!`) operators are `.lat` surface forms. Their definitions and `.java`-surface desugarings are LAT-02, LAT-03, and LAT-04 (§19).
 
 ### NULL-06 — Smart narrowing on null check
 
@@ -643,10 +631,6 @@ if (maybeName != null) {
     print(maybeName.length());   // OK: narrowed to String
 }
 ```
-
-### NULL-07 — Null assertion `!!`
-
-`expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing. `java.util.Objects.requireNonNull(expr)` is the `.java`-mode form (COMP-06); the laterita compiler attaches the same `T? → T` narrowing to a recognized call of it.
 
 ### NULL-08 — Field default is non-nullable
 
@@ -716,7 +700,7 @@ where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@m
 () -> void
 ```
 
-A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (COMP-06).
+A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (LAT-05).
 
 ### FN-02 — Identity
 
@@ -996,7 +980,7 @@ class String {
 
 ### ARR-01 — Methods on `T[]` (`.lat` surface)
 
-The laterita compiler treats `T[]` as a class with the following methods (`.lat`-only; the `.java` mirror on `laterita.lang.Arrays` is ARR-02). Both surfaces compile to the same operations per COMP-06.
+The laterita compiler treats `T[]` as a class with the following methods (`.lat`-only; the `.java` mirror on `laterita.lang.Arrays` is ARR-02). Both surfaces compile to the same operations; the `.lat` surface here uses the inline functional-interface spelling of LAT-05, and is sugar over the `.java` mirror per LAT-00.
 
 ```laterita
 class T[] {
@@ -1061,7 +1045,7 @@ public final class Arrays {
 
 ### ARR-03 — `MutableConsumer<T>`
 
-The written-out form of the anonymous functional type `(@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (FN-01 is `.lat`-only).
+The written-out form of the anonymous functional type `(@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (the inline functional-interface spelling is `.lat`-only per LAT-05).
 
 ```java
 package laterita.lang;
@@ -1343,18 +1327,10 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 A laterita source file uses one of two extensions:
 
-- **`.lat`** — full surface. Admits the non-Java forms tabulated below.
-- **`.java`** — Java-compatible subset, parseable by `javac` and Java-aware IDEs. The `.lat`-only forms are rejected; equivalent meaning is expressed per the table.
+- **`.lat`** — full surface. Additionally admits the `.lat` surface forms specified in §19.
+- **`.java`** — Java-compatible subset, parseable by `javac` and Java-aware IDEs. The §19 forms are rejected; equivalent meaning is expressed through their `.java`-surface desugarings.
 
-| `.lat` form | `.java` form | Spec rule |
-|---|---|---|
-| `T?` | `@Nullable T` | NULL-02 |
-| `expr?.method(args)` | `expr == null ? null : expr.method(args)` (or NULL-06 narrowing) | NULL-04 |
-| `a ?: b` | `a != null ? a : b` (with NULL-06 narrowing on `a`) | NULL-05 |
-| `expr!!` | `java.util.Objects.requireNonNull(expr)` | NULL-07 |
-| `(P1, …, Pn) -> R` | a nominal functional interface | FN-01 |
-
-`@Nullable` is declared in `laterita.lang.annotation`; `Objects.requireNonNull` is reused from the Java standard library, with the laterita compiler attaching the `T? → T` narrowing on a recognized call. Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Migration tooling may mechanically translate between the two forms.
+Both extensions denote the same language: the type system, annotation/intrinsic surface (§18), and emitted artifacts are identical, and cross-unit references work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Because every `.lat` form is pure syntactic sugar (LAT-00), migration tooling may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 
@@ -1364,11 +1340,11 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ## 18. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per COMP-06. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
-**Laterita introduces no new keywords.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; the five non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) are gated to `.lat` sources per COMP-06. The annotations and stdlib static methods that carry laterita-specific semantics are:
+**Laterita introduces no new keywords.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; the five non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) are gated to `.lat` sources per §19. The annotations and stdlib static methods that carry laterita-specific semantics are:
 
 | Concept | Form | Spec rule |
 |---|---|---|
@@ -1391,3 +1367,53 @@ Type inference uses Java's `var` keyword. In laterita mode every binding is immu
 Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
 
 Java's existing keywords and their meanings are otherwise preserved unless explicitly modified by this specification.
+
+---
+
+## 19. `.lat` Surface Forms
+
+A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-compatible subset that `javac` parses, and `.lat`, which additionally admits the forms specified in this section. Every rule outside this section belongs to the `.java`-compatible surface.
+
+### LAT-00 — The `.lat` surface is pure syntactic sugar
+
+Each form in this section is syntactic sugar: it has an exact `.java`-surface equivalent into which the compiler desugars it before any type, ownership, lifetime, or runtime analysis. No `.lat` form introduces type-system, ownership, or runtime semantics absent from the `.java` surface. Consequently:
+
+- Any `.lat` source can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
+- A program's meaning never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06).
+- A proposed `.lat` form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §18.
+
+The forms are listed below with their `.java`-surface desugarings.
+
+### LAT-01 — `T?` nullable-type suffix
+
+`T?` is the `.lat` spelling of the nullable type `@Nullable T` (NULL-02). The two spellings denote the same type; the nullability rules NULL-01 through NULL-10 are stated on the type and apply identically to either spelling.
+
+### LAT-02 — Safe call `?.`
+
+`expr?.method(args)` evaluates to `null` if `expr` is `null`, otherwise invokes `method` on `expr`. The result type is `R?` where `R` is the method's return type.
+
+Desugars to `expr == null ? null : expr.method(args)`, with NULL-06 narrowing applied to the non-null branch.
+
+```laterita
+String? upper = maybeName?.toUpperCase();
+```
+
+### LAT-03 — Elvis operator `?:`
+
+`a ?: b` evaluates to `a` if `a` is non-null, otherwise to `b`. The result type is the common type of the non-nullable form of `a` and the type of `b`.
+
+Desugars to `a != null ? a : b`, with NULL-06 narrowing on `a`.
+
+```laterita
+String shown = maybeName ?: "anonymous";
+```
+
+### LAT-04 — Null assertion `!!`
+
+`expr!!` converts `T?` to `T`. If `expr` is `null`, a `NullPointerException` is thrown. This is the only path from `T?` to `T` at the type level without a flow-sensitive narrowing (NULL-06).
+
+Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler attaches the `T? → T` narrowing to a recognized call of `requireNonNull`, so the `.java` form carries the same typing.
+
+### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
+
+The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method has the written parameter and return modes.
