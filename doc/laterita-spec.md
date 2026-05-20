@@ -693,6 +693,8 @@ An anonymous functional interface is written
 
 where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The form is anonymous and structural: no named interface need be declared.
 
+The single abstract method of an anonymous functional interface is named `apply`. A value `f` of such a type is invoked through it — `f.apply(a1, …, an)`. Laterita has no call-on-binding syntax: a functional-interface value is an object, invoked through its SAM exactly as in Java.
+
 An anonymous functional interface type expression may be written only in two positions: as a parameter type or as a return type. It may not be written as the declared type of a field, the declared type of a local binding, or a generic type argument — a function value held in any of those positions uses a nominal functional interface. The restriction governs the written type expression, not value flow: a `var` local may still hold an anonymous functional-interface value whose type is inferred, such as the result of a closure-returning call.
 
 ```laterita
@@ -742,18 +744,18 @@ A binding of functional-interface type follows the standard parameter-modifier r
 void demo((int, int) -> int adder,         // bare slot — bare-receiver SAMs only
           @mut (int, int) -> int counter,  // mut slot — bare- or mut-receiver SAMs
           @take () -> void onClose) {      // take slot — any SAM, including take-receiver
-    adder(1, 2);                           // OK: bare binding invokes the bare-receiver SAM
-    adder(3, 4);                           // OK: a bare slot may be invoked any number of times
-    var worker = Thread.ofVirtual().start(() -> adder(5, 6));  // OK: a bare slot holds a read closure
-    worker.join();                         //     (CLO-01) — safe to invoke from another thread
+    adder.apply(1, 2);                     // OK: bare binding invokes the bare-receiver SAM
+    adder.apply(3, 4);                     // OK: a bare slot may be invoked any number of times
+    var worker = Thread.ofVirtual().start(() -> adder.apply(5, 6));  // OK: a bare slot holds a
+    worker.join();                         //     read closure (CLO-01), safe to invoke off-thread
 
-    counter(1, 2);                         // OK: @mut binding invokes a bare- or @mut-receiver SAM
-    counter(3, 4);                         // OK: a @mut slot may be invoked repeatedly, but only sequentially
-    Thread.ofVirtual().start(() -> counter(7, 8));   // ERROR: a @mut slot may hold a mutate closure,
-                                           //        which CLO-01 forbids invoking from another thread
+    counter.apply(1, 2);                   // OK: @mut binding invokes a bare- or @mut-receiver SAM
+    counter.apply(3, 4);                   // OK: a @mut slot may be invoked repeatedly, but sequentially
+    Thread.ofVirtual().start(() -> counter.apply(7, 8));   // ERROR: a @mut slot may hold a mutate
+                                           //        closure, which CLO-01 forbids invoking off-thread
 
-    onClose();                             // OK: invokes the held SAM; a take-receiver SAM consumes the slot
-    onClose();                             // ERROR: the @take slot was consumed by the first invocation
+    onClose.apply();                       // OK: invokes the held SAM; a take-receiver SAM consumes it
+    onClose.apply();                       // ERROR: the @take slot was consumed by the first invocation
 }
 ```
 
@@ -812,7 +814,7 @@ The outer `@bound` is **not** a slot mode — it is an orthogonal annotation dec
 // Partial application: the returned closure borrows `fn` (and `first`),
 // so its lifetime is bounded by the intersection of both (LIFE-03).
 <A, B, R> @bound (B) -> R partial(@bound (A, B) -> R fn, @bound A first) {
-    return (b) -> fn(first, b);
+    return (b) -> fn.apply(first, b);
 }
 ```
 
@@ -838,17 +840,17 @@ Note the asymmetry against ordinary parameters: for `@mut Buf b`, the more capab
 ```laterita
 // Read-or-mutate lambda: consumes input, @mut-borrows buffer, returns owned R.
 <A, B, R> R fold(@take A input, @mut B buffer, @mut (@take A, @mut B) -> R lambda) {
-    return lambda(give(input), buffer);
+    return lambda.apply(give(input), buffer);
 }
 
 // Read lambda whose return is bound to the first input's lifetime.
 <A, B, R> R lookup(@bound A source, B key, (@bound A, B) -> R lambda) {
-    return lambda(source, key);
+    return lambda.apply(source, key);
 }
 
 // One-shot consume callback: `@take` slot admits a take-receiver SAM.
 void onClose(@take () -> void action) {
-    action();
+    action.apply();
 }
 ```
 
@@ -1439,4 +1441,4 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
-The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method has the written parameter and return modes.
+The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes.

@@ -142,7 +142,7 @@ How a method accesses its receiver (`this`): bare (read-only), `@mut` (may mutat
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler. **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.). The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`. See `UNS-01`.
 
 ### SAM (Single Abstract Method)
-The one abstract method of a functional interface. In a lambda or method reference targeting a functional interface, the body must implement the SAM. Parameter and return modes of the SAM are declared as part of the interface. See `FN-01`.
+The one abstract method of a functional interface. In a lambda or method reference targeting a functional interface, the body must implement the SAM. Parameter and return modes of the SAM are declared as part of the interface. An anonymous functional interface's SAM is named `apply`, and a value `f` is invoked as `f.apply(...)`. See `FN-01`.
 
 ### shared borrow / immutable borrow
 A borrow that grants read-only access to a borrowed value. Any number of shared borrows may coexist. A shared borrow does not require the source binding to be `mut`. See `MOVE-01`, `MOVE-04`.

@@ -429,6 +429,12 @@ The slot-mode rules (CLO-03) and override/overload variance (CLO-05) live in the
 
 Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail. The rule belongs in FN because synthesis is a property of the anonymous FI type, not of the binding that holds it.
 
+### Why functional-interface values are invoked through the SAM (FN-01)
+
+Java has no call-on-binding syntax: a functional-interface value is an object, invoked through its single abstract method (`f.apply(x)`, `r.run()`, `c.accept(x)`). Laterita keeps this. A `fn(args)` form that calls a binding directly would be a sixth non-Java syntactic surface — §18 lists five — bought for no semantic gain, since it desugars to the SAM call anyway, and it works against the "looks and feels like Java" goal. The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
+
+The SAM of an anonymous functional interface is named `apply`, giving the nameless type one fixed, predictable method name, matching `java.util.function.Function`. A fixed name is not optional: LAT-05 desugars the anonymous spelling to a nominal interface, and the `.java` mirror must call a method that exists — without a canonical name there is nothing for either surface to invoke.
+
 ---
 
 ## Closures (CLO-01 through CLO-06)
