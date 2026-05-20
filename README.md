@@ -36,52 +36,31 @@ Java has a mature ecosystem, a huge developer base, and a syntax those developer
 
 `.java` files keep Laterita strictly within what `javac` can parse, expressing every ownership concept through annotations. `.lat` files lift that restriction with five sugar-only forms. Each one desugars *exactly* to the `.java` surface before any analysis runs and adds no new semantics — `.lat` is purely about writing the same program with lighter syntax.
 
-### Nullable types — `T?`
+### Nullable types and operators
 
-`T?` is the `.lat` spelling of `@Nullable T`.
+A bare `T` already excludes null; `.lat` adds a nullable suffix and three operators for working with it. The `T?` suffix mirrors [JEP draft 8303099](https://openjdk.org/jeps/8303099) (Null-Restricted and Nullable Types), except Laterita makes non-null the *default* rather than requiring an explicit `T!` marker. The three operators are Kotlin-style and have no JEP counterpart:
 
-```java
-String? maybeName = lookup(id);      // @Nullable String
-String  name      = "Alice";         // never null — no check needed
-```
-
-### Safe call — `?.`
-
-Invoke a method only when the receiver is non-null; the expression yields `R?`.
+- **`T?`** — nullable type; the `.lat` spelling of `@Nullable T`.
+- **`expr?.m()`** — safe call; yields `null` instead of invoking `m` on a null receiver.
+- **`a ?: b`** — elvis; evaluates to `a` when non-null, otherwise `b`.
+- **`expr!!`** — null assertion; converts `T?` to `T`, throwing `NullPointerException` if null.
 
 ```java
-String? upper = maybeName?.toUpperCase();
-// desugars to: maybeName == null ? null : maybeName.toUpperCase()
-```
-
-### Elvis — `?:`
-
-Supply a fallback when the left side is null.
-
-```java
-String shown = maybeName ?: "anonymous";
-```
-
-### Null assertion — `!!`
-
-Convert `T?` to `T`, throwing `NullPointerException` if it really was null.
-
-```java
-String definitely = maybeName!!;     // desugars to Objects.requireNonNull(maybeName)
+String? maybeName = lookup(id);
+String  shown     = maybeName?.toUpperCase() ?: "ANONYMOUS";
+String  forced    = maybeName!!;   // NullPointerException if maybeName is null
 ```
 
 ### Inline functional-interface types — `(P1, …, Pn) -> R`
 
-Write a single-abstract-method signature directly as a type — with full ownership modes — instead of declaring a named interface.
+Write a single-abstract-method signature directly as a method-parameter type — with full ownership modes — instead of declaring a named interface for the callback.
 
 ```java
-(int, int) -> int                                  adder;
-@mut (@take String, @mut StringBuilder) -> String  appender;
-
 <R> Stream<R> map(@mut (@take T) -> R fn);
+void          forEach((@bound Record) -> void action);
 ```
 
-In `.java` files the same meaning is written by declaring a nominal functional interface at the same position.
+In `.java` files the same callback is expressed by declaring a nominal functional interface and using it at the same position.
 
 ## Documents
 
