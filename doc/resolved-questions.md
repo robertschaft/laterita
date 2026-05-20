@@ -23,6 +23,7 @@ The full reasoning lives in `laterita-reasoning.md`. Active (unresolved) questio
 | `@take` on local binding declarations | Rejected. A local's ownership is fixed by its initializer; `@take` is a published contract and lives only on parameters (including `this`) and fields. | BIND-07; reasoning "Why `give(...)` and `@take` instead of one shared marker" |
 | Separate `BoundPair` / `OwnedPair` return types for array splitting | Rejected. BIND-08's generic-substitution rule lets the general-purpose `Pair<L, R>` record carry binding modifiers on its arguments, so no dedicated pair type is needed. | ARR-04; BIND-08; OQ-19; OQ-21 |
 | Two-type owned/borrowed strings (`String` + `&str`) | Rejected. One `String` type, with the compiler tracking owned-vs-borrowed per binding; `clone()` is the universal owned-copy escape valve. | STR-02; OBJ-02; OQ-08; reasoning "Why owned vs. borrowed strings tracked per-binding" |
+| Anonymous functional interface in field, local-binding, or generic-argument positions | Rejected. The anonymous form is ergonomic only where the type is also transient; a stored or collected function value carries richer obligations (a name, documentation) that a nominal functional interface exists to provide. Anonymous FIs are written only as parameter or return types. | FN-01; FN-03; reasoning "Why anonymous functional interfaces are restricted to parameter and return positions" |
 
 Deferred — not rejected, not specified:
 

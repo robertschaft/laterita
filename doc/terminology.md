@@ -61,7 +61,7 @@ Only one mutable borrow may exist at a time. No other borrows (mutable or immuta
 A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `BIND-03`.
 
 ### functional interface (also "function type")
-An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline: `(P1, P2, ...) -> R` (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
+An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`, legal only as a parameter type or a return type (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is `@take` on an explicit `this` parameter (BIND-07).

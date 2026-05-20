@@ -691,7 +691,9 @@ An anonymous functional interface is written
 (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The form is anonymous and structural: no named interface need be declared. Anonymous functional interfaces may appear wherever another type may appear: parameter, return, field, local binding, generic argument.
+where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The form is anonymous and structural: no named interface need be declared.
+
+An anonymous functional interface type expression may be written only in two positions: as a parameter type or as a return type. It may not be written as the declared type of a field, the declared type of a local binding, or a generic type argument — a function value held in any of those positions uses a nominal functional interface. The restriction governs the written type expression, not value flow: a `var` local may still hold an anonymous functional-interface value whose type is inferred, such as the result of a closure-returning call.
 
 ```laterita
 (int, int) -> int                 // owned-int args, owned-int return
@@ -737,13 +739,13 @@ A binding of functional-interface type follows the standard parameter-modifier r
 | `@take`   | any (bare-, mut-, or take-receiver)      | a `@take` binding owns the value and may consume it |
 
 ```laterita
-(int, int) -> int adder;           // bare slot — bare-receiver SAMs only
-@mut (int, int) -> int counter;    // mut slot — bare or mut SAMs
-@take () -> void onClose;          // take slot — any SAM, including take-receiver
-
-counter(1, 2);                     // OK: @mut binding may invoke a bare- or @mut-receiver SAM
-adder(1, 2);                       // OK: bare binding invokes the bare-receiver SAM
-onClose();                         // OK: invokes the held SAM; the slot is consumed if the SAM is take-receiver
+void demo((int, int) -> int adder,         // bare slot — bare-receiver SAMs only
+          @mut (int, int) -> int counter,  // mut slot — bare or mut SAMs
+          @take () -> void onClose) {      // take slot — any SAM, including take-receiver
+    counter(1, 2);                 // OK: @mut binding may invoke a bare- or @mut-receiver SAM
+    adder(1, 2);                   // OK: bare binding invokes the bare-receiver SAM
+    onClose();                     // OK: invokes the held SAM; the slot is consumed if the SAM is take-receiver
+}
 ```
 
 The slot mode bounds invocation; whether a *particular* construction (a lambda per CLO-04, or a method reference) yields a SAM whose receiver mode fits a given slot is governed by the fit relation in CLO-04.

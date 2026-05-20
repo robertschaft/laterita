@@ -411,6 +411,14 @@ The trade-off is that source-level `import` of an anonymous functional interface
 
 This dissolves the question: there are no closure-interface names to fix because there are no closure interfaces.
 
+### Why anonymous functional interfaces are restricted to parameter and return positions (FN-01)
+
+The anonymous form has no name, and a type with no name is ergonomic only where it is also transient. A callback parameter is read once, at the call site, against a signature the caller is already looking at; the inline `(P) -> R` spelling there saves a named interface and costs nothing. A return type is the same case viewed from the other end — a closure-returning function (partial application, LIFE-02) is still a callback that happens to be produced rather than consumed, and its type is read at that same call site.
+
+Admitting the anonymous form in field, local-binding, and generic-argument positions is rejected. A field of anonymous-FI type puts an unnameable type on a class's published surface: every reader must reconstruct the SAM signature from the type expression, with no name to anchor documentation or to `import`. A generic argument — `List<(int) -> int>` — propagates that unnameable type through every instantiation that touches the collection. These are exactly the "function-shaped contract that outlives a single call" cases the structural form was never meant to serve: a stored or collected function value carries the richer obligations — a name, documentation, a place for related methods — that a nominal functional interface exists to hold (FN-03). Restricting the positions makes FN-01 enforce what FN-03 otherwise only recommends.
+
+The restriction governs the written type expression, not value flow. A `var` local may still hold an anonymous-FI value by inference, because no type is spelled there; what is forbidden is writing the anonymous spelling in a position where a future reader must decode it without the call-site context that makes it legible.
+
 ### Why FN covers type syntax, identity, and synthesis — but not slot-mode behavior
 
 FN-01 through FN-03 address the type-system properties of anonymous functional interfaces: what the type expression means (FN-01), when two such types are the same (FN-02), and how values of that type are materialized (FN-03). These rules exist independent of how the value is used through a binding.
