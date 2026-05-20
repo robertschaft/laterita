@@ -51,8 +51,6 @@ String  shown     = maybeName?.toUpperCase() ?: "ANONYMOUS".clone();
 String  forced    = maybeName!!;   // NullPointerException if maybeName is null
 ```
 
-Both arms of `?:` must agree on ownership: `toUpperCase()` allocates an owned `String` (STR-04), so the literal fallback needs `.clone()` to be owned too (STR-06) — a bare `"ANONYMOUS"` is a static borrow and would not type-check against the owned arm.
-
 ### Inline functional-interface types — `(P1, …, Pn) -> R`
 
 Write a single-abstract-method signature directly as a method-parameter type — with full ownership modes — instead of declaring a named interface for the callback.
