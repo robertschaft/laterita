@@ -112,4 +112,3 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 **Why it matters.** Without a conversion mechanism, the OQ-22 `Result` story is stunted: every error boundary needs an explicit `.mapErr(MyError::wrap)` call. With it, library composition tightens substantially.
 
 **Related codes:** MOVE-03, OQ-22.
-</content>
