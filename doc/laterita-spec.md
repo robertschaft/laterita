@@ -740,12 +740,33 @@ A binding of functional-interface type follows the standard parameter-modifier r
 
 ```laterita
 void demo((int, int) -> int adder,         // bare slot — bare-receiver SAMs only
-          @mut (int, int) -> int counter,  // mut slot — bare or mut SAMs
+          @mut (int, int) -> int counter,  // mut slot — bare- or mut-receiver SAMs
           @take () -> void onClose) {      // take slot — any SAM, including take-receiver
-    counter(1, 2);                 // OK: @mut binding may invoke a bare- or @mut-receiver SAM
-    adder(1, 2);                   // OK: bare binding invokes the bare-receiver SAM
-    onClose();                     // OK: invokes the held SAM; the slot is consumed if the SAM is take-receiver
+    adder(1, 2);                           // OK: bare binding invokes the bare-receiver SAM
+    adder(3, 4);                           // OK: a bare slot may be invoked any number of times
+    var worker = Thread.ofVirtual().start(() -> adder(5, 6));  // OK: a bare slot holds a read closure
+    worker.join();                         //     (CLO-01) — safe to invoke from another thread
+
+    counter(1, 2);                         // OK: @mut binding invokes a bare- or @mut-receiver SAM
+    counter(3, 4);                         // OK: a @mut slot may be invoked repeatedly, but only sequentially
+    Thread.ofVirtual().start(() -> counter(7, 8));   // ERROR: a @mut slot may hold a mutate closure,
+                                           //        which CLO-01 forbids invoking from another thread
+
+    onClose();                             // OK: invokes the held SAM; a take-receiver SAM consumes the slot
+    onClose();                             // ERROR: the @take slot was consumed by the first invocation
 }
+```
+
+A caller supplies each slot with a lambda whose capture mode (CLO-04) fits it:
+
+```laterita
+@mut int hits = 0;
+var log = openLog();
+demo(
+    (a, b) -> a + b,                               // read closure    — fits the bare slot
+    (a, b) -> { hits = hits + 1; return a + b; },  // mutate closure  — fits the @mut slot
+    () -> { give(log); }                           // consume closure — fits the @take slot
+);
 ```
 
 The slot mode bounds invocation; whether a *particular* construction (a lambda per CLO-04, or a method reference) yields a SAM whose receiver mode fits a given slot is governed by the fit relation in CLO-04.
