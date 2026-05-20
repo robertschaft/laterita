@@ -22,6 +22,7 @@ The full reasoning lives in `laterita-reasoning.md`. Active (unresolved) questio
 | Named closure / function-type interfaces | Rejected. Anonymous structural functional interfaces avoid an interface-name explosion that no naming convention survives once parameter modes enter the type system. | FN-01; OQ-05; reasoning "Why structural rather than nominal" |
 | `@take` on local binding declarations | Rejected. A local's ownership is fixed by its initializer; `@take` is a published contract and lives only on parameters (including `this`) and fields. | BIND-07; reasoning "Why `give(...)` and `@take` instead of one shared marker" |
 | Separate `BoundPair` / `OwnedPair` return types for array splitting | Rejected. BIND-08's generic-substitution rule lets the general-purpose `Pair<L, R>` record carry binding modifiers on its arguments, so no dedicated pair type is needed. | ARR-04; BIND-08; OQ-19; OQ-21 |
+| Two-type owned/borrowed strings (`String` + `&str`) | Rejected. One `String` type, with the compiler tracking owned-vs-borrowed per binding; `clone()` is the universal owned-copy escape valve. | STR-02; OBJ-02; OQ-08; reasoning "Why owned vs. borrowed strings tracked per-binding" |
 
 Deferred — not rejected, not specified:
 
@@ -33,16 +34,16 @@ Deferred — not rejected, not specified:
 
 Tombstones for `OQ-NN` entries that have been answered. Each names the OQ, summarizes its resolution, and points at the spec codes and reasoning that record the decision. The original open-question wording can be found in this file's git history.
 
-* **OQ-01** — Panic safety and lock poisoning.
-* **OQ-02** — Exception ergonomics beyond what ownership forces.
+* **OQ-01** — Panic safety and lock poisoning. Resolved by `Mutex<T>`'s closure-scoped API (STD-09) and THR-10: a mutex whose critical-section closure throws is poisoned, and later acquirers get `PoisonedException` — with no bypass.
+* **OQ-02** — Exception ergonomics beyond what ownership forces. Resolved by EXC-01 (Java's `try`/`catch`/`finally` and the `Throwable` hierarchy are preserved unchanged) and EXC-05 (the checked/unchecked distinction is dropped; `throws` becomes documentary). The narrower question of restoring checked exceptions is reopened as OQ-22.
 * **OQ-03** — Reflection model. Resolved as "none": no runtime reflection in the language or stdlib.
 * **OQ-04** — Cross-thread safety marker. Resolved as `@local` (STD-07).
 * **OQ-05** — Closure interface names. Dissolved by anonymous functional interfaces (FN-01): there are no closure-interface names to fix because there are no closure interfaces.
-* **OQ-07** — Method-level `mut` syntax.
-* **OQ-08** — Owned-vs-borrowed strings: one type or two.
-* **OQ-09** — `Iterator.remove` and `ConcurrentModificationException`.
+* **OQ-07** — Method-level `mut` syntax. Resolved by BIND-02 and BIND-05: receiver mutation is marked with the `@mut` annotation on the method. Laterita introduces no new keyword for it (§18).
+* **OQ-08** — Owned-vs-borrowed strings: one type or two. Resolved as one type: the compiler tracks per-binding whether a `String` is owned or borrowed (STR-02), and `clone()` (OBJ-02) is the universal escape valve for any owned/borrowed mismatch. The two-type (`String` / `&str`) model is rejected — see the rejected-alternatives table.
+* **OQ-09** — `Iterator.remove` and `ConcurrentModificationException`. Resolved by STD-08: borrow-checked iteration reuses Java's `Iterator` / `ListIterator` API. MOVE-04 makes concurrent modification a compile error, so `ConcurrentModificationException` and `modCount` leave the language.
 * **OQ-12** — Doubly-linked structures and graph data. Resolved by `Rc<T>` / `Arc<T>` on forward edges plus `WeakReference<T>` (STD-03) on back edges; no dedicated graph type is added.
-* **OQ-13** — User-invoked `close()` and early cleanup.
+* **OQ-13** — User-invoked `close()` and early cleanup. Resolved by DROP-06: `onDrop()` is `@internal` and never user-invoked; a user-defined `close()` survives migration as an ordinary method, kept distinct from `onDrop()`. No early-cleanup statement is specified — see the deferred-constructs table above. (The number OQ-13 earlier tracked the `onDrop()` no-blocking rule, resolved by THR-05 and THR-06, before being reused for this question.)
 * **OQ-14** — Ownership of Strings. Resolved by STR-06 (literal-borrow rule), STR-07 (no stdlib `String` mut methods), and STR-08 (borrow-by-default receiver); the buffer-splitting remainder was tracked under OQ-17.
 * **OQ-16** — Mutable `String`: which methods belong where. Resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`.
 * **OQ-17** — Public expression of buffer splitting for `String`. Resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under MOVE-04; mut-array splitting resolved by OQ-19 → ARR-01.
