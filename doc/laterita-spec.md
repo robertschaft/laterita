@@ -817,7 +817,7 @@ Outside the type, the slot mode is one of bare, `@mut`, or `@take`:
         @mut (int) -> int makeCounter();                               // mut slot on a returned FI
 ```
 
-A functional-interface return type carries a slot mode the same way a parameter does. Because receiver mutation is declared by the `@mutating` method annotation (BIND-05), a `@mut` or `@take` written immediately before a return type is unambiguously the slot mode of the returned functional-interface value, never a receiver-mode marker on the enclosing method; a `@mut` before a non-functional-interface return type has no slot to mode and is rejected as redundant.
+A functional-interface return type carries a slot mode the same way a parameter does; a `@mut` before a non-functional-interface return type has no slot to mode and is rejected as redundant.
 
 The outer `@bound` is **not** a slot mode — it is an orthogonal annotation declaring that the enclosing function's return is bound to this parameter (LIFE-02). It applies on top of a non-`@take` slot, and arises in practice when the function returns a value derived from a borrow of the FI parameter, most commonly a closure that captures it:
 
