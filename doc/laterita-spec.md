@@ -40,16 +40,16 @@ config = loadConfig();                   // ERROR — final locks reassignment
 
 ### BIND-02 — `@mut` is the unified mutability marker
 
-The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types. A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability. Java's `final` is orthogonal to `@mut` (BIND-01).
+The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types; on a class declaration it marks a mutable surface (MUT-03). A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability. Java's `final` is orthogonal to `@mut` (BIND-01).
 
 ### BIND-03 — Field declarations follow binding rules
 
-Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits reassignment and mutation-through; a `@mut final` field permits mutation-through but not reassignment (BIND-01).
+Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits reassignment and mutation-through; a `@mut final` field permits mutation-through but not reassignment (BIND-01). A `@mut` field may be declared only in a class declared `@mut` (MUT-04).
 
 A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a field is rejected as redundant: every field — functional-interface or not — owns its value by default, and a functional interface's call mode is a property of its type, not of the field (CLO-03).
 
 ```laterita
-class User {
+@mut class User {
     String name;                    // immutable, owned field
     @mut int loginCount;            // mutable, owned field
 }
@@ -68,7 +68,7 @@ A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-throu
 `@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token avoids a collision: `@mut` already denotes binding mutability wherever it appears, including immediately before a return type (BIND-02), so reusing it in modifier position for receiver mutation would make `@mut R foo()` ambiguous between the two. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries `@mutating` together with `@take` on an explicit `this` (BIND-07).
 
 ```laterita
-class Counter {
+@mut class Counter {
     @mut int n;
     public int read()                    { return n; }   // bare receiver
     public @mutating void inc()          { n = n + 1; }  // mutating receiver
@@ -78,7 +78,7 @@ class Counter {
 
 ### BIND-06 — Mutability transitivity
 
-Mutation requires `@mut` at every level of access. To call a `@mutating` method, the receiver binding must be `@mut`. To mutate a field, the field must be `@mut` and the binding holding the containing object must be `@mut` (or the mutation must occur in a `@mutating` method of the same object).
+Mutation requires `@mut` at every level of access. To call a `@mutating` method, the receiver binding must be `@mut` (and its static type a `@mut` class, per MUT-06). To mutate a field, the field must be `@mut` and the binding holding the containing object must be `@mut` (or the mutation must occur in a `@mutating` method of the same object).
 
 ```laterita
 var counter = new Counter();
@@ -103,7 +103,7 @@ class Connection {
     }
 }
 
-class StringBuilder {
+@mut class StringBuilder {
     @mut String contents;
 
     public @mutating StringBuilder append(@take StringBuilder this, String s) {  // consumes, mutates, returns new
@@ -121,13 +121,13 @@ conn.close();        // OK: conn was owned; consumed by close()
 conn.use();          // ERROR: conn was consumed
 ```
 
-### BIND-08 — `@mut` and `@take` banned inside generic type arguments; `@bound` permitted
+### BIND-08 — `@bound` in generic type arguments
 
-`@bound`, `@mut`, and `@take` are binding-position annotations. They may appear on parameters, return types, fields, and FI parameter/return slots. Inside a generic type argument (the `T` slot of `Foo<…T…>`), only `@bound` is admitted; `@mut` and `@take` are rejected. On a local binding, only `@mut` is admitted; `@take` and `@bound` are documentary at best (the local's owned-vs-borrow mode follows its RHS per MOVE-02, and any borrow-substituted return is already `@bound` at the producer side) and are rejected to keep one canonical form.
+`@bound`, `@mut`, and `@take` are binding-position annotations: they may appear on parameters, return types, fields, and FI parameter/return slots. Inside a generic type argument (the `T` slot of `Foo<…T…>`) their admissibility is governed per annotation — `@bound` by this rule, `@take` by BIND-09, `@mut` by BIND-10.
 
-`List<@mut Foo>` and `Pair<@take K, @take V>` are compile errors. `Pair<@bound K, @bound V>` is well-formed and denotes a pair of borrows; the correct form for a mutable list is `@mut List<Foo>`, not `List<@mut Foo>`.
+`@bound` is admitted in a type argument. It composes cleanly: a class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-03 (and the idempotence rule of LIFE-06 when `@bound` stacks). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
 
-`@mut` is banned in argument position because substitution would silently create aliased mutable slots — two `@bound List<@mut Foo>` borrows would each receive a `@mut Foo` to the same element. Cases that genuinely need shared-container-with-mutable-elements use `Cell<T>` (STD-05) explicitly. `@take` is banned because it is a parameter mode, not a value attribute, and has no meaning as a type argument. `@bound` is permitted because it composes cleanly: a class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-03 (and the idempotence rule of LIFE-06 when `@bound` stacks). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
+On a local binding, only `@mut` is admitted; `@take` and `@bound` are documentary at best (the local's owned-vs-borrow mode follows its RHS per MOVE-02, and any borrow-substituted return is already `@bound` at the producer side) and are rejected to keep one canonical form.
 
 ```laterita
 record Pair<L, R>(L left, R right) {}
@@ -135,6 +135,25 @@ record Pair<L, R>(L left, R right) {}
 Pair<String, Int>                   p1 = new Pair("hello".clone(), 42);   // owned: constructor moves
 Pair<@bound String, @bound Int> view = new Pair(name, count);              // bound: bare args borrow; view's mode follows the RHS
 ```
+
+### BIND-09 — `@take` is rejected in generic type arguments
+
+`@take` may not appear inside a generic type argument. `@take` is a parameter mode — it describes how a call site transfers ownership into a slot — not an attribute a value carries, and it has no referent as a type argument: `Pair<@take K, @take V>` is a compile error. Ownership of the contents of a generic structure is carried by the structure's own binding (owned vs. `@bound`), not by per-argument `@take` marks.
+
+### BIND-10 — `@mut` in generic type arguments
+
+`@mut` may appear inside a generic type argument only when the enclosing generic type is itself `@mut` at that occurrence — the type of a `@mut` binding, `@mut` parameter, `@mut` field, or an owned/`@mut` return. `@mut List<@mut Foo>` is well-formed; `List<@mut Foo>` — a shared binding with `@mut` elements — is rejected at the declaration.
+
+The restriction is a soundness requirement. An element accessor declared `@bound E get(int i)` returns `@mut @bound Foo` when `E` is substituted with `@mut Foo`; producing a `@mut` borrow of an element re-borrows the whole container mutably (BIND-06), which by MOVE-04 is exclusive — the same receiver-reborrow pattern `splitAt` uses (ARR-01). A *shared* `List<@mut Foo>` would instead let that `@mut` element borrow be drawn from each of several coexisting shared borrows of the container, aliasing the element. Requiring the container to be `@mut` makes every `@mut` element borrow an exclusive re-borrow, so two simultaneous element borrows are a borrow-check error rather than aliasing.
+
+```laterita
+@mut List<@mut Foo> a = ...;     // OK: mutable list, mutable elements
+@mut List<Foo>      b = ...;     // OK: mutable list, immutable elements
+List<Foo>           c = ...;     // OK: immutable list, immutable elements
+List<@mut Foo>      d = ...;     // ERROR (BIND-10): a shared list cannot carry @mut elements
+```
+
+A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ---
 
@@ -147,6 +166,69 @@ A shared (immutable) borrow grants no mutation rights regardless of any `@mut` m
 ### MUT-02 — Interior mutability requires `Cell<T>`
 
 A type that needs to mutate its contents through a bare receiver must hold those contents inside `Cell<T>`. This is the only mechanism that bypasses MUT-01, and `Cell<T>` is an unsafe primitive (see UNS-02).
+
+### MUT-03 — `@mut` class declaration
+
+A class or abstract class may be declared `@mut` (`@mut class C`, `@mut abstract class C`). The marker declares that the class has a *mutable surface*: `@mut` fields may be declared in it (MUT-04) and `@mutating` methods are callable on its instances (MUT-06). A class not declared `@mut` is a *value class* — its instances expose no callable `@mutating` method and cannot be mutated through any binding.
+
+`@mut` is rejected on a `record`: a record is a value class by construction. `@mut` is not applied to interfaces — an interface is mutability-neutral, may be implemented by both `@mut` classes and value classes, and may declare `@mutating` methods without itself carrying the marker.
+
+`Object` is `@mut`. `String` and `Number` — and therefore `Integer`, `Long`, `Float`, and the other boxed numeric types — are value classes.
+
+### MUT-04 — `@mut` fields require a `@mut` class
+
+A `@mut` field may be *declared* only in a class declared `@mut`. A value class may *inherit* `@mut` fields from a `@mut` ancestor (MUT-05) but may not declare new ones. The declared type of a `@mut` field is unrestricted: a `@mut` field whose type is a value class is permitted and grants reassignment of the field (BIND-03) without granting mutation through it.
+
+### MUT-05 — Mutability and inheritance
+
+A class declared `@mut` may extend only a `@mut` class. A value class may extend a class of either kind. Two consequences follow:
+
+- every superclass of a `@mut` class is itself `@mut`, up to `Object`;
+- once a class in a hierarchy is a value class, every subclass of it is a value class.
+
+A value class that extends a `@mut` class inherits its ancestors' `@mut` fields and `@mutating` methods. The inherited `@mutating` methods are not callable on the value class (MUT-06): the value class is a frozen view of the inherited surface. This is the mechanism for deriving an immutable variant of a mutable class — a collection, a configuration holder, a builder — without re-declaring its API.
+
+```laterita
+@mut class Counter {
+    @mut int n;
+    Counter(int start) { this.n = start; }
+    @mutating void inc() { n = n + 1; }
+    int read()           { return n; }
+}
+
+class FrozenCounter extends Counter {           // value class extending a @mut class
+    FrozenCounter(int start) { super(start); }
+}
+
+var fc = new FrozenCounter(5);
+fc.read();      // OK: non-@mutating method
+fc.inc();       // ERROR: inc is @mutating; FrozenCounter is a value class (MUT-06)
+```
+
+### MUT-06 — Calling `@mutating` methods
+
+A `@mutating` method is callable on a receiver only when both conditions hold, each checked statically:
+
+- the receiver binding is `@mut` (BIND-06), and
+- the receiver's static type is a `@mut` class, or an interface.
+
+When the static type is an interface, the `@mut`-binding requirement together with MUT-07 already guarantees the receiver's dynamic class is `@mut`.
+
+A constructor is exempt: within a constructor, `@mutating` methods may be called on `this` and inherited `@mut` fields assigned, whatever the class kind. This is the initialization phase; the value-class freeze takes effect when the constructor returns. A value class therefore establishes its inherited mutable state during construction — typically by chaining `super(...)` — after which that state is permanently unreachable for mutation.
+
+### MUT-07 — `@mut` access is not obtainable by widening
+
+Widening a value-class instance to one of its `@mut` supertypes (class or interface) never produces a `@mut` value. Such a widened value may not initialize, be assigned to, or be passed to a `@mut` binding, parameter, or field; and the cast `(@mut Super) v` is rejected when `v`'s static type is a value class. Widening to a bare (immutable) binding of the supertype remains permitted.
+
+Together with MUT-05 this guarantees that any `@mut` binding whose static type is a `@mut` class or an interface refers to an instance whose dynamic class is `@mut` — which is what makes MUT-06's static check sound. `@mut` access to an instance originates only at construction of a `@mut` class and propagates only through `@mut` bindings, parameters, returns, and fields.
+
+```laterita
+Counter view   = new FrozenCounter(5);    // OK: a value-class instance widens to a bare Counter
+@mut Counter m = new FrozenCounter(5);    // ERROR (MUT-07): a value-class instance cannot fill a @mut slot
+
+FrozenCounter fc = new FrozenCounter(5);
+@mut Counter bad = (@mut Counter) fc;     // ERROR (MUT-07): a cast cannot manufacture @mut access
+```
 
 ---
 
@@ -219,7 +301,7 @@ The compiler must reject programs that violate this.
 Two simultaneous borrows of statically distinct fields of the same struct are non-aliasing and must be permitted, including when both are mutable. The compiler must perform this disjointness analysis.
 
 ```laterita
-class Pair { @mut int left; @mut int right; }
+@mut class Pair { @mut int left; @mut int right; }
 @mut Pair p = new Pair();
 @mut int l = p.left;
 @mut int r = p.right;       // OK: disjoint fields
@@ -913,14 +995,14 @@ void inspect(String s);                 // accepts a literal directly (borrow)
 void store(@take String s);             // requires `.clone()` on a literal
 ```
 
-### STR-07 — Standard `String` exposes no `@mutating` methods
+### STR-07 — `String` is a value class
 
-The standard library `String` declares no `@mutating` methods. A binding or field may still be declared `@mut String` per BIND-02 (and reassigned), but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`.
+`String` is a value class (MUT-03): it declares no `@mut` fields and no `@mutating` methods, and none can be introduced by extension (MUT-05). A binding or field may still be declared `@mut String` — `@mut` then grants reassignment per BIND-03 — but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ```laterita
-@mut String s = readLine();       // declaration permitted
+@mut String s = readLine();       // declaration permitted: @mut grants reassignment
 s = readLine();                   // OK: reassigning a @mut binding
-// no in-place mutation method exists on String
+// String is a value class — no in-place mutation method can exist
 ```
 
 ### STR-08 — Default receiver mode of `String` methods is borrow
@@ -944,7 +1026,7 @@ class String {
 The laterita compiler treats `T[]` as a class with the following methods (`.lat`-only; the `.java` mirror on `laterita.lang.Arrays` is ARR-02). Both surfaces compile to the same operations; the `.lat` surface here uses the inline functional-interface spelling of LAT-05, and is sugar over the `.java` mirror per LAT-00.
 
 ```laterita
-class T[] {
+@mut class T[] {
     @mutating @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(int mid);
 
     @mutating void forEachChunk(int chunkSize,
@@ -984,7 +1066,7 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(
+    public static <T> @mut @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
@@ -1030,7 +1112,7 @@ public record Pair<L, R>(L left, R right) {}
 Instantiations encountered in this spec:
 
 - `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Accessors `left()` and `right()` participate in partial-move tracking (MOVE-07), so both fields may be consumed from the same instance.
-- `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing binding is `@bound` because the instance contains `@bound`-substituted parameters (BIND-08); its lifetime is the intersection of the field sources (LIFE-03).
+- `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing binding is `@bound` because the instance contains `@bound`-substituted parameters (BIND-08), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (BIND-10); its lifetime is the intersection of the field sources (LIFE-03).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
@@ -1311,6 +1393,7 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 |---|---|---|
 | Mutable binding / field / parameter | `@mut` | BIND-02 |
 | Method mutates its receiver | `@mutating` | BIND-05 |
+| Class with a mutable surface | `@mut` on the class declaration | MUT-03 |
 | Owned parameter or LHS prefix | `@take` | MOVE-03 |
 | Method consumes its receiver | `@take` on the explicit `this` parameter | BIND-07 |
 | Borrow source on parameter or return | `@bound` | LIFE-02 |
