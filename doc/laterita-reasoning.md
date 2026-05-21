@@ -50,6 +50,10 @@ The constraint also resolves where a future feature belongs. A proposed addition
 
 `@mut` denotes mutability uniformly across bindings, fields, and parameters, and the companion `@mutating` (BIND-05) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
 
+### Why `final` composes with `@mut` (BIND-01)
+
+`@mut` grants two capabilities at once — rebinding the name and mutating the value through it — but the most common Java pattern wants only the second: a `final` field holding a mutable object, `private final List<Item> items`. Rather than add a third annotation for "mutable but not reassignable," Laterita reuses Java's `final`, which already means precisely "this binding is not reassignable." `@mut final` is then the exact spelling of that pattern — mutation-through kept, reassignment locked — and `final` on an already-immutable binding is simply redundant, so nothing needs to reject it.
+
 ### Why fields default to immutable (BIND-03)
 
 Rust's transitivity insight: immutability is only meaningful if it propagates. If a `var` binding could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee. Making fields immutable by default forces an explicit choice for mutation, exactly where Effective Java has been recommending we make that choice for years (favor immutability, favor records over JavaBeans).

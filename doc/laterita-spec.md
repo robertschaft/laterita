@@ -12,7 +12,7 @@ Codes are grouped by area: `BIND` (bindings), `NULL` (optionality), `MOVE` (move
 
 ### BIND-01 — Four binding forms
 
-The language provides exactly four local binding forms:
+The language provides four core local binding forms:
 
 | Form | Meaning |
 |---|---|
@@ -30,13 +30,21 @@ var count = items.size();
 @mut int retries = 0;
 ```
 
+`@mut` grants two capabilities at once: reassigning the binding and mutating the value through it. Java's `final` may be added to any form to lock reassignment. On a bare (immutable) form it is redundant — immutability is already the default — but on a `@mut` form it produces a third state: the value may still be mutated through the binding, but the binding can no longer be rebound.
+
+```laterita
+@mut final Properties config = loadConfig();
+config.setProperty("verbose", "true");   // OK — mutation through the binding
+config = loadConfig();                   // ERROR — final locks reassignment
+```
+
 ### BIND-02 — `@mut` is the unified mutability marker
 
-The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, and parameters. A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability; Java's `final` on local bindings is accepted but redundant since immutability is the default.
+The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types. A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability. Java's `final` is orthogonal: it locks reassignment of a binding and composes with `@mut` to express a binding that is mutable-through but not reassignable (BIND-01).
 
 ### BIND-03 — Field declarations follow binding rules
 
-Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits both reassignment and mutation through the binding.
+Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits both reassignment and mutation through the binding; adding `final` to a `@mut` field locks reassignment while still permitting mutation-through — the common pattern of a fixed field reference to a mutable object.
 
 A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a non-FI field is rejected as redundant; on an FI-typed field `@take` is a slot-mode annotation (CLO-03), not an ownership marker.
 
@@ -51,7 +59,7 @@ record EntryView<K, V>(@bound K key, @bound V value) {}   // borrow-view; instan
 
 ### BIND-04 — Constructors initialize immutable fields
 
-Every field of a class must be assigned exactly once in every constructor before any method on `this` is invoked. Immutable fields can only be assigned in constructors. Mutable fields can be assigned in constructors and reassigned in `@mutating` methods.
+Every field of a class must be assigned exactly once in every constructor before any method on `this` is invoked. Fields that cannot be reassigned — those without `@mut`, and `@mut final` fields — can only be assigned in constructors. A `@mut` field that is not `final` can also be reassigned in `@mutating` methods.
 
 ### BIND-05 — Methods declare mutation of `this` with `@mutating`
 
@@ -1391,7 +1399,7 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 
 The annotations are declared in `laterita.lang.annotation`. The static methods live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier. To `javac` they are ordinary annotations and ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
-Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` is permitted on local bindings but is redundant.
+Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` is permitted on bindings; it is redundant on an immutable binding but locks reassignment on a `@mut` one (BIND-01).
 
 Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
 
