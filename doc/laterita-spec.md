@@ -62,9 +62,9 @@ A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-throu
 ```laterita
 class Counter {
     @mut int n;
-    public int read()                  { return n; }       // bare receiver
-    public @mutating void inc()         { n = n + 1; }      // mutating receiver
-    public final @mutating void reset() { n = 0; }
+    public int read()                    { return n; }   // bare receiver
+    public @mutating void inc()          { n = n + 1; }  // mutating receiver
+    public final @mutating void reset()  { n = 0; }
 }
 ```
 
@@ -89,7 +89,7 @@ Java's grammar permits an explicit `this` as the first parameter slot with type-
 class Connection {
     Heap<DbConn> conn;
 
-    public void close(@take Connection this) {                        // consumes this
+    public void close(@take Connection this) {        // consumes this
         this.conn.flush();
         // `this` is dropped at function end; underlying connection released
     }
@@ -103,7 +103,7 @@ class StringBuilder {
         return this;
     }
 
-    public String build(@take StringBuilder this) {                   // consumes, yields String
+    public String build(@take StringBuilder this) {                              // consumes, yields String
         return this.contents;
     }
 }

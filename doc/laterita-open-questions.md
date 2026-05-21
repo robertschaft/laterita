@@ -112,3 +112,21 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 **Why it matters.** Without a conversion mechanism, the OQ-22 `Result` story is stunted: every error boundary needs an explicit `.mapErr(MyError::wrap)` call. With it, library composition tightens substantially.
 
 **Related codes:** MOVE-03, OQ-22.
+
+## OQ-28 — Dedicated method annotation for receiver consumption
+
+**Surfaced when:** adopting `@mutating` (BIND-05) as a dedicated modifier-position annotation for receiver mutation, which leaves receiver consumption still spelled `@take Self this` on an explicit `this` parameter (BIND-07) — the two receiver-mode markers now have different shapes.
+
+**The issue.** Receiver mutation and receiver consumption are the two non-bare receiver modes. After BIND-05's harmonization they are declared differently: mutation by `@mutating` in modifier position — reading like `public` or `final`, with no explicit `this` — and consumption by `@take` on an explicit `this` parameter, `void close(@take Connection this)`. The explicit-`this` form restates the class name and adds a parameter slot to every consuming method (a builder's terminal `build`, `close`-style teardown, ownership-transferring conversions). A dedicated modifier-position annotation — e.g. `@consuming void close()` — would restore the parallel with `@mutating` and remove that boilerplate, the same way `@mutating` removed the `(@mut Self this)` boilerplate.
+
+The current spelling is not arbitrary: BIND-07's rationale is that `@take Self this` is exactly `@take T name` applied to the `this` slot, so `@take` means one thing — "this slot receives ownership" — everywhere, and the `this` slot is a parameter like any other. A dedicated consumption annotation trades that uniformity for symmetry between the two receiver modes.
+
+**The question.**
+- Does receiver consumption gain a dedicated method annotation parallel to `@mutating` (candidate names: `@consuming`, `@taking`, `@consumes`), replacing `@take Self this`?
+- If so, does the explicit `this` parameter slot disappear entirely, requiring the compiler to supply the receiver type — or is the slot still needed for the receiver type, with only `@take` lifted off it?
+- Does the dedicated annotation compose with `@mutating` the way the slot forms do — a consume-and-mutate method carrying both modifiers — and does that read better than today's `@mutating … @take Self this`?
+- Is splitting `@take`'s two roles (parameter ownership vs. receiver consumption) into two annotations a clarification, or does it lose the "one marker, one meaning" property BIND-07 currently relies on?
+
+**Why it matters.** The two receiver modes reading in different shapes is a small but permanent inconsistency on every API surface with consuming methods. A parallel pair of modifier-position annotations would make receiver mode uniform and self-documenting; keeping `@take Self this` keeps `@take` itself uniform. The choice is between two kinds of consistency.
+
+**Related codes:** BIND-05, BIND-07, MOVE-03.
