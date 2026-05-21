@@ -53,18 +53,18 @@ record EntryView<K, V>(@bound K key, @bound V value) {}   // borrow-view; instan
 
 Every field of a class must be assigned exactly once in every constructor before any method on `this` is invoked. Immutable fields can only be assigned in constructors. Mutable fields can be assigned in constructors and reassigned in `@mut` methods.
 
-### BIND-05 — Methods declare mutation of `this` with `@mut`
+### BIND-05 — Methods declare mutation of `this` with `@mut` on an explicit `this`
 
-A method annotated `@mut` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mut` methods on `this`). A method without `@mut` cannot.
+A method with `@mut` on its explicit `this` parameter may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other receiver-mutating methods on `this`). A method without it cannot.
 
-`@mut` is a type-use annotation on the return type. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mut` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers.
+`@mut` on the `this` slot is the parallel of `@mut T name` on an ordinary parameter (MOVE-03) — a mutable borrow of the receiver — exactly as BIND-07 declares receiver consumption with `@take` on the same slot. It is a visibility-like predicate rather than a behavioral one: by BIND-06, a receiver-mutating method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. Declaring the marker on `this` rather than on the return type keeps the return-type position free for the functional-interface slot mode (CLO-03): a `@mut` immediately before a return type is unambiguously the slot mode, and `@mut` before a non-functional-interface return type is rejected as redundant.
 
 ```laterita
 class Counter {
     @mut int n;
-    public int read()                    { return n; }       // bare receiver
-    public @mut void inc()               { n = n + 1; }      // mutable receiver
-    public final @mut void reset()       { n = 0; }
+    public int read()                          { return n; }     // bare receiver
+    public void inc(@mut Counter this)         { n = n + 1; }     // mutating receiver
+    public final void reset(@mut Counter this) { n = 0; }
 }
 ```
 
@@ -83,7 +83,7 @@ c2.inc();                   // OK
 
 A method with `@take` on its explicit `this` parameter consumes its receiver. The body owns `this`, may move out of `this`'s fields (MOVE-07), and may hand `this` itself to a `@take` parameter or to another receiver-consuming method. After the call returns, the binding that held the receiver is consumed (MOVE-02); subsequent uses are rejected.
 
-Java's grammar permits an explicit `this` as the first parameter slot with type-use annotations attached. Laterita reuses that slot: `@take Self this` declares receiver consumption; `@mut` on the same slot is the parallel of `@take @mut T` for ordinary parameters (MOVE-03) — receiver consumed, `this` reassignable. Calling a receiver-consuming method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer.
+Java's grammar permits an explicit `this` as the first parameter slot with type-use annotations attached. Laterita reuses that slot for every receiver mode: `@mut Self this` declares receiver mutation (BIND-05), `@take Self this` declares receiver consumption, and `@take @mut Self this` combines them — parallel to `@take @mut T` for ordinary parameters (MOVE-03), the receiver is consumed and `this` is reassignable. Calling a receiver-consuming method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer.
 
 ```laterita
 class Connection {
@@ -806,7 +806,10 @@ Outside the type, the slot mode is one of bare, `@mut`, or `@take`:
 ```laterita
 <T> void inspect(@mut (T) -> void fn);                                 // mut slot
         void onClose(@take () -> void hook);                           // take slot: caller transfers ownership of the FI value
+        @mut (int) -> int makeCounter();                               // mut slot on a returned FI
 ```
+
+A functional-interface return type carries a slot mode the same way a parameter does. Because receiver mutation is declared on the explicit `this` slot (BIND-05), a `@mut` or `@take` written immediately before a return type is unambiguously the slot mode of the returned functional-interface value — never a receiver-mode marker on the enclosing method.
 
 The outer `@bound` is **not** a slot mode — it is an orthogonal annotation declaring that the enclosing function's return is bound to this parameter (LIFE-02). It applies on top of a non-`@take` slot, and arises in practice when the function returns a value derived from a borrow of the FI parameter, most commonly a closure that captures it:
 
@@ -1009,12 +1012,12 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 ```laterita
 class T[] {
-    @mut @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(int mid);
+    @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(@mut T[] this, int mid);
 
-    @mut void forEachChunk(int chunkSize,
+    void forEachChunk(@mut T[] this, int chunkSize,
             @mut (@mut T[]) -> void body);
 
-    @mut void forEachChunkExact(int chunkSize,
+    void forEachChunkExact(@mut T[] this, int chunkSize,
             @mut (@mut T[]) -> void body);
 
     Pair<T[], T[]> splitOff(@take T[] this, int mid);
@@ -1373,7 +1376,8 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 
 | Concept | Form | Spec rule |
 |---|---|---|
-| Mutable binding / field / parameter / receiver | `@mut` | BIND-02, BIND-05 |
+| Mutable binding / field / parameter | `@mut` | BIND-02 |
+| Method mutates its receiver | `@mut` on the explicit `this` parameter | BIND-05 |
 | Owned parameter or LHS prefix | `@take` | MOVE-03 |
 | Method consumes its receiver | `@take` on the explicit `this` parameter | BIND-07 |
 | Borrow source on parameter or return | `@bound` | LIFE-02 |

@@ -94,7 +94,7 @@ A class or type annotated `@local` if its instances cannot safely cross thread b
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
 
 ### @mut (annotation)
-The single unified marker for mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), methods (`public @mut void inc()`), and parameters (`@mut T param`). Conveys "this can change." See `BIND-02`.
+The single unified marker for mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), parameters (`@mut T param`), and the explicit `this` parameter of a receiver-mutating method (`void inc(@mut Counter this)`). Conveys "this can change." See `BIND-02`.
 
 ### mutable borrow / mut borrow
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mut` method of the same object. See `MOVE-03`, `MOVE-04`.
@@ -136,7 +136,7 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
 
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), `@mut` (may mutate, declared on the method), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mut` method). See `BIND-05`, `BIND-07`.
+How a method accesses its receiver (`this`): bare (read-only), `@mut` (may mutate, declared by `@mut` on an explicit `this` parameter), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mut` method). See `BIND-05`, `BIND-07`.
 
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler. **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.). The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`. See `UNS-01`.

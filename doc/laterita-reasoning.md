@@ -56,11 +56,13 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 ### Why methods declare mutation in the signature (BIND-05)
 
-A `@mut`-annotated method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mut` in the signature, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mut` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mut` on the explicit `this` parameter, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a receiver-mutating method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+
+The marker rides the explicit `this` slot, parallel to receiver consumption (BIND-07): one slot carries every receiver mode, so there is no separate per-position rule for how a method declares what it does to `this`. It also keeps the return-type position unambiguous. A functional-interface return type carries a slot mode (CLO-03) written immediately before the type; were receiver mutation written there too, a `@mut`-returning factory could not say whether it mutates its own receiver or returns a mutating closure — and a mutating closure could not be returned at all. Placing receiver mutation on `this` leaves the slot mode the only `@mut` a return type can carry.
 
 ### Why methods declare consumption of `this` with `@take` on an explicit `this` (BIND-07)
 
-Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot: `@take Self this` declares receiver consumption, parallel to `@take T name` on an ordinary parameter (MOVE-03). The mental model — "the `this` slot is a parameter like any other, with the same annotations governing it" — collapses two questions into one. `@mut` and `@bound` on the receiver compose the same way they do on parameters; no per-position rule book.
+Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot: `@take Self this` declares receiver consumption, parallel to `@take T name` on an ordinary parameter (MOVE-03). The mental model — "the `this` slot is a parameter like any other, with the same annotations governing it" — collapses two questions into one. `@mut` (BIND-05) and `@bound` on the receiver compose the same way they do on parameters; no per-position rule book.
 
 ### Why constructors are a special initialization case (BIND-04)
 
