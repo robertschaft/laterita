@@ -48,7 +48,7 @@ The constraint also resolves where a future feature belongs. A proposed addition
 
 ### Why `@mut` is the *single* mutability marker (BIND-02)
 
-`@mut` denotes mutability uniformly across bindings, fields, methods, and parameters. Each position expresses the same underlying idea — "this can change" — so one marker means a reader can grep for `@mut` and find every mutation point in the system. The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+`@mut` denotes mutability uniformly across bindings, fields, and parameters, and the companion `@mutates` (BIND-05) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change" — and both begin with `@mut`, so a reader can grep for `@mut` and find every mutation point in the system. The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
 
 ### Why fields default to immutable (BIND-03)
 
@@ -56,13 +56,13 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 ### Why methods declare mutation in the signature (BIND-05)
 
-A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mut` on the explicit `this` parameter, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a receiver-mutating method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutates` on the method, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mutates` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
 
-The marker rides the explicit `this` slot, parallel to receiver consumption (BIND-07): one slot carries every receiver mode, so there is no separate per-position rule for how a method declares what it does to `this`. It also keeps the return-type position unambiguous. A functional-interface return type carries a slot mode (CLO-03) written immediately before the type; were receiver mutation written there too, a `@mut`-returning factory could not say whether it mutates its own receiver or returns a mutating closure — and a mutating closure could not be returned at all. Placing receiver mutation on `this` leaves the slot mode the only `@mut` a return type can carry.
+`@mutates` is a dedicated annotation rather than another use of `@mut`. The binding-mutability `@mut` already occupies the position immediately before a type — including a functional-interface return type, where it is the slot mode (CLO-03). Spelling receiver mutation with that same token there would make a function returning a functional interface ambiguous: `@mut (int) -> int makeStep()` could mean either "mutates its own receiver" or "returns a mutating closure," and a mutating closure could not be returned at all. A distinct token removes the clash outright. It still begins with `@mut`, so the BIND-02 property — one text search finds every mutation point — is preserved, and a modifier-position annotation keeps the common case (every setter, every mutator) free of an explicit-`this` parameter.
 
 ### Why methods declare consumption of `this` with `@take` on an explicit `this` (BIND-07)
 
-Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot: `@take Self this` declares receiver consumption, parallel to `@take T name` on an ordinary parameter (MOVE-03). The mental model — "the `this` slot is a parameter like any other, with the same annotations governing it" — collapses two questions into one. `@mut` (BIND-05) and `@bound` on the receiver compose the same way they do on parameters; no per-position rule book.
+Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot for receiver consumption: `@take Self this` declares it, parallel to `@take T name` on an ordinary parameter (MOVE-03) — the `this` slot is a parameter like any other, with `@take` and `@bound` governing it exactly as on parameters. Receiver mutation does not ride that slot: it is the `@mutates` method annotation (BIND-05), kept a separate token so it cannot collide with the `@mut` slot mode a functional-interface return type carries (CLO-03).
 
 ### Why constructors are a special initialization case (BIND-04)
 
@@ -70,7 +70,7 @@ This is the same accommodation Rust makes for struct initialization and Java alr
 
 ### Why mutability is transitive (BIND-06)
 
-If a `var` binding could call `@mut` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
+If a `var` binding could call `@mutates` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ---
 
@@ -509,7 +509,7 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed bin
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
-A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mut`-receiver method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
+A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mutates` method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
 
 ### Why default receiver mode is borrow (STR-08)
 
@@ -517,7 +517,7 @@ The same Java-feel argument that motivates non-final classes (STR-01) and per-bi
 
 ### Why `String` needs no splitting machinery
 
-A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
+A `bound String` is read-only — STR-07 leaves `String` with no `@mutates` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
 Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01.
 

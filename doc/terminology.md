@@ -94,10 +94,13 @@ A class or type annotated `@local` if its instances cannot safely cross thread b
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
 
 ### @mut (annotation)
-The single unified marker for mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), parameters (`@mut T param`), and the explicit `this` parameter of a receiver-mutating method (`void inc(@mut Counter this)`). Conveys "this can change." See `BIND-02`.
+The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), and parameters (`@mut T param`). Conveys "this can change." A method that mutates its receiver is marked with the companion annotation `@mutates`, not `@mut`. See `BIND-02`, `BIND-05`.
+
+### @mutates (annotation)
+Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutates` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so it cannot be confused with a functional-interface slot mode, but sharing the `@mut` prefix so one text search finds every mutation point. By `BIND-06` a `@mutates` method is callable only on a `@mut` receiver. See `BIND-05`.
 
 ### mutable borrow / mut borrow
-A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mut` method of the same object. See `MOVE-03`, `MOVE-04`.
+A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutates` method of the same object. See `MOVE-03`, `MOVE-04`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
@@ -136,7 +139,7 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
 
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), `@mut` (may mutate, declared by `@mut` on an explicit `this` parameter), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mut` method). See `BIND-05`, `BIND-07`.
+How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutates` on the method), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutates` method). See `BIND-05`, `BIND-07`.
 
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler. **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.). The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`. See `UNS-01`.
@@ -175,7 +178,7 @@ Declares that a parameter receives ownership of its argument (consumed upon call
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
 
 ### transitivity (of mutability)
-Immutability propagates through a binding. A bare (immutable) binding cannot call `@mut` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
+Immutability propagates through a binding. A bare (immutable) binding cannot call `@mutates` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
 
 ### type-inferred binding
 A binding whose type is inferred from the RHS expression rather than written explicitly. Forms: `var name = expr` (immutable, inferred), `@mut var name = expr` (mutable, inferred). In laterita mode `var` is immutable by default; the `@mut` annotation opts in to mutability. See `BIND-01`.
