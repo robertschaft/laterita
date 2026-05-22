@@ -27,6 +27,9 @@ An annotation marking that a returned value is a borrow, not an owned value. Pla
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views. Single-thread: `T[].splitAt` → `@bound Pair<@bound @mut T[], @bound @mut T[]>` (borrowed halves); `forEachChunk` → borrowed slices via callback. Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves); `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`. See `ARR-01`, `ARR-02`, `ARR-04`.
 
+### call mode
+A property of a functional-interface *type*: the receiver mode of its single abstract method. **shared-call** (bare SAM — invocable through a shared borrow), **mut-call** (`@mutating` SAM — invocable through a `@mut` binding), or **once-call** (`@take this` SAM — invocable once, consuming the value). The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM. Distinct from the *binding mode* of the binding that holds the value. See `CLO-03`.
+
 ### Cell<T>
 An interior-mutability primitive permitting mutation of contents through a non-`@mut` binding. The only way to implement mutable state inside a type that is otherwise immutable. Requires `@unsafe` context per `UNS-02`. Similar to Rust's `UnsafeCell<T>`.
 
@@ -61,7 +64,7 @@ Only one mutable borrow may exist at a time. No other borrows (mutable or immuta
 A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `BIND-03`.
 
 ### functional interface (also "function type")
-An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline: `(P1, P2, ...) -> R` (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
+An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`, legal only as a parameter type or a return type (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is `@take` on an explicit `this` parameter (BIND-07).
@@ -94,10 +97,13 @@ A class or type annotated `@local` if its instances cannot safely cross thread b
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
 
 ### @mut (annotation)
-The single unified marker for mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), methods (`public @mut void inc()`), and parameters (`@mut T param`). Conveys "this can change." See `BIND-02`.
+The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), and parameters (`@mut T param`). Conveys "this can change." A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `BIND-02`, `BIND-05`.
+
+### @mutating (annotation)
+Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like binding mutability. By `BIND-06` a `@mutating` method is callable only on a `@mut` receiver. See `BIND-05`.
 
 ### mutable borrow / mut borrow
-A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mut` method of the same object. See `MOVE-03`, `MOVE-04`.
+A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `MOVE-03`, `MOVE-04`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
@@ -136,13 +142,13 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
 
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), `@mut` (may mutate, declared on the method), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mut` method). See `BIND-05`, `BIND-07`.
+How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method). See `BIND-05`, `BIND-07`.
 
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler. **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.). The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`. See `UNS-01`.
 
 ### SAM (Single Abstract Method)
-The one abstract method of a functional interface. In a lambda or method reference targeting a functional interface, the body must implement the SAM. Parameter and return modes of the SAM are declared as part of the interface. See `FN-01`.
+The one abstract method of a functional interface. In a lambda or method reference targeting a functional interface, the body must implement the SAM. Parameter and return modes of the SAM are declared as part of the interface. An anonymous functional interface's SAM is named `apply`, and a value `f` is invoked as `f.apply(...)`. See `FN-01`.
 
 ### shared borrow / immutable borrow
 A borrow that grants read-only access to a borrowed value. Any number of shared borrows may coexist. A shared borrow does not require the source binding to be `mut`. See `MOVE-01`, `MOVE-04`.
@@ -175,7 +181,7 @@ Declares that a parameter receives ownership of its argument (consumed upon call
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
 
 ### transitivity (of mutability)
-Immutability propagates through a binding. A bare (immutable) binding cannot call `@mut` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
+Immutability propagates through a binding. A bare (immutable) binding cannot call `@mutating` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
 
 ### type-inferred binding
 A binding whose type is inferred from the RHS expression rather than written explicitly. Forms: `var name = expr` (immutable, inferred), `@mut var name = expr` (mutable, inferred). In laterita mode `var` is immutable by default; the `@mut` annotation opts in to mutability. See `BIND-01`.

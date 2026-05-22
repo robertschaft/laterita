@@ -48,7 +48,11 @@ The constraint also resolves where a future feature belongs. A proposed addition
 
 ### Why `@mut` is the *single* mutability marker (BIND-02)
 
-`@mut` denotes mutability uniformly across bindings, fields, methods, and parameters. Each position expresses the same underlying idea — "this can change" — so one marker means a reader can grep for `@mut` and find every mutation point in the system. The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+`@mut` denotes mutability uniformly across bindings, fields, and parameters, and the companion `@mutating` (BIND-05) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+
+### Why `final` composes with `@mut` (BIND-01)
+
+`@mut` grants two capabilities at once — rebinding the name and mutating the value through it — but the most common Java pattern wants only the second: a `final` field holding a mutable object, `private final List<Item> items`. Rather than add a third annotation for "mutable but not reassignable," Laterita reuses Java's `final`, which already means precisely "this binding is not reassignable." `@mut final` is then the exact spelling of that pattern — mutation-through kept, reassignment locked — and `final` on an already-immutable binding is simply redundant, so nothing needs to reject it.
 
 ### Why fields default to immutable (BIND-03)
 
@@ -56,11 +60,13 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 ### Why methods declare mutation in the signature (BIND-05)
 
-A `@mut`-annotated method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mut` in the signature, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mut` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+
+`@mutating` is a dedicated annotation rather than another use of `@mut`. The binding-mutability `@mut` already occupies the position immediately before a type, including a return type (BIND-02). Spelling receiver mutation with that same token in modifier position would make `@mut R foo()` ambiguous between "mutates its own receiver" and "returns a `@mut` binding." A distinct token removes the clash outright, and a modifier-position annotation keeps the common case (every setter, every mutator) free of an explicit-`this` parameter.
 
 ### Why methods declare consumption of `this` with `@take` on an explicit `this` (BIND-07)
 
-Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot: `@take Self this` declares receiver consumption, parallel to `@take T name` on an ordinary parameter (MOVE-03). The mental model — "the `this` slot is a parameter like any other, with the same annotations governing it" — collapses two questions into one. `@mut` and `@bound` on the receiver compose the same way they do on parameters; no per-position rule book.
+Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot for receiver consumption: `@take Self this` declares it, parallel to `@take T name` on an ordinary parameter (MOVE-03) — the `this` slot is a parameter like any other, with `@take` and `@bound` governing it exactly as on parameters. Receiver mutation does not ride that slot: it is the `@mutating` method annotation (BIND-05), kept a separate token from `@mut` so receiver mutation and binding mutability are never spelled alike (BIND-05).
 
 ### Why constructors are a special initialization case (BIND-04)
 
@@ -68,7 +74,7 @@ This is the same accommodation Rust makes for struct initialization and Java alr
 
 ### Why mutability is transitive (BIND-06)
 
-If a `var` binding could call `@mut` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
+If a `var` binding could call `@mutating` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ---
 
@@ -411,15 +417,29 @@ The trade-off is that source-level `import` of an anonymous functional interface
 
 This dissolves the question: there are no closure-interface names to fix because there are no closure interfaces.
 
-### Why FN covers type syntax, identity, and synthesis — but not slot-mode behavior
+### Why anonymous functional interfaces are restricted to parameter and return positions (FN-01)
+
+The anonymous form has no name, and a type with no name is ergonomic only where it is also transient. A callback parameter is read once, at the call site, against a signature the caller is already looking at; the inline `(P) -> R` spelling there saves a named interface and costs nothing. A return type is the same case viewed from the other end — a closure-returning function (partial application, LIFE-02) is still a callback that happens to be produced rather than consumed, and its type is read at that same call site.
+
+Admitting the anonymous form in field, local-binding, and generic-argument positions is rejected. A field of anonymous-FI type puts an unnameable type on a class's published surface: every reader must reconstruct the SAM signature from the type expression, with no name to anchor documentation or to `import`. A generic argument — `List<(int) -> int>` — propagates that unnameable type through every instantiation that touches the collection. These are exactly the "function-shaped contract that outlives a single call" cases the structural form was never meant to serve: a stored or collected function value carries the richer obligations — a name, documentation, a place for related methods — that a nominal functional interface exists to hold (FN-03). Restricting the positions makes FN-01 enforce what FN-03 otherwise only recommends.
+
+The restriction governs the written type expression, not value flow. A `var` local may still hold an anonymous-FI value by inference, because no type is spelled there; what is forbidden is writing the anonymous spelling in a position where a future reader must decode it without the call-site context that makes it legible.
+
+### Why FN covers type syntax, identity, and synthesis — but not call or binding behavior
 
 FN-01 through FN-03 address the type-system properties of anonymous functional interfaces: what the type expression means (FN-01), when two such types are the same (FN-02), and how values of that type are materialized (FN-03). These rules exist independent of how the value is used through a binding.
 
-The slot-mode rules (CLO-03) and override/overload variance (CLO-05) live in the closure chapter because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. The organizing principle is that the FN section answers "what is this type?" while the CLO section answers "what can you do with a binding that holds a value of that type?"
+The call-mode and binding-mode rules (CLO-03) and override/overload variance (CLO-05) live in the closure chapter because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. The organizing principle is that the FN section answers "what is this type?" while the CLO section answers "what can you do with a binding that holds a value of that type?"
 
 ### Why anonymous synthesis lives in FN (FN-03)
 
 Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail. The rule belongs in FN because synthesis is a property of the anonymous FI type, not of the binding that holds it.
+
+### Why functional-interface values are invoked through the SAM (FN-01)
+
+Java has no call-on-binding syntax: a functional-interface value is an object, invoked through its single abstract method (`f.apply(x)`, `r.run()`, `c.accept(x)`). Laterita keeps this. A `fn(args)` form that calls a binding directly would be a sixth non-Java syntactic surface — §18 lists five — bought for no semantic gain, since it desugars to the SAM call anyway, and it works against the "looks and feels like Java" goal. The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
+
+The SAM of an anonymous functional interface is named `apply`, giving the nameless type one fixed, predictable method name, matching `java.util.function.Function`. A fixed name is not optional: LAT-05 desugars the anonymous spelling to a nominal interface, and the `.java` mirror must call a method that exists — without a canonical name there is nothing for either surface to invoke.
 
 ---
 
@@ -429,13 +449,15 @@ Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory
 
 Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces the user to think about because closures need precise typing for trait dispatch. Laterita keeps the three categories — read, mutate, consume — but lets the compiler infer them from the body. Users write a lambda; the compiler does the work.
 
-### Why slot mode controls invocation (CLO-03)
+### Why call mode and binding mode are separate (CLO-03)
 
-This is not a new rule — it falls directly out of BIND-06 and BIND-07. A function value is just an object with a SAM. The slot holding it is an ordinary binding with one of the standard modifier forms. The receiver-mode transitivity rules already enforce: bare bindings call only bare-receiver methods, `@mut` bindings can call mut, `@take` bindings can call take-receiver methods. We document the consequence in CLO-03 because function values are where readers will look first, but no new mechanism is introduced.
+A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held? The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (BIND-05) and `@take this` (BIND-07) with no new vocabulary. The second is the *binding mode* — ordinary ownership and `@mut`, identical to every other binding.
+
+Fusing the two into a single three-valued slot mode on the binding was rejected: it made one everyday shape inexpressible — an object that *owns* a callback and invokes it many times. Ownership and the bound on a repeatedly-invocable closure were forced onto the same `@take` / `@mut` token, so "owned, multi-call" had no spelling. Separating the axes dissolves the problem: the call-mode bound lives on the interface type, the way a Rust `where F: FnMut` bound does, while ownership stays the field's ordinary default. Invocation then falls straight out of BIND-06 / BIND-07 receiver transitivity with the functional-interface value as the receiver, and no new mechanism is introduced.
 
 ### Why lambdas inhabit functional interfaces (CLO-04)
 
-A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-syntax shorthand (FN-01) and slot mode (CLO-03). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
+A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the functional-interface type (FN-01, CLO-03). The capture mode fixes the SAM's receiver mode, the receiver mode is the type's call mode, and the call mode determines which interface types the closure is a value of. Each step is one of the existing pieces; CLO-04 just lines them up.
 
 Making lambdas the *only* construction (collapsing FN and CLO into one section) is rejected. Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the type-system surface stable as more value-constructions appear.
 
@@ -493,7 +515,7 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed bin
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
-A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mut`-receiver method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
+A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mutating` method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
 
 ### Why default receiver mode is borrow (STR-08)
 
@@ -501,7 +523,7 @@ The same Java-feel argument that motivates non-final classes (STR-01) and per-bi
 
 ### Why `String` needs no splitting machinery
 
-A `bound String` is read-only — STR-07 leaves `String` with no `@mut` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
+A `bound String` is read-only — STR-07 leaves `String` with no `@mutating` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
 Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01.
 
