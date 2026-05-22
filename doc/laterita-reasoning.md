@@ -62,11 +62,11 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
 
-`@mutating` is a dedicated annotation rather than another use of `@mut`. The binding-mutability `@mut` already occupies the position immediately before a type — including a functional-interface return type, where it is the slot mode (CLO-03). Spelling receiver mutation with that same token there would make a function returning a functional interface ambiguous: `@mut (int) -> int makeStep()` could mean either "mutates its own receiver" or "returns a mutating closure," and a mutating closure could not be returned at all. A distinct token removes the clash outright, and a modifier-position annotation keeps the common case (every setter, every mutator) free of an explicit-`this` parameter.
+`@mutating` is a dedicated annotation rather than another use of `@mut`. The binding-mutability `@mut` already occupies the position immediately before a type, including a return type (BIND-02). Spelling receiver mutation with that same token in modifier position would make `@mut R foo()` ambiguous between "mutates its own receiver" and "returns a `@mut` binding." A distinct token removes the clash outright, and a modifier-position annotation keeps the common case (every setter, every mutator) free of an explicit-`this` parameter.
 
 ### Why methods declare consumption of `this` with `@take` on an explicit `this` (BIND-07)
 
-Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot for receiver consumption: `@take Self this` declares it, parallel to `@take T name` on an ordinary parameter (MOVE-03) — the `this` slot is a parameter like any other, with `@take` and `@bound` governing it exactly as on parameters. Receiver mutation does not ride that slot: it is the `@mutating` method annotation (BIND-05), kept a separate token so it cannot collide with the `@mut` slot mode a functional-interface return type carries (CLO-03).
+Java's grammar already permits an explicit `this` as the first parameter slot. Laterita reuses that slot for receiver consumption: `@take Self this` declares it, parallel to `@take T name` on an ordinary parameter (MOVE-03) — the `this` slot is a parameter like any other, with `@take` and `@bound` governing it exactly as on parameters. Receiver mutation does not ride that slot: it is the `@mutating` method annotation (BIND-05), kept a separate token from `@mut` so receiver mutation and binding mutability are never spelled alike (BIND-05).
 
 ### Why constructors are a special initialization case (BIND-04)
 
@@ -425,11 +425,11 @@ Admitting the anonymous form in field, local-binding, and generic-argument posit
 
 The restriction governs the written type expression, not value flow. A `var` local may still hold an anonymous-FI value by inference, because no type is spelled there; what is forbidden is writing the anonymous spelling in a position where a future reader must decode it without the call-site context that makes it legible.
 
-### Why FN covers type syntax, identity, and synthesis — but not slot-mode behavior
+### Why FN covers type syntax, identity, and synthesis — but not call or binding behavior
 
 FN-01 through FN-03 address the type-system properties of anonymous functional interfaces: what the type expression means (FN-01), when two such types are the same (FN-02), and how values of that type are materialized (FN-03). These rules exist independent of how the value is used through a binding.
 
-The slot-mode rules (CLO-03) and override/overload variance (CLO-05) live in the closure chapter because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. The organizing principle is that the FN section answers "what is this type?" while the CLO section answers "what can you do with a binding that holds a value of that type?"
+The call-mode and binding-mode rules (CLO-03) and override/overload variance (CLO-05) live in the closure chapter because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. The organizing principle is that the FN section answers "what is this type?" while the CLO section answers "what can you do with a binding that holds a value of that type?"
 
 ### Why anonymous synthesis lives in FN (FN-03)
 
@@ -449,13 +449,15 @@ The SAM of an anonymous functional interface is named `apply`, giving the namele
 
 Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces the user to think about because closures need precise typing for trait dispatch. Laterita keeps the three categories — read, mutate, consume — but lets the compiler infer them from the body. Users write a lambda; the compiler does the work.
 
-### Why slot mode controls invocation (CLO-03)
+### Why call mode and binding mode are separate (CLO-03)
 
-This is not a new rule — it falls directly out of BIND-06 and BIND-07. A function value is just an object with a SAM. The slot holding it is an ordinary binding with one of the standard modifier forms. The receiver-mode transitivity rules already enforce: bare bindings call only bare-receiver methods, `@mut` bindings can call mut, `@take` bindings can call take-receiver methods. We document the consequence in CLO-03 because function values are where readers will look first, but no new mechanism is introduced.
+A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held? The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (BIND-05) and `@take this` (BIND-07) with no new vocabulary. The second is the *binding mode* — ordinary ownership and `@mut`, identical to every other binding.
+
+Fusing the two into a single three-valued slot mode on the binding was rejected: it made one everyday shape inexpressible — an object that *owns* a callback and invokes it many times. Ownership and the bound on a repeatedly-invocable closure were forced onto the same `@take` / `@mut` token, so "owned, multi-call" had no spelling. Separating the axes dissolves the problem: the call-mode bound lives on the interface type, the way a Rust `where F: FnMut` bound does, while ownership stays the field's ordinary default. Invocation then falls straight out of BIND-06 / BIND-07 receiver transitivity with the functional-interface value as the receiver, and no new mechanism is introduced.
 
 ### Why lambdas inhabit functional interfaces (CLO-04)
 
-A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the type-syntax shorthand (FN-01) and slot mode (CLO-03). The capture mode determines the receiver mode of the SAM, the receiver mode determines which slots accept the closure, and the slot's mode is what the user reads from the API signature. Each step is one of the existing pieces; CLO-04 just lines them up.
+A lambda literal is one way to construct a value of a functional-interface type. CLO-04 is the bridge from the closure-side rules (capture modes from CLO-01, capture-mode inference from CLO-02) to the functional-interface type (FN-01, CLO-03). The capture mode fixes the SAM's receiver mode, the receiver mode is the type's call mode, and the call mode determines which interface types the closure is a value of. Each step is one of the existing pieces; CLO-04 just lines them up.
 
 Making lambdas the *only* construction (collapsing FN and CLO into one section) is rejected. Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the type-system surface stable as more value-constructions appear.
 

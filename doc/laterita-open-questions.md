@@ -130,3 +130,19 @@ The current spelling is not arbitrary: BIND-07's rationale is that `@take Self t
 **Why it matters.** The two receiver modes reading in different shapes is a small but permanent inconsistency on every API surface with consuming methods. A parallel pair of modifier-position annotations would make receiver mode uniform and self-documenting; keeping `@take Self this` keeps `@take` itself uniform. The choice is between two kinds of consistency.
 
 **Related codes:** BIND-05, BIND-07, MOVE-03.
+
+## OQ-29 — Spelling call mode in the anonymous functional-interface form
+
+**Surfaced when:** separating a functional-interface value's call mode (the SAM's receiver mode — shared-call / mut-call / once-call) from the binding mode that holds it (CLO-03). A nominal functional interface carries its call mode on the SAM method, via `@mutating` (BIND-05) or `@take this` (BIND-07). The anonymous form `(P1, …, Pn) -> R` (FN-01) has no place to write it.
+
+**The issue.** CLO-03 fixes the anonymous form `(P) -> R` as **shared-call**. Callbacks that must be mut-call or once-call therefore require a nominal interface. But anonymous functional interfaces are used pervasively for exactly those cases — ARR-01's `forEachChunk` body is a mutate callback, STD-09's `Mutex.with` action mutates the protected value, one-shot teardown hooks are once-call. Either the anonymous form gains a call-mode spelling, or those APIs move to nominal interfaces.
+
+**The question.**
+- Does `(P1, …, Pn) -> R` gain a call-mode spelling — a marker on the arrow, an `@mutating` / `@take` inside the form, or similar — and does it desugar (LAT-00) to a nominal interface whose SAM carries the receiver mode?
+- Is call mode part of anonymous-FI identity (FN-02)? Two `(P) -> R` forms agreeing on arity, parameter modes, and return but differing in call mode would then be distinct types.
+- If the anonymous form stays shared-call only, do ARR-01, STD-09, and similar APIs adopt nominal functional interfaces — and does that reintroduce the interface-name pressure FN-01 exists to remove?
+- How does the spelling interact with capture-mode inference (CLO-02): a target-typed lambda takes its call mode from the target, an un-target-typed lambda from its body — does the anonymous *type expression* ever need the spelling, or only nominal declarations and explicitly-typed positions?
+
+**Why it matters.** Until this is settled, CLO-03's call mode is fully expressible only on nominal interfaces, and the anonymous-form examples in ARR-01 and STD-09 — and CLO-05's slot-mode wording — are not yet aligned with the call-mode / binding-mode model.
+
+**Related codes:** CLO-03, CLO-04, CLO-05, FN-01, FN-02, ARR-01, STD-09, LAT-05.

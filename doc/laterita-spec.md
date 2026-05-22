@@ -46,7 +46,7 @@ The annotation `@mut` denotes mutability in every binding position it appears: l
 
 Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits reassignment and mutation-through; a `@mut final` field permits mutation-through but not reassignment (BIND-01).
 
-A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a non-FI field is rejected as redundant; on an FI-typed field `@take` is a slot-mode annotation (CLO-03), not an ownership marker.
+A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a field is rejected as redundant: every field — functional-interface or not — owns its value by default, and a functional interface's call mode is a property of its type, not of the field (CLO-03).
 
 ```laterita
 class User {
@@ -65,7 +65,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot.
 
-`@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token from the binding-mutability marker means it never competes with a functional-interface slot mode (CLO-03), which is written as `@mut` immediately before a return type. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries `@mutating` together with `@take` on an explicit `this` (BIND-07).
+`@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token avoids a collision: `@mut` already denotes binding mutability wherever it appears, including immediately before a return type (BIND-02), so reusing it in modifier position for receiver mutation would make `@mut R foo()` ambiguous between the two. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries `@mutating` together with `@take` on an explicit `this` (BIND-07).
 
 ```laterita
 class Counter {
@@ -738,166 +738,91 @@ Closures are classified by how they use captured bindings:
 
 The compiler infers a closure's capture mode from the body. The user does not declare it.
 
-### CLO-03 — Slot mode controls invocation
+### CLO-03 — Call mode and binding mode
 
-A binding of functional-interface type follows the standard parameter-modifier rules. The binding's mode controls which receiver-mode method on the held value may be invoked through it (BIND-06, BIND-07):
+A functional-interface value has two independent properties.
 
-| Slot mode | SAM receiver modes the slot can invoke   | Why (BIND-06 / BIND-07) |
+**Call mode** is a property of the *type*. The single abstract method of a functional interface carries a receiver mode, declared exactly as on any method (BIND-05, BIND-07). That receiver mode is the interface's call mode:
+
+| SAM receiver mode | Call mode | Invocation |
 |---|---|---|
-| bare      | bare-receiver only                       | a bare binding cannot call `@mutating` or receiver-consuming methods |
-| `@mut`    | bare- or mut-receiver                    | a `@mut` binding can call bare and `@mutating` methods, but cannot consume the receiver |
-| `@take`   | any (bare-, mut-, or take-receiver)      | a `@take` binding owns the value and may consume it |
+| bare | **shared-call** | through a shared borrow; repeatedly; concurrently (subject to STD-07) |
+| `@mutating` | **mut-call** | through a `@mut` binding; repeatedly but sequentially |
+| `@take this` | **once-call** | once; the call consumes the value |
 
 ```laterita
-void demo((int, int) -> int adder,         // bare slot — bare-receiver SAMs only
-          @mut (int, int) -> int counter,  // mut slot — bare- or mut-receiver SAMs
-          @take () -> void onClose) {      // take slot — any SAM, including take-receiver
-    adder.apply(1, 2);                     // OK: bare binding invokes the bare-receiver SAM
-    adder.apply(3, 4);                     // OK: a bare slot may be invoked any number of times
-    var worker = Thread.ofVirtual().start(() -> adder.apply(5, 6));  // OK: a bare slot holds a
-    worker.join();                         //     read closure (CLO-01), safe to invoke off-thread
+interface MissResolver<T> { T resolve(String key); }            // shared-call
+interface HitListener     { @mutating void onHit(String key); } // mut-call
+interface Finalizer       { void run(@take Finalizer this); }   // once-call
+```
 
-    counter.apply(1, 2);                   // OK: @mut binding invokes a bare- or @mut-receiver SAM
-    counter.apply(3, 4);                   // OK: a @mut slot may be invoked repeatedly, but sequentially
-    Thread.ofVirtual().start(() -> counter.apply(7, 8));   // ERROR: a @mut slot may hold a mutate
-                                           //        closure, which CLO-01 forbids invoking off-thread
+**Binding mode** is a property of the *binding* that holds the value. A functional-interface binding follows the ordinary binding rules with no special case: a field owns its value by default (BIND-03); a parameter receives ownership with `@take` or a borrow otherwise (MOVE-03); `@mut` grants mutability (BIND-01); `@bound` marks a borrowed field or return (BIND-03, LIFE-02); a local follows its RHS (MOVE-02).
 
-    onClose.apply();                       // OK: invokes the held SAM; a take-receiver SAM consumes it
-    onClose.apply();                       // ERROR: the @take slot was consumed by the first invocation
+Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (BIND-06, BIND-07): invoking a mut-call SAM requires the binding to be `@mut`; invoking a once-call SAM requires the binding to own the value, and the call consumes it (a partial move per MOVE-07 when the binding is a field). Storing, moving, or borrowing a functional-interface value is governed by the binding mode alone, independently of the call mode — a value may be held in a binding from which its SAM cannot be invoked.
+
+```laterita
+class C {
+    MissResolver<Foo> resolve;   // owned field, shared-call — invocable through a bare receiver
+    @mut HitListener  onHit;     // owned field, mut-call — invocable only in a @mutating method
 }
 ```
 
-A caller supplies each slot with a lambda whose capture mode (CLO-04) fits it:
-
-```laterita
-@mut int hits = 0;
-var log = openLog();
-demo(
-    (a, b) -> a + b,                               // read closure    — fits the bare slot
-    (a, b) -> { hits = hits + 1; return a + b; },  // mutate closure  — fits the @mut slot
-    () -> { give(log); }                           // consume closure — fits the @take slot
-);
-```
-
-The slot mode bounds invocation; whether a *particular* construction (a lambda per CLO-04, or a method reference) yields a SAM whose receiver mode fits a given slot is governed by the fit relation in CLO-04.
-
-A binding of functional-interface type combines two layers of modifiers. The parameter `fn` in
-
-```laterita
-<T, R> void process(@mut (@take T) -> R fn) { /* … */ }
-```
-
-carries `@mut` as the **slot mode** on the binding, and `@take` as the **SAM-parameter mode** inside the type expression. The type expression is the same shape it would have if a nominal interface were declared and then used as the slot's type:
-
-```laterita
-interface F<T, R> { R apply(@take T); }
-
-<T, R> void process(@mut F<T, R> fn) { /* … */ }
-```
-
-The two layers carry different modifiers:
+A functional-interface type used as a parameter or return combines modifiers from three layers, each governed independently:
 
 | Layer | Modifiers | Governed by |
 |---|---|---|
-| Inside the type — SAM parameters and return | `@take`, `@mut`, `@bound` per the usual rules | MOVE-03, LIFE-02 |
-| Outside the type — the binding holding the FI value | `@mut` or `@take` (slot mode), plus an orthogonal optional `@bound` (return-binding annotation) | CLO-03, LIFE-02 |
-
-Inside the type, modifiers describe the SAM's parameters and return:
+| Inside the type — the SAM's parameters and return | `@take`, `@mut`, `@bound` | MOVE-03, LIFE-02 |
+| The SAM's receiver — the type's call mode | bare / `@mutating` / `@take this` | this rule |
+| The binding holding the value | `@mut`, `@take`, `@bound`, ownership | BIND-01–08, MOVE-03, LIFE-02 |
 
 ```laterita
-<T, R>    void run((@take T) -> R consumer);                           // SAM consumes its T argument
-<A, B, R> R each(A source, B key, (@bound A, B) -> R fn);              // SAM parameter A is borrowed
+interface F<T, R> { @mutating R apply(@take T); }   // call mode mut-call; SAM parameter @take T
+
+void process(@mut F<Job, Done> fn) { /* … */ }      // @mut: binding mode of the parameter
 ```
 
-Outside the type, the slot mode is one of bare, `@mut`, or `@take`:
+A function may return a functional-interface value. `@mut` written before a return type is the binding mutability of the returned binding (BIND-02); on an owned return it is redundant, meaningful only together with `@bound`. A `@bound` before a returned functional-interface type is the ordinary return-binding annotation (LIFE-02): it declares that the returned value borrows a `@bound` source, and arises when a function returns a closure that captures one of its parameters:
 
 ```laterita
-<T> void inspect(@mut (T) -> void fn);                                 // mut slot
-        void onClose(@take () -> void hook);                           // take slot: caller transfers ownership of the FI value
-        @mut (int) -> int makeCounter();                               // mut slot on a returned FI
-```
-
-A functional-interface return type carries a slot mode the same way a parameter does; a `@mut` before a non-functional-interface return type has no slot to mode and is rejected as redundant.
-
-The outer `@bound` is **not** a slot mode — it is an orthogonal annotation declaring that the enclosing function's return is bound to this parameter (LIFE-02). It applies on top of a non-`@take` slot, and arises in practice when the function returns a value derived from a borrow of the FI parameter, most commonly a closure that captures it:
-
-```laterita
-// Partial application: the returned closure borrows `fn` (and `first`),
-// so its lifetime is bounded by the intersection of both (LIFE-03).
+// The returned closure borrows `fn` and `first`,
+// so its lifetime is the intersection of both (LIFE-03).
 <A, B, R> @bound (B) -> R partial(@bound (A, B) -> R fn, @bound A first) {
     return (b) -> fn.apply(first, b);
 }
 ```
 
-A `@take` slot consumes the FI value on the call, so the return cannot reference the slot's lifetime; outer `@bound` does not combine with `@take`.
+A once-call functional-interface value cannot be a `@bound` source: the call that would produce the return consumes it.
+
+The anonymous form `(P1, …, Pn) -> R` (FN-01) denotes a shared-call functional interface. A spelling for mut-call and once-call anonymous forms is unresolved (OQ-29); until it is resolved, a callback that must be mut-call or once-call uses a nominal functional interface whose SAM carries the receiver mode.
 
 ### CLO-04 — Lambdas are values of functional interfaces
 
 A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional interface — anonymous (FN-01) or nominal — selected by:
 
-- The target slot's expected type (target typing), when the lambda appears in a position with a known functional-interface expectation; or
-- Inference from the body together with any explicit parameter annotations otherwise.
+- the expected type at the position where the lambda appears (target typing); or
+- inference from the body together with any explicit parameter annotations otherwise.
 
-The lambda's capture mode (CLO-01) determines the receiver mode of the synthesized SAM (FN-03), and the slot's mode (CLO-03) must admit that receiver mode for the assignment to type-check:
+The lambda's capture mode (CLO-01) fixes the receiver mode of its synthesized SAM (FN-03), and therefore its call mode (CLO-03): read → shared-call, mutate → mut-call, consume → once-call. A lambda is a value of a functional-interface type of call mode `M` iff the lambda's own call mode is no greater than `M` under the order `shared-call < mut-call < once-call`.
 
-| Closure capture mode | SAM receiver  | Bare slot | `@mut` slot | `@take` slot |
+A less-demanding lambda satisfies a more-demanding type — a read lambda is a value of a shared-call, mut-call, or once-call interface; a mutate lambda is a value of a mut-call or once-call interface — never the reverse. This is the `Fn ⊆ FnMut ⊆ FnOnce` containment, expressed through the SAM's receiver mode.
+
+| Lambda capture mode | Lambda call mode | shared-call type | mut-call type | once-call type |
 |---|---|:---:|:---:|:---:|
-| Read    | bare-receiver | accept    | accept      | accept      |
-| Mutate  | mut-receiver  | reject    | accept      | accept      |
-| Consume | take-receiver | reject    | reject      | accept      |
+| Read    | shared-call | accept | accept | accept |
+| Mutate  | mut-call    | reject | accept | accept |
+| Consume | once-call   | reject | reject | accept |
 
-Note the asymmetry against ordinary parameters: for `@mut Buf b`, the more capable parameter mode demands more from the caller; for an FI slot, the more capable slot mode accepts the *broader* range of closures, because the slot mode is an upper bound on what the body may invoke.
-
-```laterita
-// Read-or-mutate lambda: consumes input, @mut-borrows buffer, returns owned R.
-<A, B, R> R fold(@take A input, @mut B buffer, @mut (@take A, @mut B) -> R lambda) {
-    return lambda.apply(give(input), buffer);
-}
-
-// Read lambda whose return is bound to the first input's lifetime.
-<A, B, R> R lookup(@bound A source, B key, (@bound A, B) -> R lambda) {
-    return lambda.apply(source, key);
-}
-
-// One-shot consume callback: `@take` slot admits a take-receiver SAM.
-void onClose(@take () -> void action) {
-    action.apply();
-}
-```
-
-Caller-side examples against the three signatures above:
+Assignability concerns the value only. Whether the binding that receives the value can invoke its SAM is the separate question settled by CLO-03 (binding mode versus call mode).
 
 ```laterita
-// Accepted — read closure fits the @mut slot of fold.
-@mut int factor = 2;
-var r1 = fold(give(input), buf, (a, b) -> b.append(a.scale(factor)));
+interface Doubler { @mutating int apply(int x); }   // mut-call
 
-// Accepted — mutate closure fits the @mut slot of fold.
-@mut int count = 0;
-var r2 = fold(give(input), buf, (a, b) -> {
-    count = count + 1;
-    return b.append(a);
-});
+@mut int calls = 0;
+Doubler counting = (x) -> { calls = calls + 1; return x * 2; };  // mutate lambda → mut-call type: OK
+Doubler pure     = (x) -> x * 2;                                 // read lambda → shared-call ≤ mut-call: OK
 
-// Accepted — consume closure fits the @take slot of onClose.
-var log = openLog();
-onClose(() -> { give(log); });
-
-// Rejected — consume closure does not fit a @mut slot.
-fold(give(other), buf, (a, b) -> {
-    give(log);                                   // moves a captured owned value
-    return b.append(a);
-});
-// ERROR: lambda's capture mode is consume (take-receiver SAM);
-// fold's slot is `@mut`, which only accommodates read or mutate closures.
-
-// Rejected — mutate closure does not fit a bare slot.
-lookup(source, key, (s, k) -> {
-    count = count + 1;                           // mutate capture
-    return s.find(k);
-});
-// ERROR: lambda's capture mode is mutate (@mut-receiver SAM);
-// lookup's slot is bare, which only admits read closures.
+// Doubler bad   = (x) -> { give(resource); return x; };          // ERROR: a consume lambda (once-call)
+//                                                               //        is not a value of a mut-call type
 ```
 
 ### CLO-05 — Overloading and override variance for FI parameters

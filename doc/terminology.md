@@ -27,6 +27,9 @@ An annotation marking that a returned value is a borrow, not an owned value. Pla
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views. Single-thread: `T[].splitAt` → `@bound Pair<@bound @mut T[], @bound @mut T[]>` (borrowed halves); `forEachChunk` → borrowed slices via callback. Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves); `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`. See `ARR-01`, `ARR-02`, `ARR-04`.
 
+### call mode
+A property of a functional-interface *type*: the receiver mode of its single abstract method. **shared-call** (bare SAM — invocable through a shared borrow), **mut-call** (`@mutating` SAM — invocable through a `@mut` binding), or **once-call** (`@take this` SAM — invocable once, consuming the value). The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM. Distinct from the *binding mode* of the binding that holds the value. See `CLO-03`.
+
 ### Cell<T>
 An interior-mutability primitive permitting mutation of contents through a non-`@mut` binding. The only way to implement mutable state inside a type that is otherwise immutable. Requires `@unsafe` context per `UNS-02`. Similar to Rust's `UnsafeCell<T>`.
 
@@ -97,7 +100,7 @@ The compile-time process of specializing generic code. Each instantiation of a g
 The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), and parameters (`@mut T param`). Conveys "this can change." A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `BIND-02`, `BIND-05`.
 
 ### @mutating (annotation)
-Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so it cannot be confused with a functional-interface slot mode. By `BIND-06` a `@mutating` method is callable only on a `@mut` receiver. See `BIND-05`.
+Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like binding mutability. By `BIND-06` a `@mutating` method is callable only on a `@mut` receiver. See `BIND-05`.
 
 ### mutable borrow / mut borrow
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `MOVE-03`, `MOVE-04`.
