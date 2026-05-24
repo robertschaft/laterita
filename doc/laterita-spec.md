@@ -65,7 +65,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot.
 
-`@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token avoids a collision: `@mut` already denotes binding mutability wherever it appears, including immediately before a return type (BIND-02), so reusing it in modifier position for receiver mutation would make `@mut R foo()` ambiguous between the two. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries `@mutating` together with `@take` on an explicit `this` (BIND-07).
+`@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token avoids a collision: `@mut` already denotes binding mutability wherever it appears, including immediately before a return type (BIND-02), so reusing it in modifier position for receiver mutation would make `@mut R foo()` ambiguous between the two. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07).
 
 ```laterita
 @mut class Counter {
@@ -87,17 +87,17 @@ counter.inc();              // ERROR: counter is not @mut
 c2.inc();                   // OK
 ```
 
-### BIND-07 — Methods declare consumption of `this` with `@take` on an explicit `this`
+### BIND-07 — Methods declare consumption of `this` with `@consuming`
 
-A method with `@take` on its explicit `this` parameter consumes its receiver. The body owns `this`, may move out of `this`'s fields (MOVE-07), and may hand `this` itself to a `@take` parameter or to another receiver-consuming method. After the call returns, the binding that held the receiver is consumed (MOVE-02); subsequent uses are rejected.
+A method annotated `@consuming` consumes its receiver. The body owns `this`, may move out of `this`'s fields (MOVE-07), and may hand `this` itself to a `@take` parameter or to another `@consuming` method. After the call returns, the binding that held the receiver is consumed (MOVE-02); subsequent uses are rejected.
 
-Java's grammar permits an explicit `this` as the first parameter slot with type-use annotations attached. Laterita reuses that slot to declare receiver consumption: `@take Self this` consumes the receiver, parallel to `@take T name` on an ordinary parameter (MOVE-03). Receiver mutation is orthogonal — declared by `@mutating` on the method (BIND-05) — and the two compose: a method that both consumes and mutates its receiver carries `@mutating` and `@take Self this` together. Calling a receiver-consuming method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer.
+`@consuming` is a declaration annotation on the method, in modifier position alongside `public` / `final` / `@mutating`. It is orthogonal to `@mutating` (BIND-05) and the two compose: a method that both mutates and consumes its receiver carries both. Calling a `@consuming` method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer.
 
 ```laterita
 class Connection {
     Heap<DbConn> conn;
 
-    public void close(@take Connection this) {        // consumes this
+    public @consuming void close() {                                // consumes this
         this.conn.flush();
         // `this` is dropped at function end; underlying connection released
     }
@@ -106,19 +106,23 @@ class Connection {
 @mut class StringBuilder {
     @mut String contents;
 
-    public @mutating StringBuilder append(@take StringBuilder this, String s) {  // consumes, mutates, returns new
-        this.contents = this.contents + s;
+    public @mutating @mut @bound StringBuilder append(String s) {   // mutates in place; returns
+        this.contents = this.contents + s;                          // a @mut borrow of this for chaining
         return this;
     }
 
-    public String build(@take StringBuilder this) {                              // consumes, yields String
+    public @consuming String build() {                              // consumes, yields owned String
         return this.contents;
     }
 }
 
 var conn = openConnection();
-conn.close();        // OK: conn was owned; consumed by close()
-conn.use();          // ERROR: conn was consumed
+conn.close();                            // OK: conn was owned; consumed by close()
+conn.use();                              // ERROR: conn was consumed
+
+@mut var sb = new StringBuilder();
+sb.append("hello").append(", world");    // chain via @mut @bound returns; sb still usable
+String greeting = sb.build();            // consumes sb; yields owned String
 ```
 
 ### BIND-08 — `@bound` in generic type arguments
@@ -848,12 +852,12 @@ A functional-interface value has two independent properties.
 |---|---|---|
 | bare | **shared-call** | through a shared borrow; repeatedly; concurrently (subject to STD-07) |
 | `@mutating` | **mut-call** | through a `@mut` binding; repeatedly but sequentially |
-| `@take this` | **once-call** | once; the call consumes the value |
+| `@consuming` | **once-call** | once; the call consumes the value |
 
 ```laterita
 interface MissResolver<T> { T resolve(String key); }            // shared-call
 interface HitListener     { @mutating void onHit(String key); } // mut-call
-interface Finalizer       { void run(@take Finalizer this); }   // once-call
+interface Finalizer       { @consuming void run(); }              // once-call
 ```
 
 **Binding mode** is a property of the *binding* that holds the value. A functional-interface binding follows the ordinary binding rules with no special case: a field owns its value by default (BIND-03); a parameter receives ownership with `@take` or a borrow otherwise (MOVE-03); `@mut` grants mutability (BIND-01); `@bound` marks a borrowed field or return (BIND-03, LIFE-02); a local follows its RHS (MOVE-02).
@@ -872,7 +876,7 @@ A functional-interface type used as a parameter or return combines modifiers fro
 | Layer | Modifiers | Governed by |
 |---|---|---|
 | Inside the type — the SAM's parameters and return | `@take`, `@mut`, `@bound` | MOVE-03, LIFE-02 |
-| The SAM's receiver — the type's call mode | bare / `@mutating` / `@take this` | this rule |
+| The SAM's receiver — the type's call mode | bare / `@mutating` / `@consuming` | this rule |
 | The binding holding the value | `@mut`, `@take`, `@bound`, ownership | BIND-01–08, MOVE-03, LIFE-02 |
 
 ```laterita
@@ -1025,7 +1029,7 @@ s = readLine();                   // OK: reassigning a @mut binding
 
 ### STR-08 — Default receiver mode of `String` methods is borrow
 
-Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`@take String this`) are rare and explicitly marked; per STR-07, no `@mutating` methods exist.
+Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`@consuming`) are rare and explicitly marked; per STR-07, no `@mutating` methods exist.
 
 ```laterita
 class String {
@@ -1053,7 +1057,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
     @mutating void forEachChunkExact(int chunkSize,
             @mut (@mut T[]) -> void body);
 
-    Pair<T[], T[]> splitOff(@take T[] this, int mid);
+    @consuming Pair<T[], T[]> splitOff(int mid);
 }
 ```
 
@@ -1413,7 +1417,7 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 | Method mutates its receiver | `@mutating` | BIND-05 |
 | Class with a mutable surface | `@mut` on the class declaration | MUT-03 |
 | Owned parameter or LHS prefix | `@take` | MOVE-03 |
-| Method consumes its receiver | `@take` on the explicit `this` parameter | BIND-07 |
+| Method consumes its receiver | `@consuming` | BIND-07 |
 | Borrow source on parameter or return | `@bound` | LIFE-02 |
 | Compiler-only-callable method | `@internal` | DROP-06 |
 | Private unsafe method | `@unsafe` | UNS-01 |
