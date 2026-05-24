@@ -310,6 +310,8 @@ store(makeName(), list);    // OK: temporary moved in
 inspect(give(name));        // ERROR: inspect only borrows; do not transfer
 ```
 
+The laterita annotations on a parameter (`@take`, `@mut`, `@bound`) are not part of the Java overload signature, and neither are the method-level receiver-mode annotations (`@mutating`, BIND-05; `@consuming`, BIND-07). Two same-name methods that differ only in these annotations are a duplicate declaration and rejected by `javac`. An API that needs both shapes — borrow and consume on the same parameter slot, or shared-receiver and consuming-receiver on the same operation — uses distinct method names; the array surface follows this pattern with `splitAt` and `splitOff` (ARR-01).
+
 ### MOVE-04 — Borrow exclusivity
 
 For any binding's lifetime, either:
@@ -354,39 +356,11 @@ if (changedMyMind()) { give(worker); }  // run Thread.onDrop() now; binding cons
 
 Applies to any owning binding. For `Thread`, it is the standard mechanism for early termination per THR-06.
 
-### MOVE-09 — `@take` participates in overload resolution
-
-Two methods in the same scope may have signatures that differ only in the `@take` annotation on one or more parameters; they are distinct overloads. The `@mut` annotation is **not** part of the overload signature: two methods that differ only in `@mut` on a parameter are the same method, and declaring both in the same scope is a compile error.
-
-Java's standard overload resolution applies first: candidates are filtered by applicability, type specificity, boxing, and varargs as today. The ownership axis enters only as a tie-breaker, and only when Java's procedure leaves more than one applicable overload.
-
-The tie-breaker rule: among overloads remaining after Java's procedure, prefer the overload that uses borrow on every parameter position where another candidate uses `@take` (agreeing on all other positions). Equivalently, the overload that demands the least from the caller on the ownership axis wins. If no uniquely most-permissive overload exists — for example, two overloads each borrow one parameter and consume a different one — the call is ambiguous and the caller must disambiguate with `give(...)` on the parameter(s) intended for consumption.
-
-The caller opts in to a `@take` overload by wrapping the argument in `give(...)` at the call site. A `give(...)` argument is applicable only to a `@take` parameter (per MOVE-03), so it removes the borrow form from the candidate set on that argument position.
-
-```laterita
-void put(@take K key, @take V value);    // (a) consumes both
-void put(K key, @take V value);          // (b) borrows the key, consumes the value
-
-var k = makeKey();
-var v = makeValue();
-put(k, v);          // (a) and (b) tie on Java specificity → tie-breaker → (b) wins
-put(give(k), v);    // give(...) removes (b) → (a) wins
-```
-
-The implicit transfer described in MOVE-03 ("a bare argument that is a binding implicitly transfers ownership when the parameter is `@take`") applies whenever the resolved overload is a `@take` form. Whether resolution lands there depends on the overloads in scope and on Java's specificity rules: when type specificity is decisive — e.g., `f(Animal)` borrow vs. `f(@take Dog)` consume on a `Dog` argument — the ownership tie-breaker does not run, the more-specific overload wins as in standard Java, and a bare `Dog` argument is consumed by `f(@take Dog)`.
-
-Two consequences for interface evolution:
-- Adding a same-type borrow overload alongside an existing `@take` shifts bare call sites from consume to borrow on the tie-breaker.
-- Adding a more-specific `@take` overload alongside an existing less-specific borrow shifts bare call sites at the more-specific type from borrow to consume on Java specificity.
-
-For arguments where the drop point is observable (large buffers, files, threads), authors should wrap the argument in `give(...)` explicitly at sites that need to be pinned to the consuming form, even when only one overload exists today.
-
 ### MOVE-10 — Override variance for `@take` and `@mut`
 
 For overrides of inherited methods (subclass override, interface implementation):
 
-- **`@take` matches invariantly.** An override's parameter must carry `@take` if and only if the inherited declaration does. This follows from MOVE-09: a parameter list differing on `@take` is a different overload, not an override of the same method.
+- **`@take` matches invariantly.** An override's parameter must carry `@take` if and only if the inherited declaration does. An override that dropped `@take` would refuse a binding the caller transferred through the inherited contract; an override that added `@take` would silently consume a binding the inherited contract said it would only borrow. Both directions break callers using the inherited type.
 
 - **`@mut` matches contravariantly.** An override may drop `@mut` from a parameter that the inherited declaration marks `@mut`, but may not add `@mut` to a parameter the inherited declaration leaves bare. Dropping `@mut` is sound — the override demands less of the caller than the inherited contract promises. Adding `@mut` is unsound — callers holding only an immutable borrow could no longer satisfy the override through the inherited type.
 
@@ -929,24 +903,11 @@ Doubler pure     = (x) -> x * 2;                                 // read lambda 
 //                                                               //        is not a value of a mut-call type
 ```
 
-### CLO-05 — Overloading and override variance for FI parameters
+### CLO-05 — Override variance for FI parameters
 
-A functional-interface parameter is an ordinary parameter; MOVE-09 (overload resolution) and MOVE-10 (override variance) apply, with one inversion noted below.
+A functional-interface parameter is an ordinary parameter and MOVE-10 (override variance) applies, with one inversion noted below.
 
-**Overloading.** The slot-side `@take` is part of the overload signature; slot-side `@mut` is not.
-
-```laterita
-class Stream<T> {
-    <R> Stream<R> map(@mut (@take T) -> R fn);    // (a) @mut slot
-    <R> Stream<R> map(@take (@take T) -> R fn);   // (b) @take slot — distinct overload (MOVE-09)
-    <R> Stream<R> map((@take T) -> R fn);         // ERROR: differs from (a) only in @mut — same method
-}
-
-stream.map(x -> x.length());      // resolves to (a): bare argument; MOVE-09 tie-breaker prefers borrow
-stream.map(give(oneShot));        // resolves to (b): give(...) removes the borrow form from candidates
-```
-
-**Override variance — inverted for slot modes.** MOVE-10 says `@mut` on an ordinary parameter is contravariant: an override may *drop* `@mut` because the override demands less of the caller. For an FI slot the relationship is reversed — an override may **add** `@mut` to a bare slot, but not remove it. The reason: a `@mut` slot accepts strictly more closures (read and mutate) than a bare slot (read only), and an override must continue to accept every closure the inherited declaration accepted. The `@take` axis remains invariant per MOVE-10 / MOVE-09: a slot-mode change between non-take and `@take` produces a distinct overload, not an override.
+**Override variance — inverted for slot modes.** MOVE-10 says `@mut` on an ordinary parameter is contravariant: an override may *drop* `@mut` because the override demands less of the caller. For an FI slot the relationship is reversed — an override may **add** `@mut` to a bare slot, but not remove it. The reason: a `@mut` slot accepts strictly more closures (read and mutate) than a bare slot (read only), and an override must continue to accept every closure the inherited declaration accepted. The `@take` axis remains invariant per MOVE-10: an override that flipped `@take` on the slot would either refuse closures the inherited contract accepted or accept closures the inherited contract rejected.
 
 ```laterita
 interface Source<T> {
@@ -1063,7 +1024,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 `splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
 
-`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. A different method name from `splitAt` is required because the receiver mode differs and MOVE-09 leaves call sites without a disambiguator.
+`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. A different method name from `splitAt` is used because the receiver mode differs; two same-name methods that differed only in receiver-mode annotations would be a duplicate declaration (the annotations are not part of the overload signature per MOVE-03).
 
 **Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 

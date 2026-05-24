@@ -80,7 +80,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 **Why it matters.** Value-typed arithmetic is one of the most visible everyday differences between Rust and Java code. The decision affects how libraries like `java.math`, vector math, and unit-typed quantities look in Laterita.
 
-**Related codes:** BIND-07, MOVE-03, MOVE-09.
+**Related codes:** BIND-07, MOVE-03.
 
 ## OQ-26 — Newtype wrappers as zero-cost value classes
 
