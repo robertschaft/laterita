@@ -28,7 +28,7 @@ An annotation marking that a returned value is a borrow, not an owned value. Pla
 Dividing a contiguous region into two non-overlapping views. Single-thread: `T[].splitAt` → `@bound Pair<@bound @mut T[], @bound @mut T[]>` (borrowed halves); `forEachChunk` → borrowed slices via callback. Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves); `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`. See `ARR-01`, `ARR-02`, `ARR-04`.
 
 ### call mode
-A property of a functional-interface *type*: the receiver mode of its single abstract method. **shared-call** (bare SAM — invocable through a shared borrow), **mut-call** (`@mutating` SAM — invocable through a `@mut` binding), or **once-call** (`@take this` SAM — invocable once, consuming the value). The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM. Distinct from the *binding mode* of the binding that holds the value. See `CLO-03`.
+A property of a functional-interface *type*: the receiver mode of its single abstract method. **shared-call** (bare SAM — invocable through a shared borrow), **mut-call** (`@mutating` SAM — invocable through a `@mut` binding), or **once-call** (`@consuming` SAM — invocable once, consuming the value). The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM. Distinct from the *binding mode* of the binding that holds the value. See `CLO-03`.
 
 ### Cell<T>
 An interior-mutability primitive permitting mutation of contents through a non-`@mut` binding. The only way to implement mutable state inside a type that is otherwise immutable. Requires `@unsafe` context per `UNS-02`. Similar to Rust's `UnsafeCell<T>`.
@@ -41,6 +41,9 @@ An anonymous function (lambda) that may capture variables from an enclosing scop
 
 ### consume / give (also "moved")
 To transfer ownership of a value from one binding to another, or to invoke a method that consumes its receiver. Once consumed, the original binding is no longer usable. Marked at the call site with `give(x)`, a static method on `laterita.lang.Intrinsics` normally statically imported as `give`. In Rust, this is a "move"; Laterita uses the verb `give` in Java's vocabulary.
+
+### @consuming (annotation)
+Declares that a method consumes its receiver — the body owns `this`, and after the call returns the binding that held the receiver is consumed and subsequent uses are rejected. A modifier-position annotation on the method, parallel to `@mutating` (BIND-05); the two compose. See `BIND-07`.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method. For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow—the override is less strict, so any caller satisfying the base contract satisfies the override. See `MOVE-10`.
@@ -67,7 +70,7 @@ A named member variable of a class. Laterita distinguishes between immutable fie
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`, legal only as a parameter type or a return type (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
-The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is `@take` on an explicit `this` parameter (BIND-07).
+The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is the `@consuming` annotation on the method (BIND-07).
 
 ### Heap<T>
 A raw heap-allocation primitive. Provides direct allocation and deallocation. All operations require `@unsafe` context per `UNS-02`. Rarely used by application code; typically wrapped by smart pointers like `Rc<T>` or `Arc<T>`.
@@ -142,7 +145,7 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
 
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method), or consuming (declared by `@take` on an explicit `this` parameter). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method). See `BIND-05`, `BIND-07`.
+How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, BIND-05), or consuming (declared by `@consuming` on the method, BIND-07). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method).
 
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler. **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.). The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`. See `UNS-01`.
@@ -178,7 +181,7 @@ A field declared `static` — class- or module-level storage with one instance p
 Inferring a lambda's type from the context where it appears. If a lambda is assigned to a variable or parameter with a known functional-interface type, the type is used as a hint to type-check the lambda body. See `CLO-04`.
 
 ### @take (annotation)
-Declares that a parameter receives ownership of its argument (consumed upon call). At the call site, a bare binding passed to a `@take` parameter is implicitly consumed (equivalent to `give(binding)`); or explicitly written as `give(binding)`. Also written on an explicit `this` parameter to declare that the method consumes its receiver (BIND-07). See `MOVE-03`.
+Declares that a parameter receives ownership of its argument (consumed upon call). At the call site, a bare binding passed to a `@take` parameter is implicitly consumed (equivalent to `give(binding)`); or explicitly written as `give(binding)`. See `MOVE-03`. (Receiver consumption is the separate `@consuming` annotation on the method — BIND-07.)
 
 ### thread-affine (also "thread-local")
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
