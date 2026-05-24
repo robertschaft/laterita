@@ -146,3 +146,20 @@ The current spelling is not arbitrary: BIND-07's rationale is that `@take Self t
 **Why it matters.** Until this is settled, CLO-03's call mode is fully expressible only on nominal interfaces, and the anonymous-form examples in ARR-01 and STD-09 — and CLO-05's slot-mode wording — are not yet aligned with the call-mode / binding-mode model.
 
 **Related codes:** CLO-03, CLO-04, CLO-05, FN-01, FN-02, ARR-01, STD-09, LAT-05.
+
+## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
+
+**Surfaced when:** BIND-11 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
+
+**The issue.** Const-only static initialization keeps the AOT story (COMP-01) honest — no classloader, no static-init-order fiasco, no observable initialization race. But it leaves a real case unspecified: statics whose value genuinely requires runtime work — a compiled regex, a config loaded from disk, a precomputed table, a service registry. Java handles these in `static {}` blocks under the classloader's per-class init lock; Rust uses `LazyLock<T>` / `OnceLock<T>` from `std::sync`. Laterita has neither yet, so every such case must hand-roll a `Mutex<T?>` and a first-access check at every read site.
+
+**The question.**
+- Does the stdlib provide a `Lazy<T>` (eager-first-access initialization with a supplier captured at construction), an `OnceLock<T>` (settable once at any later time, observed via `get()` returning `T?`), or both?
+- Is the first-access work serialized by an internal `Mutex<T>`, by double-checked-locking over an atomic slot, or by a one-time CAS? The choice determines whether two threads racing on first access both run the supplier or whether the loser blocks.
+- Does the supplier's exception poison the slot (subsequent `get()` re-throws, mirroring THR-10), retry on the next call (Rust's `LazyLock` behavior), or terminate the program?
+- Is the supplier captured as a `@take () -> T` closure (consumed on success, dropped) or held for retry? Falls out of the previous answer.
+- How does this compose with `@local` (BIND-12)? A `static Lazy<L>` where `L` is `@local` puts the `L` cross-thread on first access — BIND-12 presumably extends through the wrapper.
+
+**Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site. The pattern is universal; the shape of the stdlib carrier is what's open.
+
+**Related codes:** BIND-11, BIND-12, STD-09, THR-10, COMP-01.
