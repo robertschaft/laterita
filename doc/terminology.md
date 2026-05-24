@@ -21,7 +21,7 @@ A binding that holds a reference to a value owned elsewhere, rather than owning 
 An annotation marking that a returned value is a borrow, not an owned value. Placed on the return type (e.g., `@bound String substring(...)`) or on a parameter type (e.g., `@bound String s`). Tells the compiler that the return value's lifetime is limited to the lifetime of the marked source. See `LIFE-02`.
 
 ### binding modifiers
-`@bound`, `@mut`, and `@take`. Legal only at binding positions (parameters, return types, locals, fields, FI parameter/return slots); never inside generic type argument brackets `<...>`. See `BIND-08`.
+`@bound`, `@mut`, and `@take`. Legal at binding positions: parameters, return types, locals, fields, FI parameter/return slots. Inside generic type argument brackets `<...>` their admissibility differs — `@bound` is always allowed, `@mut` only when the enclosing generic type is `@mut`, and `@take` is rejected. See `BIND-08`, `BIND-09`, `BIND-10`.
 
 
 ### buffer splitting
@@ -97,7 +97,7 @@ A class or type annotated `@local` if its instances cannot safely cross thread b
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
 
 ### @mut (annotation)
-The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), and parameters (`@mut T param`). Conveys "this can change." A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `BIND-02`, `BIND-05`.
+The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), parameters (`@mut T param`), and class declarations (`@mut class C`, `MUT-03`). Conveys "this can change." A `@mut` class has a mutable surface; a class without the marker is a value class. A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `BIND-02`, `BIND-05`, `MUT-03`.
 
 ### @mutating (annotation)
 Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like binding mutability. By `BIND-06` a `@mutating` method is callable only on a `@mut` receiver. See `BIND-05`.
@@ -171,6 +171,9 @@ A wrapper type that manages a value's lifetime. Examples: `Rc<T>` (reference-cou
 ### static analysis
 Compile-time reasoning about program behavior without running the code. Laterita's compiler performs static analysis of ownership, borrows, lifetime, mutability, and reachability to catch errors before runtime.
 
+### static field
+A field declared `static` — class- or module-level storage with one instance per program. Immutable per `BIND-11` and initialized from a const expression; `@mut static` is rejected. The declared type must be non-`@local` (`BIND-12`). Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
+
 ### target typing
 Inferring a lambda's type from the context where it appears. If a lambda is assigned to a variable or parameter with a known functional-interface type, the type is used as a hint to type-check the lambda body. See `CLO-04`.
 
@@ -194,6 +197,9 @@ The process of propagating an exception up the call stack, running cleanup (`onD
 
 ### use-after-move
 An error where a binding is used after its value has been moved elsewhere. The compiler rejects such code statically. See `MOVE-02`.
+
+### value class
+A class not declared `@mut`. A value class declares no `@mut` fields and exposes no callable `@mutating` method, so its instances cannot be mutated through any binding. It may inherit `@mut` members from a `@mut` ancestor — they are present but not callable on it (`MUT-06`) — and may still hold `Cell<T>` interior-mutable state. The value class is the default; `@mut` is the opt-in. `String`, `Number`, and every `record` are value classes. See `MUT-03`, `MUT-05`.
 
 ### WeakReference<T>
 A non-owning reference to a value managed by `Rc<T>` or `Arc<T>`. The weak reference is not counted toward the refcount and does not prevent the value from being freed. Calling `get()` returns an `Rc<T>?` or `Arc<T>?` (a strong reference if the value still lives). See `STD-03`.
@@ -220,7 +226,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `BIND` | Local and field bindings, method mutation and consumption |
 | `NULL` | Nullable types, null safety |
 | `MOVE` | Ownership transfer (moving), borrowing, overload resolution |
-| `MUT` | Mutability rules (transitivity, interior mutability) |
+| `MUT` | Mutability rules (transitivity, interior mutability, class-level `@mut`) |
 | `LIFE` | Lifetime inference and borrow boundaries |
 | `DROP` | Scope-exit cleanup, `onDrop()` |
 | `OBJ` | Copying, clone semantics |
@@ -251,6 +257,7 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | Ownership + `give(...)` | Explicit transfer | Java has no ownership concept; all references are borrows |
 | Borrow (`&`) | Reference | Similar to Java; lifetime rules are stricter |
 | `@mut` (mutable borrow) | Non-final reference to mutable object | Like Java, but enforced at compile time |
+| `@mut class` vs. value class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes; Laterita opts *in* to mutable classes — the value class is the default |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |
 | `Mutex<T>` | `synchronized` block or `ReentrantLock` | Similar; closure-scoped API ensures lock release |

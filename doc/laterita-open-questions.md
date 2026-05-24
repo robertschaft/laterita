@@ -146,3 +146,36 @@ The current spelling is not arbitrary: BIND-07's rationale is that `@take Self t
 **Why it matters.** Until this is settled, CLO-03's call mode is fully expressible only on nominal interfaces, and the anonymous-form examples in ARR-01 and STD-09 — and CLO-05's slot-mode wording — are not yet aligned with the call-mode / binding-mode model.
 
 **Related codes:** CLO-03, CLO-04, CLO-05, FN-01, FN-02, ARR-01, STD-09, LAT-05.
+
+## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
+
+**Surfaced when:** BIND-11 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
+
+**The issue.** Const-only static initialization keeps the AOT story (COMP-01) honest — no classloader, no static-init-order fiasco, no observable initialization race. But it leaves a real case unspecified: statics whose value genuinely requires runtime work — a compiled regex, a config loaded from disk, a precomputed table, a service registry. Java handles these in `static {}` blocks under the classloader's per-class init lock; Rust uses `LazyLock<T>` / `OnceLock<T>` from `std::sync`. Laterita has neither yet, so every such case must hand-roll a `Mutex<T?>` and a first-access check at every read site.
+
+**The question.**
+- Does the stdlib provide a `Lazy<T>` (eager-first-access initialization with a supplier captured at construction), an `OnceLock<T>` (settable once at any later time, observed via `get()` returning `T?`), or both?
+- Is the first-access work serialized by an internal `Mutex<T>`, by double-checked-locking over an atomic slot, or by a one-time CAS? The choice determines whether two threads racing on first access both run the supplier or whether the loser blocks.
+- Does the supplier's exception poison the slot (subsequent `get()` re-throws, mirroring THR-10), retry on the next call (Rust's `LazyLock` behavior), or terminate the program?
+- Is the supplier captured as a `@take () -> T` closure (consumed on success, dropped) or held for retry? Falls out of the previous answer.
+- How does this compose with `@local` (BIND-12)? A `static Lazy<L>` where `L` is `@local` puts the `L` cross-thread on first access — BIND-12 presumably extends through the wrapper.
+
+**Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site. The pattern is universal; the shape of the stdlib carrier is what's open.
+
+**Related codes:** BIND-11, BIND-12, STD-09, THR-10, COMP-01.
+
+## OQ-31 — Optional `<>` on constructor calls in `.lat`
+
+**Surfaced when:** noticing that a parameterized `new Pair<>(...)` in `.java` differs from `new Pair(...)` only because the latter is the raw-type form preserved from pre-generics Java. Laterita has no pre-generics legacy to be backward-compatible with.
+
+**The issue.** Java requires the diamond `<>` on a parameterized constructor call because the diamond-less form `new Pair(...)` is the *raw-type* constructor, preserved from before Java 5. The `.java` surface must keep `<>` because `javac` parses these sources (COMP-06). The `.lat` surface has no such constraint: Laterita is AOT-compiled (COMP-01), monomorphized (COMP-02), and has no reflection (COMP-05), so the raw-type escape hatch serves no purpose. Requiring `<>` on every parameterized constructor call in `.lat` then pays Java's backward-compatibility tax for a constraint Laterita does not share.
+
+**The question.**
+- Does `.lat` make the diamond optional on parameterized constructor calls — `new Pair("hello", 42)` desugaring to `new Pair<>("hello", 42)` per LAT-00?
+- If so, are raw types simply absent from `.lat`, with no surface form? (Absence is the natural answer — raw types serve no purpose here.)
+- Does the rule extend to other diamond-bearing sites — explicit-witness method calls (`Collections.<String>emptyList()`), explicit-type generic-method invocations — or stay constructor-only?
+- Is this the first of a small family of "Java legacy ceremony droppable in `.lat`" rules, or a one-off?
+
+**Why it matters.** The diamond appears at every parameterized-constructor call site — a high-frequency syntactic noise that exists only because Java carried raw types forward. Removing it from `.lat` is a mechanical, fully-desugaring sweetener with no semantic cost. The cost of *not* removing it is paying the legacy tax on every `new Foo<>(...)` for the lifetime of the language.
+
+**Related codes:** COMP-06, LAT-00, BIND-08.

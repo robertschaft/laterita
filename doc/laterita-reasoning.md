@@ -76,13 +76,31 @@ This is the same accommodation Rust makes for struct initialization and Java alr
 
 If a `var` binding could call `@mutating` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
+### Why static fields are immutable (BIND-11, BIND-12)
+
+A static slot is reachable from every thread for the program's lifetime; no binding-level borrow check can hand out exclusive access to it. Allowing `@mut static` would either bake in undefined behavior — Rust's `static mut` posture, which the language now actively discourages — or demand a runtime synchronization mechanism the safe surface does not have. Forbidding it outright costs nothing: the cases that genuinely need shared mutable program-wide state already have a clean expression as a `Mutex<T>`, `Arc<T>`, or atomic primitive held in an immutable static, where the synchronization sits inside the wrapper and the static slot itself never changes.
+
+Const-only initialization keeps the AOT story honest. There is no classloader (COMP-01), so no per-class init lock to serialize arbitrary initializers, no observable initialization order to specify across compilation units, and no static-init-order fiasco to inherit from C++. Initializers that genuinely require runtime work go through a once-init wrapper held in the static slot, which serializes its first-access work behind its own internal synchronization. The non-`@local` restriction (BIND-12) plugs the only remaining cross-thread leak: a thread-affine handle in a process-global slot would, by definition, reach every thread.
+
 ---
 
-## Mutability (MUT-01, MUT-02)
+## Mutability (MUT-01 through MUT-07)
 
 ### Why `Cell<T>` is the only escape hatch (MUT-02)
 
 There are real cases where a class is logically immutable but has internal caching (lazy initialization, memoization, mutex-protected state). Rust's answer is `UnsafeCell<T>`, the one type the compiler treats specially as a hole in the rules. Laterita adopts the same model: a single primitive marks the spot, every other interior-mutability mechanism is built on top of it. Concentrating the unsafe assumption in one place is what makes the rest of the language safely checkable.
+
+### Why classes are marked `@mut` (MUT-03 through MUT-07)
+
+Binding-level `@mut` (BIND-02) answers "can *this reference* change the object?" It does not answer "can the object change *at all*?" A class with a `@mut` field gives no signal at its declaration that it carries mutable state — a reader has to scan its members. Marking the class supplies that signal: `@mut class` declares a mutable surface; an unmarked class is a *value class* whose instances carry no callable `@mutating` method.
+
+This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in. Laterita's experience runs the other way: most application types — domain values, DTOs, records, configuration — are immutable, and the mutable ones (builders, collections, counters, streams) are the minority. Making the value class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone.
+
+The inheritance rule (MUT-05) keeps the property legible: a `@mut` class extends only `@mut` classes, so every hierarchy is a run of `@mut` classes from `Object` down to a frontier, then value classes below it — the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-06), so `class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration — something Java expresses only with a runtime-throwing wrapper.
+
+MUT-07 is what keeps MUT-06's check static. If a value-class instance could be widened into a `@mut` binding of a `@mut` superclass, a `@mutating` method called through that binding would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` binding refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the binding mode, with no runtime tag.
+
+`Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. "Value class" therefore means "no `@mut` *surface*," not "immutable in every byte" — the same scoping `@local` uses for thread-affinity (STD-07). The reference-counted handles depend on exactly this: `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
 
 ---
 
@@ -511,7 +529,7 @@ A literal lives in the program's read-only static segment, not on the heap. Trea
 
 This makes the spec's earlier example `String greeting = "hello"` a borrowed binding, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in MOVE-01 and STR-02 like any other borrow.
 
-### Why `String` exposes no mut methods (STR-07)
+### Why `String` is a value class (STR-07)
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
@@ -559,11 +577,17 @@ A dedicated `reduceChunks` was considered and rejected. Every in-place reduce ex
 
 `MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape MOVE-10 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
-### Why no binding modifiers in type arguments (BIND-08)
+### Why type arguments admit `@bound` and `@mut` but not `@take` (BIND-08, BIND-09, BIND-10)
 
-A `List<@mut Foo>` annotation would let a `@bound List<@mut Foo>` view grant `@mut Foo` element access by propagating the type-argument annotation into substituted method signatures. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), but the hazard is aliasing: two callers each holding `@bound List<@mut Foo>` would each call `list.get(0)` and both receive a `@mut Foo` to the same slot.
+A type argument may carry `@bound` and `@mut`, but not `@take`.
 
-Rust avoids the question by tying mutability to references and offering `Cell<T>` (`!Sync`) as the explicit interior-mutability escape hatch. Laterita follows the same discipline (BIND-08): binding modifiers (`@mut`, `@take`, `@bound`) appear only at binding positions — parameters, returns, locals, fields, FI parameter/return slots — never on a generic type argument. Instantiating `MutableConsumer<Foo[]>` substitutes only the type `Foo[]`, not the `@mut` that sits fixed on the SAM's parameter. Cases that genuinely need shared-container-with-mut-elements use `Cell<T>` (STD-05) explicitly, with the `@unsafe` cost visible at the storage site.
+`@take` is a parameter mode — it describes a transfer of ownership *into a slot* at a call site — not a property a value carries. As a type argument it would have no referent: `Pair<@take K, @take V>` cannot say anything, because there is no call and no slot. Ownership of a generic structure's contents is carried by the structure's own binding (owned vs. `@bound`), so `@take` in argument position is rejected (BIND-09).
+
+`@bound` composes cleanly (BIND-08): an instance whose type arguments include a `@bound` source can only be produced as a `@bound` value, with lifetime per LIFE-03/LIFE-06. The `@bound` binding on the instance carries the lifetime; no struct-level lifetime parameters are needed.
+
+`@mut` in a type argument — `List<@mut Foo>` — is the hard case. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), and the hazard is aliasing: an element accessor `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`, and two coexisting shared borrows of a `List<@mut Foo>` would each call `get(0)` and receive a `@mut Foo` to the same slot. Banning `@mut` from type arguments outright would push the case onto `Cell<T>`, but that is heavier than the hazard requires.
+
+The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (MOVE-04): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (BIND-10): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ### Why `T[]` is the canonical contiguous-mut backing
 
