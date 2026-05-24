@@ -132,8 +132,8 @@ On a local binding, only `@mut` is admitted; `@take` and `@bound` are documentar
 ```laterita
 record Pair<L, R>(L left, R right) {}
 
-Pair<String, Int>                   p1 = new Pair("hello".clone(), 42);   // owned: constructor moves
-Pair<@bound String, @bound Int> view = new Pair(name, count);              // bound: bare args borrow; view's mode follows the RHS
+Pair<String, Int>                   p1 = new Pair<>("hello".clone(), 42);   // owned: constructor moves
+Pair<@bound String, @bound Int> view = new Pair<>(name, count);              // bound: bare args borrow; view's mode follows the RHS
 ```
 
 ### BIND-09 — `@take` is rejected in generic type arguments

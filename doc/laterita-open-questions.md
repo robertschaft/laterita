@@ -163,3 +163,19 @@ The current spelling is not arbitrary: BIND-07's rationale is that `@take Self t
 **Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site. The pattern is universal; the shape of the stdlib carrier is what's open.
 
 **Related codes:** BIND-11, BIND-12, STD-09, THR-10, COMP-01.
+
+## OQ-31 — Optional `<>` on constructor calls in `.lat`
+
+**Surfaced when:** noticing that a parameterized `new Pair<>(...)` in `.java` differs from `new Pair(...)` only because the latter is the raw-type form preserved from pre-generics Java. Laterita has no pre-generics legacy to be backward-compatible with.
+
+**The issue.** Java requires the diamond `<>` on a parameterized constructor call because the diamond-less form `new Pair(...)` is the *raw-type* constructor, preserved from before Java 5. The `.java` surface must keep `<>` because `javac` parses these sources (COMP-06). The `.lat` surface has no such constraint: Laterita is AOT-compiled (COMP-01), monomorphized (COMP-02), and has no reflection (COMP-05), so the raw-type escape hatch serves no purpose. Requiring `<>` on every parameterized constructor call in `.lat` then pays Java's backward-compatibility tax for a constraint Laterita does not share.
+
+**The question.**
+- Does `.lat` make the diamond optional on parameterized constructor calls — `new Pair("hello", 42)` desugaring to `new Pair<>("hello", 42)` per LAT-00?
+- If so, are raw types simply absent from `.lat`, with no surface form? (Absence is the natural answer — raw types serve no purpose here.)
+- Does the rule extend to other diamond-bearing sites — explicit-witness method calls (`Collections.<String>emptyList()`), explicit-type generic-method invocations — or stay constructor-only?
+- Is this the first of a small family of "Java legacy ceremony droppable in `.lat`" rules, or a one-off?
+
+**Why it matters.** The diamond appears at every parameterized-constructor call site — a high-frequency syntactic noise that exists only because Java carried raw types forward. Removing it from `.lat` is a mechanical, fully-desugaring sweetener with no semantic cost. The cost of *not* removing it is paying the legacy tax on every `new Foo<>(...)` for the lifetime of the language.
+
+**Related codes:** COMP-06, LAT-00, BIND-08.
