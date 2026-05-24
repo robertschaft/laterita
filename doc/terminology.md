@@ -171,6 +171,9 @@ A wrapper type that manages a value's lifetime. Examples: `Rc<T>` (reference-cou
 ### static analysis
 Compile-time reasoning about program behavior without running the code. Laterita's compiler performs static analysis of ownership, borrows, lifetime, mutability, and reachability to catch errors before runtime.
 
+### static field
+A field declared `static` — class- or module-level storage with one instance per program. Immutable per `BIND-11` and initialized from a const expression; `@mut static` is rejected. The declared type must be non-`@local` (`BIND-12`). Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
+
 ### target typing
 Inferring a lambda's type from the context where it appears. If a lambda is assigned to a variable or parameter with a known functional-interface type, the type is used as a hint to type-check the lambda body. See `CLO-04`.
 

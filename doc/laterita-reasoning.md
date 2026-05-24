@@ -76,6 +76,12 @@ This is the same accommodation Rust makes for struct initialization and Java alr
 
 If a `var` binding could call `@mutating` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
+### Why static fields are immutable (BIND-11, BIND-12)
+
+A static slot is reachable from every thread for the program's lifetime; no binding-level borrow check can hand out exclusive access to it. Allowing `@mut static` would either bake in undefined behavior — Rust's `static mut` posture, which the language now actively discourages — or demand a runtime synchronization mechanism the safe surface does not have. Forbidding it outright costs nothing: the cases that genuinely need shared mutable program-wide state already have a clean expression as a `Mutex<T>`, `Arc<T>`, or atomic primitive held in an immutable static, where the synchronization sits inside the wrapper and the static slot itself never changes.
+
+Const-only initialization keeps the AOT story honest. There is no classloader (COMP-01), so no per-class init lock to serialize arbitrary initializers, no observable initialization order to specify across compilation units, and no static-init-order fiasco to inherit from C++. Initializers that genuinely require runtime work go through a once-init wrapper held in the static slot, which serializes its first-access work behind its own internal synchronization. The non-`@local` restriction (BIND-12) plugs the only remaining cross-thread leak: a thread-affine handle in a process-global slot would, by definition, reach every thread.
+
 ---
 
 ## Mutability (MUT-01 through MUT-07)

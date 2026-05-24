@@ -155,6 +155,24 @@ List<@mut Foo>      d = ...;     // ERROR (BIND-10): a shared list cannot carry 
 
 A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
+### BIND-11 — Static fields are immutable; initializers are const
+
+A field declared `static` is initialized once at program start and cannot be reassigned. `static final` is accepted for Java compatibility but `final` is redundant; `@mut static` is a compile error.
+
+The initializer must be a *const expression* — a literal, a reference to another const-initialized static, or a call to a constructor or function the compiler can evaluate at compile time. The set of const-eligible operations is defined by the compiler and standard library; at minimum it covers primitive arithmetic, string literals, and the const-eligible constructors of the synchronizing stdlib types (`Mutex<T>` per STD-09, `Arc<T>` per STD-02, and the atomic primitives). Initializers that require genuinely runtime computation go through a once-init wrapper held in the static slot and forced at first access.
+
+```laterita
+static Mutex<Map<String, Session>> SESSIONS = new Mutex<>(new HashMap<>());
+static Arc<Config>                 BUILTIN  = new Arc<>(Config.DEFAULT);
+
+SESSIONS.with(s -> s.put(id, session));   // STD-09
+Config base = BUILTIN.read();             // STD-02
+```
+
+### BIND-12 — Static fields must be non-`@local`
+
+The declared type of a static field must be non-`@local` (STD-07). A static slot is reachable from every thread, so a `@local` type stored there would be reachable cross-thread — exactly the case `@local` exists to forbid. `static Rc<T>` is rejected; use `static Arc<T>`. `static Cell<T>` and `static Heap<T>` likewise.
+
 ---
 
 ## 2. Mutability Rules (Cross-cutting)
