@@ -69,7 +69,6 @@ A reference that doesn't count toward refcount. Used to break cycles in `Rc` gra
 - Parameters (`MOVE-03`: bare, `mut`, `take`, `take mut`)
 - Method receivers (`BIND-05`, `BIND-07`: bare, `mut`, `give`)
 - Binding declarations (`MOVE-02`: `give` to move)
-- Overload resolution (`MOVE-09`: `take` is part of signature)
 - Override rules (`MOVE-10`: `take` invariant, `mut` contravariant)
 
 **Lifetime terminology** appears in:

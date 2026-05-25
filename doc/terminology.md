@@ -228,7 +228,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 |--------|------|
 | `BIND` | Local and field bindings, method mutation and consumption |
 | `NULL` | Nullable types, null safety |
-| `MOVE` | Ownership transfer (moving), borrowing, overload resolution |
+| `MOVE` | Ownership transfer (moving), borrowing |
 | `MUT` | Mutability rules (transitivity, interior mutability, class-level `@mut`) |
 | `LIFE` | Lifetime inference and borrow boundaries |
 | `DROP` | Scope-exit cleanup, `onDrop()` |
