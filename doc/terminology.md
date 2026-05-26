@@ -109,7 +109,13 @@ Declares that a method may mutate its receiver — reassign or mutate-through th
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `MOVE-03`, `MOVE-04`.
 
 ### Mutex<T>
-A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
+A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. Non-reentrant. See `STD-09`.
+
+### Monitor
+A reentrant mutual-exclusion primitive without a protected value: the lock alone. Acquisition is scoped to a closure: `with(MutRunnable)` and `with(MutSupplier<R>)`. Unlike `Mutex<T>`, it owns no data and hands out no borrow — it contributes only mutual exclusion and memory visibility. Every class instance carries a lazily-initialized `Monitor` slot used by the lowering of Java's `synchronized` keyword (`THR-11`, `THR-12`). See `STD-10`.
+
+### Condition
+A condition variable bound to a `Monitor`, created by `monitor.newCondition()`. `await` atomically releases the bound monitor and blocks; on signal, re-acquires. `signal` / `signalAll` wake waiters. Names and shapes match `java.util.concurrent.locks.Condition`. The anonymous condition attached to each per-object `Monitor` is the lowering target for `Object.wait` / `notify` / `notifyAll` (`THR-13`). See `STD-11`.
 
 ### @nonlocal (annotation)
 Used with `@unsafe` to explicitly declare that a class is safe to move across thread boundaries despite containing `@local` fields. The class internally synchronizes access. Applied to standard library types like `Arc<T>` and `Mutex<T>`. See `STD-07`.
