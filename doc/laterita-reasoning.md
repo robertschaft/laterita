@@ -30,6 +30,10 @@ Expression-position concepts can't be annotations — `@give x` would not parse 
 
 Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
 
+### Why some annotation positions are currently unsupported (§18 `@Target` table)
+
+Java's `@Target` meta-annotation limits an annotation to a coarse set of element types (`TYPE`, `TYPE_USE`, `METHOD`, …). For several laterita annotations the syntactic positions the `@Target` set permits are broader than the positions the compiler actually accepts: `@take` on a field (BIND-03), on a local (BIND-08), or in a generic type argument (BIND-09); `@bound` on a local (BIND-08); `@mut` on a `record` (MUT-03). Each is a *currently not supported* combination rather than a soundness rule. The unifying motivation is one canonical form per concept — a field already owns its value by default, a local's ownership is fixed by its RHS, a record is a value class by construction, so the annotations would be either redundant or have no referent. The compiler rejects them so that the spelled-out canonical form remains the only one a reader has to learn; a future relaxation that admits any of these positions does not break existing code.
+
 ### Two source surfaces: `.lat` and `.java` (COMP-06, §19)
 
 Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.
@@ -103,6 +107,8 @@ The inheritance rule (MUT-05) keeps the property legible: a `@mut` class extends
 MUT-07 is what keeps MUT-06's check static. If a value-class instance could be widened into a `@mut` binding of a `@mut` superclass, a `@mutating` method called through that binding would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` binding refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the binding mode, with no runtime tag.
 
 `Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. "Value class" therefore means "no `@mut` *surface*," not "immutable in every byte" — the same scoping `@local` uses for thread-affinity (STD-07). The reference-counted handles depend on exactly this: `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
+
+Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The `@mut`-interface restriction "only `@mut` interfaces may declare `@mutating` methods" makes the surface readable from the interface header alone, mirrors the class rule, and lets MUT-06's static check rely on a single uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner MUT-05 already opens for value-class inheritance from `@mut` classes.
 
 ---
 
@@ -503,7 +509,7 @@ class Name extends String { ... }
 public User createUser(Email email, Name name, Address address) { ... }
 ```
 
-The compiler now catches argument-order bugs that today are silent runtime errors.
+The compiler now catches argument-order bugs that today are silent runtime errors. `javac` cannot parse `class X extends String` because `java.lang.String` is `final`, so STR-01 lives in §19 alongside the other `.lat`-only forms — it is the one structural extension among them rather than pure sugar.
 
 ### Why owned vs. borrowed strings tracked per-binding (STR-02 through STR-04)
 
@@ -514,10 +520,6 @@ They are kept as one type at the source level, with the compiler tracking per-bi
 The signature-level markers introduced for lifetimes (`@bound` per LIFE-02) and parameters (`@take` per MOVE-03) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
 
 The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`). In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body reaches `broken()`, and it always returns an owned value. The diagnostic for any owned/borrowed mismatch is therefore uniform — *"this position needs an owned String; binding is borrowed — try `.clone()`"* — and the fix is one method call. With `clone()` as the universal escape valve, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
-
-### Why subclasses are owned (STR-05)
-
-A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` could be a borrow into a mutable buffer, the buffer's owner could break the invariant from underneath. Forcing user-defined subclasses to be owned is the simplest rule that prevents this. The standard library's `String` itself can have borrowed instances because `String` has no invariant beyond "valid UTF-8" that holding a slice could break.
 
 ### Why string literals are borrowed, not owned (STR-06)
 
