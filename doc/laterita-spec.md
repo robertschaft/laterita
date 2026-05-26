@@ -1395,7 +1395,11 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
 | `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-03 |
-| `@mut` | `TYPE_USE` | on `@mut` types only | Binding, field, parameter, or return type is mutable | BIND-02 |
+| `@mut` | `LOCAL_VARIABLE` | - | Local binding is mutable (reassignable; mutation-through when the type is `@mut`) | BIND-01 |
+| `@mut` | `FIELD` | only in a `@mut` class | Field is mutable | BIND-03, MUT-04 |
+| `@mut` | `PARAMETER` | on `@mut` types, or combined with `@take` | Mutable parameter (mutable borrow, or reassignable owned slot with `@take`) | MOVE-03 |
+| `@mut` | `METHOD` | on `@mut` types, or combined with `@bound` | Return is a `@mut` binding | BIND-02, LIFE-02 |
+| `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | BIND-10 |
 | `@mutating` | `METHOD` | - | Method mutates its receiver | BIND-05 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver | BIND-07 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | MOVE-03 |
