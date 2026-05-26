@@ -144,6 +144,15 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 ### Rc<T>
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
 
+### ReentrantLock
+A reentrant mutual-exclusion primitive in `laterita.lang` that owns no data — the lock alone. Modelled on `java.util.concurrent.locks.ReentrantLock` but with safer surface: `acquire()` returns a `LockGuard` whose `onDrop` releases the lock, so "forgot to unlock" is impossible. Use when the data being guarded does not fit `Mutex<T>` (state spread across several fields of `this`, or genuinely data-less coordination). Pair with `Condition` for `wait`/`signal` patterns. See `STD-10`.
+
+### LockGuard
+A value witnessing that the calling thread holds a `ReentrantLock`. Returned by `ReentrantLock.acquire` / `acquireInterruptibly` / `tryAcquire`. Owns one acquisition; releases it via `onDrop` when its scope ends. The owning scope is therefore the critical section. See `STD-11`.
+
+### Condition
+A condition variable bound to a `ReentrantLock`, created by `lock.newCondition()`. `await` atomically releases the bound lock and blocks; on signal, re-acquires. `signal` / `signalAll` wake waiters. Names and shapes match `java.util.concurrent.locks.Condition`. The "caller must hold the bound lock" precondition is a runtime check — laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime. See `STD-12`.
+
 ### receiver mode (of a method)
 How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, BIND-05), or consuming (declared by `@consuming` on the method, BIND-07). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method).
 
@@ -263,7 +272,9 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `@mut class` vs. value class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes; Laterita opts *in* to mutable classes — the value class is the default |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |
-| `Mutex<T>` | `synchronized` block or `ReentrantLock` | Similar; closure-scoped API ensures lock release |
+| `Mutex<T>` | `synchronized` block on a protected field | Closure-scoped API ensures lock release and ties the lock to the protected value |
+| `ReentrantLock` + `LockGuard` | `java.util.concurrent.locks.ReentrantLock` | `LockGuard.onDrop` removes the manual unlock; reentrant; pair with `Condition` for wait/signal |
+| `Condition` | `java.util.concurrent.locks.Condition` or `Object.wait`/`notify` | Same API as `j.u.c.l.Condition`; runtime-checks the bound lock is held |
 | `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object; closer to C++ destructors than Java finalizers |
 | `drop` flag | N/A | Java doesn't track per-field move state |
 
