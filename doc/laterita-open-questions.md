@@ -161,3 +161,36 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 **Why it matters.** The diamond appears at every parameterized-constructor call site — a high-frequency syntactic noise that exists only because Java carried raw types forward. Removing it from `.lat` is a mechanical, fully-desugaring sweetener with no semantic cost. The cost of *not* removing it is paying the legacy tax on every `new Foo<>(...)` for the lifetime of the language.
 
 **Related codes:** COMP-06, LAT-00, BIND-08.
+
+## OQ-32 — Safe restoration of `synchronized` and condition variables
+
+**Surfaced when:** noting that §18 removes `synchronized` and `Object.wait`/`notify`/`notifyAll` wholesale, but the underlying primitive — scoped mutual exclusion plus wait/notify-style coordination — has natural safe expressions in terms of `Mutex<T>` (STD-09).
+
+**The issue.** The four reasons §18 currently cites for removal all dissolve when the keyword is bound to `Mutex<T>` instead of every `Object`:
+
+1. *Per-object monitor cost in AOT.* Solved by paying the lock cost only on `Mutex<T>` instances.
+2. *Doesn't compose with ownership.* Solved because `Mutex<T>` owns its protected value (STD-09).
+3. *Reentrancy collides with borrow exclusivity.* Inherited unchanged from `Mutex<T>` — still non-reentrant.
+4. *`wait`/`notify` aren't separable from intrinsic monitors.* Solved by a `Condition` primitive attached to a `Mutex<T>` rather than to every `Object`.
+
+A concrete shape for the restoration:
+
+- **`synchronized` block as `.lat` sugar (LAT-XX).** `synchronized (mtx) (t -> { body })` desugars to `mtx.with(t -> { body })` where `mtx` has type `@bound Mutex<T>` and `t` is the protected `@bound @mut T` inside `body`. The two-step `(mtx)(t -> ...)` spelling is forced by Java grammar — `synchronized (mtx) { body }` cannot bind the protected value, because the block body cannot introduce a parameter in Java's syntax. The closure form is the smallest change that keeps the safety: there is no way to leak the protected value out of `body`, exactly as with `with`.
+
+- **`Condition` stdlib primitive (STD-XX).** A `Condition` is created by `mutex.newCondition()` and is bound to that mutex. Inside `mutex.with(t -> { ... cond.await(); ... })`:
+  - `cond.await()` atomically releases the lock, blocks the calling thread, and re-acquires the lock before returning. It is an interruption point (THR-04) and throws `InterruptedException` if the thread is interrupted while blocked.
+  - `cond.signal()` / `cond.signalAll()` wake one / all waiters. Callable only from within a `with` on the same mutex (the compiler can statically enforce this by requiring the `Condition` to be reached through the protected value's enclosing scope, or by an `@unsafe`-checked stdlib internal).
+  - `await` on a poisoned mutex throws `PoisonedException` (THR-10).
+
+- **`Object.wait` / `notify` / `notifyAll`** stay removed. The intrinsic-monitor signature has no safe home — they cannot be lowered to `Condition` without a bound mutex, and adding a per-`Object` monitor is exactly the cost (1) the new shape avoids.
+
+**The question.**
+- Is the `synchronized (mtx)(t -> body)` `.lat` sugar admitted, or does the `Mutex<T>.with` call site stay the single canonical form? Two spellings for the same primitive carries a cost (more for a reader to learn).
+- Is `Condition` part of the required stdlib (§15) or a third-party library? The `await`/`signal` pattern is universal enough that a stdlib commitment is plausible.
+- One condition per mutex, or many? Java's `Lock.newCondition()` returns a fresh `Condition` each call; matching that admits classic producer/consumer patterns without a second mutex.
+- Should `cond.signal()` and `cond.signalAll()` be statically restricted to callers inside a `with` on the same mutex, or runtime-checked? Static enforcement keeps the safe-surface promise; runtime enforcement is simpler to implement.
+- Does an existing OQ already cover this (OQ-23 channels and OQ-30 lazy-init touch nearby ground)? If so, fold rather than duplicate.
+
+**Why it matters.** Until this is settled, every Laterita program needing wait-style coordination hand-rolls a `Mutex<Cell<Boolean>>` poll loop, which both burns CPU and reintroduces the busy-wait bugs `wait`/`notify` exist to remove. The `Mutex<T>.with`-bound condition variable is a small, safe addition that preserves the safety story `synchronized` was removed to protect.
+
+**Related codes:** STD-09, THR-04, THR-08, THR-10, §18.

@@ -1226,37 +1226,6 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 `Mutex<T>` is annotated `@unsafe @nonlocal` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) require `@unsafe`; the closure-scoped surface above is safe.
 
-### STD-10 — `Monitor`
-
-A reentrant mutual-exclusion primitive without a protected value: the lock alone. Acquisition is scoped to a closure call; there is no separately held guard, no manual `lock` / `unlock` pair, and no way to forget to release. `Monitor` is the per-object lock that Java's `synchronized` lowers to (THR-12); it is also a stand-alone stdlib primitive usable wherever the closure-scoped `Mutex<T>` shape is wrong because no protected value can be named (the data the lock guards lives in fields of the surrounding object).
-
-**Constructor.** `new Monitor()` — creates an unlocked monitor.
-
-**Scoped acquisition.**
-- `void with(MutRunnable action)` — acquires the lock (blocking if held by another thread; reentrant on the same thread), invokes `action`, releases the lock on every exit path (normal return, exception unwind per EXC-02, scope exit).
-- `<R> R with(MutSupplier<R> action)` — same with a returned result.
-- `boolean tryWith(MutRunnable action)` / `<R> Optional<R> tryWith(MutSupplier<R> action)` — non-blocking forms; return `false` / empty if the lock is held by another thread, otherwise run `action` to completion.
-
-`MutRunnable` and `MutSupplier<R>` are the `@mut` interfaces declared in `laterita.lang` with SAMs `@mutating void run()` and `@mutating R get()`; declaring them `@mut` lets a mutate-capture closure satisfy the slot (CLO-03, CLO-04). Reentrancy means the same thread may invoke `with` from inside an outstanding `with` on the same `Monitor`; nested invocations share the lock and the inner `action` runs without contention. Cross-thread overlapping invocations serialize.
-
-**Condition variables.** `Condition newCondition()` returns a fresh condition variable bound to this monitor (STD-11).
-
-**Interaction with the borrow checker.** `Monitor` does not own protected data and does not hand out borrows. The body of a `with` invocation is checked exactly as ordinary code: mutating a binding or field still requires the usual `@mut` / `@mutating` access (BIND-06). `Monitor` contributes mutual exclusion and memory visibility, not access rights. Reentrancy therefore does not conflict with MOVE-04 — there is no protected value to alias.
-
-`Monitor` is annotated `@unsafe @nonlocal` per STD-07. The underlying OS lock primitive requires `@unsafe`; the closure-scoped surface above is safe.
-
-### STD-11 — `Condition`
-
-A condition variable bound to a `Monitor`. Constructed by `Monitor.newCondition()` and tied to that monitor for the rest of its lifetime. Method names and shapes match `java.util.concurrent.locks.Condition`.
-
-**Wait.** `void await()` atomically releases the bound monitor — including the full reentrancy count — and blocks the calling thread; on signal, re-acquires the monitor to the previous reentrancy count before returning. Must be called from within an active `with` on the bound monitor (runtime check; throws `IllegalMonitorStateException` otherwise). Is an interruption point (THR-04); throws `InterruptedException` if the thread is interrupted while blocked.
-
-**Timed wait.** `boolean await(long timeout, TimeUnit unit)` — same with a timeout; returns `false` if the timeout elapsed without signal, `true` if signaled. `long awaitNanos(long nanosTimeout)` — returns the remaining nanos, or `≤ 0` on timeout. `boolean awaitUntil(Date deadline)` — absolute-deadline form.
-
-**Signal.** `void signal()` wakes one waiter. `void signalAll()` wakes all waiters. Both require the bound monitor to be held by the calling thread (runtime check; `IllegalMonitorStateException` otherwise).
-
-The bound monitor + condition pair implements Hoare/Hansen condition-variable semantics and is the lowering target for `Object.wait` / `notify` / `notifyAll` (THR-13).
-
 ---
 
 ## 16. Threads
@@ -1346,47 +1315,6 @@ A `Mutex<T>` is **poisoned** when the closure passed to its `with` / `tryWith` c
 
 Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection. `isPoisoned()` reads the flag without acquiring the lock.
 
-### THR-11 — Per-object monitor slot
-
-Every class instance has, conceptually, a `Monitor` slot (STD-10) accessible only to the compiler-emitted lowerings of `synchronized` (THR-12) and `Object.wait` / `notify` / `notifyAll` (THR-13). The slot:
-
-- is lazily initialized on first use, so instances that are never used as a synchronization target pay no allocation cost;
-- is `@internal` (DROP-06) and unreachable from user source;
-- carries a single anonymous `Condition` (STD-11), also lazily created, that backs `wait` / `notify` / `notifyAll` on the same receiver;
-- does not by itself mark its enclosing class `@local` (STD-07): the slot's type is `@unsafe @nonlocal`, so its presence is transparent to `@local` inference.
-
-Static `synchronized` methods of class `C` lock the per-class monitor on the `Class<C>` object, by the same mechanism. The slot on `Class<C>` is allocated at most once per class.
-
-Implementations may omit the slot for classes whose instances are statically proven never to be used as a synchronization target or by `wait` / `notify` / `notifyAll`. The proof obligation is implementation-defined; a conservative implementation may keep the slot on every class.
-
-### THR-12 — `synchronized` lowering
-
-The Java `synchronized` keyword is preserved on `.java` and `.lat` sources. The laterita compiler lowers each occurrence to a `Monitor.with` call on the per-object slot (THR-11):
-
-| Source | Lowered form |
-|---|---|
-| `synchronized (e) { body }` | `e.__monitor.with(() -> { body });` |
-| `synchronized` instance method `R m(args) { body }` | the body is wrapped as `R m(args) { return this.__monitor.with(() -> { body }); }` |
-| `synchronized` static method of class `C` `R m(args) { body }` | the body is wrapped as `R m(args) { return C.class.__monitor.with(() -> { body }); }` |
-
-The lowering preserves Java's semantics: nested `synchronized` blocks on the same receiver share the lock by `Monitor`'s reentrancy (STD-10); the lock is released on every exit path by `with`'s scoped release; the result and any thrown exception propagate through `with` transparently. The `__monitor` field is the per-object slot of THR-11 and is not user-visible.
-
-`synchronized` does not grant `@mut` access. The body is checked by the ordinary borrow / mutability rules (BIND-06); a synchronized block that mutates state needs the surrounding `@mut` / `@mutating` access in place, just as in unsynchronized code. `Monitor` contributes mutual exclusion and memory visibility only.
-
-### THR-13 — `wait` / `notify` / `notifyAll` lowering
-
-`Object.wait`, `Object.notify`, and `Object.notifyAll` lower to calls on the per-object `Monitor`'s anonymous `Condition` (THR-11):
-
-| Source | Lowered form |
-|---|---|
-| `e.wait()` | `e.__monitor.__cond.await()` |
-| `e.wait(millis)` | `e.__monitor.__cond.await(millis, TimeUnit.MILLISECONDS)` |
-| `e.wait(millis, nanos)` | `e.__monitor.__cond.awaitNanos(millis * 1_000_000L + nanos)` |
-| `e.notify()` | `e.__monitor.__cond.signal()` |
-| `e.notifyAll()` | `e.__monitor.__cond.signalAll()` |
-
-The "caller must hold the monitor" precondition is enforced at runtime inside `Condition`'s methods (STD-11); behavior on violation matches Java's `IllegalMonitorStateException`. The single anonymous `Condition` per object is sufficient for `Object.wait` / `notify`, which expose only one. Programs needing multiple distinct conditions per lock construct an explicit `Monitor` and call `newCondition()` directly.
-
 ---
 
 ## 17. Compilation Model
@@ -1430,7 +1358,7 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ## 18. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `Monitor`, `Condition`, `MutRunnable`, `MutSupplier`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
@@ -1461,7 +1389,7 @@ To `javac` the annotations are ordinary annotations and the intrinsics ordinary 
 
 Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` locks reassignment on a `@mut` binding (BIND-01); it is otherwise redundant.
 
-Java's `synchronized` keyword and `Object.wait()` / `notify()` / `notifyAll()` are preserved on the source surface and compiled by the laterita compiler to `Monitor` and `Condition` operations (STD-10, STD-11). The intrinsic per-Object monitor is realized as a compiler-managed slot (THR-11); the lowerings are normative in THR-12 and THR-13. `Mutex<T>` (STD-09) remains the preferred primitive for new code because it binds the lock to a protected value; `Monitor` is the data-less reentrant lock that Java's intrinsic-monitor semantics require.
+Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern. A `Mutex<T>`-bound restoration of both is under discussion in OQ-32.
 
 Java's existing keywords and their meanings are otherwise preserved unless explicitly modified by this specification.
 
