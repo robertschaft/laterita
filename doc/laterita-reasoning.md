@@ -30,10 +30,6 @@ Expression-position concepts can't be annotations — `@give x` would not parse 
 
 Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
 
-### Why some annotation positions are currently unsupported (§18 `@Target` table)
-
-Java's `@Target` meta-annotation limits an annotation to a coarse set of element types (`TYPE`, `TYPE_USE`, `METHOD`, …). For several laterita annotations the syntactic positions the `@Target` set permits are broader than the positions the compiler actually accepts: `@take` on a field (BIND-03), on a local (BIND-08), or in a generic type argument (BIND-09); `@bound` on a local (BIND-08); `@mut` on a `record` (MUT-03). Each is a *currently not supported* combination rather than a soundness rule. The unifying motivation is one canonical form per concept — a field already owns its value by default, a local's ownership is fixed by its RHS, a record is a value class by construction, so the annotations would be either redundant or have no referent. The compiler rejects them so that the spelled-out canonical form remains the only one a reader has to learn; a future relaxation that admits any of these positions does not break existing code.
-
 ### Two source surfaces: `.lat` and `.java` (COMP-06, §19)
 
 Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.

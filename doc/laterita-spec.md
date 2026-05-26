@@ -193,7 +193,7 @@ A type that needs to mutate its contents through a bare receiver must hold those
 
 A class, abstract class, or interface may be declared `@mut` (`@mut class C`, `@mut abstract class C`, `@mut interface I`). The marker declares that the type has a *mutable surface*: `@mut` fields may be declared in it (MUT-04, classes only) and `@mutating` methods may be declared on it (BIND-05). A type not declared `@mut` is a *value type* — its instances expose no callable `@mutating` method and cannot be mutated through any binding; a non-`@mut` interface may declare only methods that do not carry `@mutating`. Both `@mut` and non-`@mut` interfaces may be implemented by either `@mut` classes or value classes.
 
-`@mut` is currently not supported on a `record`: a record is a value class by construction.
+`@mut` is currently not supported on a `record` or an `enum`: both are value classes by construction.
 
 `Object` is `@mut`. `Number` is a value class; therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes.
 
@@ -1233,34 +1233,25 @@ A reentrant mutual-exclusion primitive without a protected value: the lock alone
 **Constructor.** `new ReentrantLock()` — creates an unlocked, unfair lock. Fairness is not configurable on this surface.
 
 **Acquisition.**
-- `@bound LockGuard acquire()` — blocks until the lock is held, returns a guard bound to this lock. Reentrant: the same thread acquiring twice receives two guards; the lock is released only after both are dropped.
-- `@bound LockGuard acquireInterruptibly() throws InterruptedException` — same, interruptible per THR-04.
-- `@bound LockGuard? tryAcquire()` — non-blocking; returns the guard or `null` if another thread holds the lock.
-- `@bound LockGuard? tryAcquire(long timeout, TimeUnit unit) throws InterruptedException` — timed variant.
+- `@bound LockGuard lock() throws InterruptedException` — blocks until the lock is held, returns a guard bound to this lock. Reentrant: the same thread acquiring twice receives two guards; the lock is released only after both are dropped. Is an interruption point (THR-04).
+- `@bound LockGuard? tryLock() throws InterruptedException` — non-blocking; returns the guard or `null` if another thread holds the lock.
+- `@bound LockGuard? tryLock(long timeout, TimeUnit unit) throws InterruptedException` — timed variant.
 
 **Condition variables.** `@bound Condition newCondition()` — returns a fresh `Condition` (STD-12) bound to this lock. May be called any number of times; one lock can pair with multiple conditions (the classic bounded-buffer "not full" / "not empty" pattern).
 
-`ReentrantLock` is annotated `@unsafe @nonlocal` per STD-07. The underlying OS lock primitive requires `@unsafe`; the guard-returning surface above is safe.
+`ReentrantLock` is `@nonlocal` per STD-07.
 
 ### STD-11 — `LockGuard`
 
-A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.acquire` / `acquireInterruptibly` / `tryAcquire`; not user-constructible. Bound to its source `ReentrantLock` (`@bound`); its lifetime cannot exceed the lock's. A `LockGuard` is owned; it cannot be borrowed across threads.
+A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` is `@local`; it cannot be borrowed across threads.
 
-`LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads. Because every guard goes through the compiler-emitted drop sequence (DROP-01, DROP-03), the lock is released on every exit path from the guard's scope, including exception unwind (EXC-02). The guard's owning scope is therefore the critical section.
+`LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
 
-`LockGuard` is a value class — it carries no `@mutating` methods and exposes nothing beyond its existence and its `@internal` `onDrop` (DROP-06). Its only role is to make scope exit equivalent to lock release.
+`LockGuard` exposes nothing beyond its existence and its `@internal` `onDrop` (DROP-06). Its only role is to make scope exit equivalent to lock release.
 
 ### STD-12 — `Condition`
 
-A condition variable bound to a `ReentrantLock` (STD-10). Constructed by `ReentrantLock.newCondition()` and tied to that lock for the rest of its lifetime. Method names and shapes match `java.util.concurrent.locks.Condition`.
-
-**Wait.** `void await() throws InterruptedException` — atomically releases the bound lock (the full reentrancy count) and blocks the calling thread; on signal, re-acquires the lock to the previous reentrancy count before returning. Must be called while the calling thread holds the bound lock (i.e., from inside the scope of a `LockGuard` from that lock); otherwise throws `IllegalMonitorStateException` at runtime. Is an interruption point (THR-04).
-
-**Timed wait.** `boolean await(long time, TimeUnit unit) throws InterruptedException` returns `false` if the timeout elapsed without signal, `true` if signaled. `long awaitNanos(long nanosTimeout) throws InterruptedException` returns the remaining nanos, or `≤ 0` on timeout. `boolean awaitUntil(Date deadline) throws InterruptedException` is the absolute-deadline form.
-
-**Signal.** `void signal()` wakes one waiter. `void signalAll()` wakes all waiters. Both require the calling thread to hold the bound lock; otherwise throw `IllegalMonitorStateException`.
-
-`Condition` is annotated `@unsafe @nonlocal` per STD-07. The "caller holds the bound lock" precondition is a runtime check; static enforcement would require associating a `Condition` value with the specific `LockGuard` lifetime, which the ownership system cannot express without adding a tracked-resource axis. Programs needing compile-time-only data protection use `Mutex<T>` (STD-09); `Condition` + `ReentrantLock` is the runtime-checked option for the conditional-wait pattern.
+A condition variable bound to a `ReentrantLock` (STD-10), created by `ReentrantLock.newCondition()`. Class and method names match `java.util.concurrent.locks.Condition`; semantics match Java. The "caller must hold the bound lock" precondition remains a runtime check (`IllegalMonitorStateException`); `await` is an interruption point per THR-04.
 
 ---
 
@@ -1398,34 +1389,38 @@ The following names are introduced by this specification and must be provided by
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
-**Laterita introduces no new keywords.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; the five non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) are gated to `.lat` sources per §19. Each laterita annotation is declared with a Java `@Target` meta-annotation that constrains the syntactic positions in which it may appear; the table below lists, for every annotation, each admitted `@Target` together with the meaning the laterita compiler attaches at that target. A combination of an annotation and a `@Target` that is not listed but is permitted by the annotation's declared `@Target` set (e.g. `@take` written on a position other than a parameter) is currently not supported and is rejected by the laterita compiler; see the reasoning document for the rationale.
+**Laterita requires no new keywords or constructs.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; some non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) and class extensions are gated to `.lat` sources per §19.
+Below is a list of laterita annotations. Combinations not listed are currently not supported and won't compile.
 
-| Annotation | `@Target` | Meaning | Spec rule |
-|---|---|---|---|
-| `@mut` | `TYPE` | Class or interface has a mutable surface | MUT-03 |
-| `@mut` | `TYPE_USE` | Binding, field, parameter, or return type is mutable | BIND-02 |
-| `@mutating` | `METHOD` | Method mutates its receiver | BIND-05 |
-| `@consuming` | `METHOD` | Method consumes its receiver | BIND-07 |
-| `@take` | `TYPE_USE` | Parameter receives ownership | MOVE-03 |
-| `@bound` | `TYPE_USE` | Borrow source (on parameter or generic argument) or borrow sink (on return or field) | LIFE-02, BIND-03, BIND-08 |
-| `@internal` | `METHOD` | Callable only by compiler-emitted call sites | DROP-06 |
-| `@unsafe` | `METHOD` | Private method permitted to use the ops in UNS-02 | UNS-01 |
-| `@local` | `TYPE` | Class instances are thread-affine | STD-07 |
-| `@nonlocal` | `TYPE` | (with `@unsafe`) overrides inferred `@local` on a class | STD-07 |
-| `@Nullable` | `TYPE_USE` | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
+| Annotation | `@Target` | Additional condition | Meaning | Spec rule |
+|---|---|---|---|---|
+| `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-03 |
+| `@mut` | `TYPE_USE` | on `@mut` types only | Binding, field, parameter, or return type is mutable | BIND-02 |
+| `@mutating` | `METHOD` | - | Method mutates its receiver | BIND-05 |
+| `@consuming` | `METHOD` | - | Method consumes its receiver | BIND-07 |
+| `@take` | `PARAMETER` | - | Parameter receives ownership | MOVE-03 |
+| `@bound` | `PARAMETER` | - | Borrow source | LIFE-02, BIND-03, BIND-08 |
+| `@bound` | `FIELD` | - | Field is only borrowed (default: owned) | LIFE-02, BIND-03, BIND-08 |
+| `@bound` | `METHOD` | non `void`, non `static` | return is borrowed from `this` | LIFE-02, BIND-03, BIND-08 |
+| `@bound` | `TYPE_USE` | in type arguments | Instances of this type argument are only borrowed to the declared instance | LIFE-02, BIND-03, BIND-08 |
+| `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
+| `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
+| `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
+| `@nonlocal` | `TYPE` | with `@unsafe` | Overrides inferred `@local` on a class | STD-07 |
+| `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 
 The annotations are declared in `laterita.lang.annotation`. Stdlib static methods that carry laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier:
 
 | Intrinsic | Meaning | Spec rule |
 |---|---|---|
-| `Intrinsics.give(x)` | Move at a use site (expression or statement) | MOVE-02, MOVE-08 |
-| `Intrinsics.broken(reason?)` | Declares the enclosing path unreachable; type `Nothing` | UNR-01 |
+| `Intrinsics.give(x)` | Explicitly removes ownership from `x` | MOVE-02, MOVE-08 |
+| `Intrinsics.broken(reason?)` | Compilation fails if an execution path would lead to this statement | UNR-01 |
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
 Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` locks reassignment on a `@mut` binding (BIND-01); it is otherwise redundant.
 
-Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (STD-09) for data-bound locking and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less / multi-condition cases. The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination uses `Condition` (STD-12) bound to a `ReentrantLock`.
+Java's `synchronized` keyword is not supported: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (STD-09) for data-bound locking and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less / multi-condition cases. The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided. Condition-variable-style coordination uses `Condition` (STD-12) bound to a `ReentrantLock`.
 
 Java's existing keywords and their meanings are otherwise preserved unless explicitly modified by this specification.
 
