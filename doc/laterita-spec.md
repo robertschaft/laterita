@@ -1238,7 +1238,7 @@ A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Ret
 
 ### STD-12 — `Condition`
 
-A condition variable bound to a `ReentrantLock` (STD-10), created by `ReentrantLock.newCondition()`. Class and method names match `java.util.concurrent.locks.Condition`; semantics match Java. The "caller must hold the bound lock" precondition remains a runtime check (`IllegalMonitorStateException`); `await` is an interruption point per THR-04.
+As `java.util.concurrent.locks.Condition`, created by `ReentrantLock.newCondition()`.
 
 ---
 
@@ -1384,8 +1384,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-03 |
 | `@mut` | `LOCAL_VARIABLE` | - | Local binding is mutable (reassignable; mutation-through when the type is `@mut`) | BIND-01 |
 | `@mut` | `FIELD` | only in a `@mut` class | Field is mutable | BIND-03, MUT-04 |
-| `@mut` | `PARAMETER` | on `@mut` types, or combined with `@take` | Mutable parameter (mutable borrow, or reassignable owned slot with `@take`) | MOVE-03 |
-| `@mut` | `METHOD` | on `@mut` types, or combined with `@bound` | Return is a `@mut` binding | BIND-02, LIFE-02 |
+| `@mut` | `PARAMETER` | on `@mut` types | Mutable parameter (mutable borrow) | MOVE-03 |
+| `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` binding | BIND-02, LIFE-02 |
 | `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | BIND-10 |
 | `@mutating` | `METHOD` | - | Method mutates its receiver | BIND-05 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver | BIND-07 |
@@ -1396,7 +1396,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@bound` | `TYPE_USE` | in type arguments | Instances of this type argument are only borrowed to the declared instance | LIFE-02, BIND-03, BIND-08 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
-| `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
+| `@local` | `TYPE` | not with `@nonlocal` | Class instances are thread-affine | STD-07 |
 | `@nonlocal` | `TYPE` | with `@unsafe` | Overrides inferred `@local` on a class | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 
