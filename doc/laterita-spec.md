@@ -1467,6 +1467,19 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 
 The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes.
 
+### LAT-06 — Diamond `<>` is optional on constructor calls
+
+In `.lat` sources the diamond `<>` may be omitted from a parameterized constructor call: `new Pair("hello", 42)` denotes `new Pair<>("hello", 42)`, with type arguments inferred from context exactly as Java's diamond inference would produce. Raw types are not part of the `.lat` surface.
+
+The `.java` mirror writes the diamond explicitly: a diamond-less `new Pair("hello", 42)` in `.java` is the raw-type constructor and is not equivalent to the diamond-bearing form. Migration tooling rewriting `.lat` to `.java` inserts `<>` on every parameterized-class constructor call that omits it.
+
+```laterita
+record Pair<L, R>(L left, R right) {}
+
+Pair<String, Int> p = new Pair("hello".clone(), 42);     // .lat: diamond implicit
+Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .lat
+```
+
 ### Structural extensions
 
 Rules below appear in `.lat` because `javac` cannot parse or compile their source form. They have no desugaring to the `.java` surface; the `.java` analog is "this declaration is not expressible". The laterita compiler accepts them only in `.lat` units.
