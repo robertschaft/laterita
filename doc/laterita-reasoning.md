@@ -60,19 +60,11 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 ### Why methods declare mutation in the signature (BIND-05)
 
-A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
-
-`@mutating` is a dedicated annotation rather than another use of `@mut`. The binding-mutability `@mut` already occupies the position immediately before a type, including a return type (BIND-02). Spelling receiver mutation with that same token in modifier position would make `@mut R foo()` ambiguous between "mutates its own receiver" and "returns a `@mut` binding." A distinct token removes the clash outright, and a modifier-position annotation keeps the common case (every setter, every mutator) free of an explicit-`this` parameter.
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
 
 ### Why methods declare consumption of `this` with `@consuming` (BIND-07)
 
-Receiver mutation and receiver consumption are the two non-bare receiver modes. They are declared the same way: a modifier-position annotation on the method, no explicit `this` parameter, reading like `public` or `final`. The two compose freely (`@mutating @consuming` for a method that both mutates and consumes), and either annotation alone narrows the method's visible API surface to receivers whose binding mode supports it (BIND-06, BIND-07).
-
-Spelling consumption with `@take` on an explicit `this` parameter was considered — it would have made `@take` mean exactly one thing everywhere ("this slot receives ownership"), reusing the parameter-side annotation. It was rejected because it forces a `(@take ClassName this)` slot onto every consuming method, restating the class name and adding a parameter slot that carries no name and no use. `@mutating` already broke the parameter-uniformity argument by lifting receiver mutation out of the parameter list; `@consuming` finishes the symmetry. `@take` keeps a single role on the parameter side (MOVE-03); `@consuming` carries the receiver-consumption role under its own banner.
-
-### Why constructors are a special initialization case (BIND-04)
-
-This is the same accommodation Rust makes for struct initialization and Java already makes for `final` fields. Immutable fields have to be assigned somewhere; the constructor is the only place that makes sense. Generalizing today's `final` to be the default for every field is straightforward.
+Receiver mutation and receiver consumption are the two non-bare receiver modes. Both are declared the same way: a modifier-position annotation on the method, reading like `public` or `final`. The two compose (`@mutating @consuming` for a method that does both), and either alone narrows the visible API surface to receivers whose binding mode supports it.
 
 ### Why mutability is transitive (BIND-06)
 
@@ -102,7 +94,9 @@ The inheritance rule (MUT-05) keeps the property legible: a `@mut` class extends
 
 MUT-07 is what keeps MUT-06's check static. If a value-class instance could be widened into a `@mut` binding of a `@mut` superclass, a `@mutating` method called through that binding would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` binding refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the binding mode, with no runtime tag.
 
-`Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. "Value class" therefore means "no `@mut` *surface*," not "immutable in every byte" — the same scoping `@local` uses for thread-affinity (STD-07). The reference-counted handles depend on exactly this: `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
+`Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. The reference-counted handles depend on this — `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
+
+Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The restriction "only `@mut` interfaces may declare `@mutating` methods" lets MUT-06's static check use one uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner MUT-05 opens for class inheritance.
 
 ---
 
@@ -397,11 +391,7 @@ Java's checked-exception model has been a three-decade experiment that the field
 
 ### Why cleanup runs on unwind (EXC-02)
 
-This is the same problem C++ destructors solve and Rust's drop-on-unwind solves. Without it, exceptions through ownership transfers would leak. The user writes ordinary code; the compiler emits the cleanup along the unwind path.
-
-### Why drop flags participate (EXC-03)
-
-Same reasoning as DROP-04 generalized: the unwinder must consult per-field move state, otherwise partial moves followed by exceptions either leak (no cleanup) or double-free (cleanup on already-moved fields). The flags are already there from DROP-04; the unwind path just consults them.
+This is the same problem C++ destructors solve and Rust's drop-on-unwind solves. Without it, exceptions through ownership transfers would leak. The user writes ordinary code; the compiler emits the cleanup along the unwind path. EXC-03 generalizes DROP-04 to the unwind path — same drop flags, consulted on the same condition.
 
 ### Why lazy stack-trace resolution (EXC-04)
 
@@ -459,9 +449,7 @@ The SAM of an anonymous functional interface is named `apply`, giving the namele
 
 ## Closures (CLO-01 through CLO-06)
 
-### Why three modes, inferred (CLO-01, CLO-02)
-
-Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces the user to think about because closures need precise typing for trait dispatch. Laterita keeps the three categories — read, mutate, consume — but lets the compiler infer them from the body. Users write a lambda; the compiler does the work.
+Laterita keeps Rust's three capture categories (read / mutate / consume = `Fn` / `FnMut` / `FnOnce`) but infers them from the body rather than asking the user to declare them.
 
 ### Why call mode and binding mode are separate (CLO-03)
 
@@ -503,7 +491,7 @@ class Name extends String { ... }
 public User createUser(Email email, Name name, Address address) { ... }
 ```
 
-The compiler now catches argument-order bugs that today are silent runtime errors.
+The compiler now catches argument-order bugs that today are silent runtime errors. `javac` cannot parse `class X extends String` because `java.lang.String` is `final`, so STR-01 lives in §19 alongside the other `.lat`-only forms — it is the one structural extension among them rather than pure sugar.
 
 ### Why owned vs. borrowed strings tracked per-binding (STR-02 through STR-04)
 
@@ -514,10 +502,6 @@ They are kept as one type at the source level, with the compiler tracking per-bi
 The signature-level markers introduced for lifetimes (`@bound` per LIFE-02) and parameters (`@take` per MOVE-03) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
 
 The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`). In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body reaches `broken()`, and it always returns an owned value. The diagnostic for any owned/borrowed mismatch is therefore uniform — *"this position needs an owned String; binding is borrowed — try `.clone()`"* — and the fix is one method call. With `clone()` as the universal escape valve, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
-
-### Why subclasses are owned (STR-05)
-
-A subclass like `Email` carries an invariant ("contains an @ sign"). If `Email` could be a borrow into a mutable buffer, the buffer's owner could break the invariant from underneath. Forcing user-defined subclasses to be owned is the simplest rule that prevents this. The standard library's `String` itself can have borrowed instances because `String` has no invariant beyond "valid UTF-8" that holding a slice could break.
 
 ### Why string literals are borrowed, not owned (STR-06)
 
@@ -657,13 +641,9 @@ These are the irreducible escape hatches. `Cell<T>` is the documented hole in MU
 
 ### Why `@local`, not `Send` (STD-07)
 
-Cross-thread move and borrow safety needs to be tracked. Rust uses two positive auto-traits (`Send` and `Sync`); Laterita inverts the marker and uses one negative property: `@local`. The few stdlib primitives that are not safe to cross thread boundaries (`Rc<T>`, `Cell<T>`, `Heap<T>`) are declared `@local`; everything else is non-local by default and may cross threads.
+Rust uses two positive auto-traits (`Send` + `Sync`); Laterita inverts to one negative marker (`@local`). The inversion makes the common case — ordinary user classes are safe to cross threads — the unannotated default, which is what Java programmers expect. The `Send`/`Sync` split is collapsed because `Send`-but-not-`Sync` requires fine-grained borrow reasoning Java programmers don't expect.
 
-The reason for inverting is Java-target ergonomics. With a positive marker, every user class would have to declare `implements Send` (or be silently inferred via auto-trait machinery) to be usable in concurrent code. With the inverted marker, the *default* for ordinary user classes is "sendable," which is what Java programmers expect. The annotation surface is concentrated in the small set of stdlib primitives plus the rare thread-affine class.
-
-Send and Sync are collapsed into one property because the distinction (Send-but-not-Sync, e.g., Rust's `Cell<T>`) is rare and unusable without the kind of fine-grained borrow reasoning Java programmers don't expect. The single `@local` marker covers both move and borrow restrictions.
-
-Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inferred `@local` property by annotating themselves `@unsafe @nonlocal`. The `@unsafe` annotation is the same admission of proof obligation as every other `@unsafe` in the language: the author is asserting a property the compiler cannot verify, and UNS-04 still applies.
+A class with `@local` fields must explicitly choose `@local` (inherit thread-affinity) or `@local(false)` (encapsulate). The compiler does not infer the choice — making it explicit forces the author to name what they're claiming, and prevents accidentally promoting an `@local`-bearing class into the thread-safe pool by composition. The parameter form keeps both sides of the decision under one name: every class touching `@local` types declares a `@local(...)` annotation, the boolean selects affinity vs encapsulation. `@unsafe` remains independent and METHOD-only (UNS-01): per-operation trust on the unverifiable steps inside the encapsulating implementation.
 
 ### Why borrow-checked iteration reuses Java's API (STD-08)
 
@@ -687,7 +667,7 @@ Java's `Lock` interface separates `lock()` from `unlock()`, leaving room to skip
 
 **A closure-scoped method on the mutex — the chosen shape.** `<R> R with((bound mut T) -> R action)` and `<R> Optional<R> tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. Poison detection is an ordinary `try`/`catch` around the closure invocation in stdlib code: the closure either returns or throws, and control flow itself is the signal. No runtime in-flight-exception indicator is required. The protected `T` is reachable only inside the closure, so there is no handle to smuggle, leak, or hold across uncertain control flow.
 
-The trade against the guard shape is ergonomic. The locked region is a closure body, not a `{ }` block: two-mutex critical sections nest (`m1.with(t1 -> m2.with(t2 -> { ... }))`), and outer-function `return` / outer-loop `break` from inside the closure are unavailable. For the short critical sections that dominate real code these costs are invisible, and `with` returning `R` lets values flow out cleanly. In exchange, THR-10 reduces from "the unwind path sets a flag" — a property the language has to surface through some runtime mechanism — to "if the closure throws, `with` poisons before rethrowing," ordinary stdlib code using features every Laterita user already has (generic methods, anonymous functional interfaces per FN-01, `try`/`catch`). The `@unsafe @nonlocal` surface of `Mutex<T>` shrinks accordingly: the lock primitive and `Cell<T>` access still need `@unsafe`, as in any safe-mutex implementation, but the poison-detection layer above no longer does.
+The trade against the guard shape is ergonomic. The locked region is a closure body, not a `{ }` block: two-mutex critical sections nest (`m1.with(t1 -> m2.with(t2 -> { ... }))`), and outer-function `return` / outer-loop `break` from inside the closure are unavailable. For the short critical sections that dominate real code these costs are invisible, and `with` returning `R` lets values flow out cleanly. In exchange, THR-10 reduces from "the unwind path sets a flag" — a property the language has to surface through some runtime mechanism — to "if the closure throws, `with` poisons before rethrowing," ordinary stdlib code using features every Laterita user already has (generic methods, anonymous functional interfaces per FN-01, `try`/`catch`). The `@unsafe` surface of `Mutex<T>` shrinks accordingly: the lock primitive and `Cell<T>` access still need `@unsafe` methods, as in any safe-mutex implementation, but the poison-detection layer above no longer does.
 
 The closed-off patterns — passing a guard between methods, holding the lock across complex non-local control flow — were already weakened in Laterita by `@bound` lifetimes. Closing them off completely in exchange for removing language-level poisoning machinery is a net simplification.
 
@@ -741,19 +721,19 @@ So the rule is universal for user-facing `onDrop` bodies, with one privileged ex
 
 The model deliberately keeps the public surface to what Java already exposes plus `onDrop()`. Higher-level orchestration primitives (timeout-aware joining, fork-join helpers, structured task scopes) belong in libraries, not in the language spec. The minimal surface — `start()`, `interrupt()`, `join()`, `isInterrupted()`, plus `onDrop()` and `give(x);` — is sufficient to express every cancellation pattern. Library authors compose those into higher-level primitives as needed.
 
-### Why `synchronized` is removed
+### Why `synchronized` is removed and replaced by `ReentrantLock` + `Condition` (STD-10–STD-12)
 
-Java's `synchronized` keyword is dropped — both the method modifier and the `synchronized(obj) { ... }` block — and so are `Object.wait`/`notify`/`notifyAll`. Mutual exclusion is provided exclusively by `Mutex<T>` (and related stdlib primitives). Four reasons.
+Java's `synchronized` keyword is dropped — both the method modifier and the `synchronized(obj) { ... }` block — and so are `Object.wait` / `notify` / `notifyAll`. They are replaced by three stdlib types: `Mutex<T>` (STD-09) for data-bound locking, and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less and multi-condition cases. Four reasons motivate the removal.
 
-**The intrinsic monitor isn't free.** Java's `synchronized` works because every `Object` carries a hidden header word the JVM materializes into a monitor on first contention. In a JVM with a GC and an object header already present for other reasons, the marginal cost is small. In an AOT-compiled language with no GC (COMP-01), giving every allocation an intrinsic-lock slot is a per-object cost paid by code that never locks anything. Concentrating mutual exclusion in a stdlib type means only the objects that need a lock pay for one.
+**The intrinsic monitor isn't free.** Java's `synchronized` works because every `Object` carries a hidden header word the JVM materializes into a monitor on first contention. In an AOT-compiled language with no GC (COMP-01), giving every allocation an intrinsic-lock slot is a per-object cost paid by code that never locks anything. Concentrating mutual exclusion in a stdlib type means only the objects that actually need a lock pay for one.
 
 **It doesn't compose with ownership.** `synchronized` locks *beside* data: holding a monitor doesn't restrict what fields the compiler lets you touch, and unsynchronized access to the same fields elsewhere is a normal compile success. `Mutex<T>` is shaped the opposite way — the lock *owns* the data, and the only path to the protected state is through the `with`/`tryWith` closure (STD-09). In an ownership-typed language this is strictly the better primitive: the compiler proves that every access to the protected state happens under the lock, which `synchronized` cannot.
 
-**Reentrancy collides with borrow exclusivity.** Java monitors are reentrant; the same thread can re-enter its own `synchronized` block freely. `Mutex<T>` is not, because re-entering `with` from inside an outstanding `with` closure would mean handing out a second mutable borrow of the protected `T` while the first is still live, which MOVE-04 forbids. Preserving `synchronized` would mean either keeping reentrancy (and carving out a hole in MOVE-04) or silently making `synchronized` non-reentrant (and breaking the compatibility argument that justified keeping the keyword in the first place). Neither is acceptable; dropping the keyword is.
+**`synchronized` and `wait`/`notify` lower to runtime checks the surface hides.** Java's `synchronized(obj)` resolves the lock object dynamically, and `obj.wait()` requires holding `obj`'s monitor — a precondition checked at runtime via `IllegalMonitorStateException`. Both rely on a per-`Object` monitor field that the source surface never names. Laterita's stance is that the cost of an operation should be visible at the call site, and that safety checks should be static where possible. Preserving the keyword would keep the runtime-only flavor of these constraints; replacing it with explicit stdlib types puts the lock object, the guard's lifetime, and the condition pairing in the source.
 
-**`wait`/`notify` aren't separable from intrinsic monitors.** They are defined on `Object` and only meaningful while holding that object's monitor. Without intrinsic monitors there is nothing for them to attach to. They are also blocking interruption points (THR-04), which means they would have to participate in the cancellation model, and they would have to not appear in `onDrop` bodies (THR-05). All of that is better expressed by a stdlib condition-variable type sitting next to `Mutex<T>` when the need actually arises.
+**`wait`/`notify` aren't separable from intrinsic monitors.** They are defined on `Object` and only meaningful while holding that object's monitor. Without intrinsic monitors there is nothing for them to attach to. `Condition` (STD-12) is the dedicated stdlib home — bound explicitly to a `ReentrantLock`, with the same `await` / `signal` / `signalAll` surface and the same runtime "must hold the lock" precondition Java enforces, but with the lock object visible in the type.
 
-The migration cost is small: a `synchronized` method becomes a method on a class whose mutable state lives behind a `Mutex<T>` field; a `synchronized(obj)` block becomes a `mutex.with(t -> { ... })` call. The translation is mechanical and the result is more honest about what the lock protects.
+The migration cost is small. A `synchronized(obj) { body }` block becomes `try (var __ = lock.lock()) { body }` over a `ReentrantLock`, where `LockGuard.onDrop` (STD-11) guarantees release on every exit path (DROP-01); a `synchronized` method becomes a method whose body acquires a per-instance lock the same way. `obj.wait()` becomes `cond.await()` on a `Condition` paired with the same lock. The translation is mechanical, and `LockGuard`'s `onDrop` makes "forgot to unlock" structurally impossible — a real safety gain over Java's `try { lock.lock(); ... } finally { lock.unlock(); }` idiom. Where the protected state fits cleanly inside one value, the further migration to `Mutex<T>` is the recommended end state: it adds the compile-time guarantee that every access goes through the lock, which neither `synchronized` nor `ReentrantLock` can provide.
 
 ### Why mutex poisoning, no bypass (THR-10)
 
@@ -784,14 +764,6 @@ The whole point of the exercise. Java's GC papers over ownership. Removing it fo
 ### Why monomorphization (COMP-02)
 
 Without GC, generic dispatch through type erasure (Java's current model) has nowhere to put the type information at runtime. Monomorphization — emitting one specialized version of a generic per concrete type — is the proven solution from C++ templates and Rust. The cost is binary size; the gain is that generic code runs at the same speed as hand-specialized code.
-
-### Why compiler-inserted cleanup is invisible (COMP-03)
-
-The user shouldn't see drop calls in their source. This is what makes `onDrop()` feel like a language feature rather than a discipline. The compiler emits the calls, the user writes ordinary code.
-
-### Why drop flags are an optimization target (COMP-04)
-
-Most drop flags are statically determined — the compiler can prove a field is always moved by a certain point, or never moved. In those cases, the flag becomes a constant and gets optimized away. The runtime overhead in real code is near zero. This isn't critical to specify, but it matters for implementers worried that drop flags will slow things down. They won't, in practice.
 
 ### Why no reflection (COMP-05)
 

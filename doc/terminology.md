@@ -94,7 +94,7 @@ The reference laterita compiler. Accepts `.lat` and `.java` in a single compilat
 The span of time during which a binding is valid. A borrowed binding's lifetime is bounded by the binding it borrows from; it cannot outlive the referent. A compiler error to use a binding after the value it refers to is dropped. See `LIFE-01`.
 
 ### @local (annotation on types)
-A class or type annotated `@local` if its instances cannot safely cross thread boundaries. Instances of `@local` types cannot be moved across threads or captured by closures that might run on other threads. Examples: `Rc<T>`, `Cell<T>`. See `STD-07`.
+Declared on a class to express its relationship to threads. `@local` (or `@local(true)`) pins instances to a single thread — they cannot be moved across threads or captured by closures that might run on other threads. `@local(false)` asserts the inverse: the class encapsulates any transitively `@local` fields and is safe to use across threads. A class with `@local` fields must carry one form or the other explicitly. Examples: `Rc<T>`, `Cell<T>` are `@local`; `Arc<T>`, `Mutex<T>`, `Thread` are `@local(false)`. See `STD-07`.
 
 ### monomorphization
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
@@ -110,9 +110,6 @@ A borrow that grants both read and write access to the borrowed value. Only one 
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
-
-### @nonlocal (annotation)
-Used with `@unsafe` to explicitly declare that a class is safe to move across thread boundaries despite containing `@local` fields. The class internally synchronizes access. Applied to standard library types like `Arc<T>` and `Mutex<T>`. See `STD-07`.
 
 ### nullable type (also `T?` / `@Nullable T`)
 A type that admits both a value and the special value `null`. Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`). Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`, `LAT-01`.
@@ -143,6 +140,15 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 
 ### Rc<T>
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
+
+### ReentrantLock
+A reentrant mutual-exclusion primitive in `laterita.lang` that owns no data — the lock alone. Modelled on `java.util.concurrent.locks.ReentrantLock` but with safer surface: `lock()` returns a `LockGuard` whose `onDrop` releases the lock, so "forgot to unlock" is impossible. Use when the data being guarded does not fit `Mutex<T>` (state spread across several fields of `this`, or genuinely data-less coordination). Pair with `Condition` for `wait`/`signal` patterns. See `STD-10`.
+
+### LockGuard
+A value witnessing that the calling thread holds a `ReentrantLock`. Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`. Owns one acquisition; releases it via `onDrop` when its scope ends. The owning scope is therefore the critical section. See `STD-11`.
+
+### Condition
+A condition variable bound to a `ReentrantLock`, created by `lock.newCondition()`. `await` atomically releases the bound lock and blocks; on signal, re-acquires. `signal` / `signalAll` wake waiters. Names and shapes match `java.util.concurrent.locks.Condition`. The "caller must hold the bound lock" precondition is a runtime check — laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime. See `STD-12`.
 
 ### receiver mode (of a method)
 How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, BIND-05), or consuming (declared by `@consuming` on the method, BIND-07). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method).
@@ -263,7 +269,9 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `@mut class` vs. value class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes; Laterita opts *in* to mutable classes — the value class is the default |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |
-| `Mutex<T>` | `synchronized` block or `ReentrantLock` | Similar; closure-scoped API ensures lock release |
+| `Mutex<T>` | `synchronized` block on a protected field | Closure-scoped API ensures lock release and ties the lock to the protected value |
+| `ReentrantLock` + `LockGuard` | `java.util.concurrent.locks.ReentrantLock` | `LockGuard.onDrop` removes the manual unlock; reentrant; pair with `Condition` for wait/signal |
+| `Condition` | `java.util.concurrent.locks.Condition` or `Object.wait`/`notify` | Same API as `j.u.c.l.Condition`; runtime-checks the bound lock is held |
 | `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object; closer to C++ destructors than Java finalizers |
 | `drop` flag | N/A | Java doesn't track per-field move state |
 

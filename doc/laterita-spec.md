@@ -40,13 +40,13 @@ config = loadConfig();                   // ERROR — final locks reassignment
 
 ### BIND-02 — `@mut` is the unified mutability marker
 
-The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types; on a class declaration it marks a mutable surface (MUT-03). A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability. Java's `final` is orthogonal to `@mut` (BIND-01).
+The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types; on a class declaration it marks a mutable surface (MUT-03). A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability.
 
 ### BIND-03 — Field declarations follow binding rules
 
 Fields follow the same rules as locals. A field without `@mut` cannot be reassigned and cannot be mutated through. A field with `@mut` permits reassignment and mutation-through; a `@mut final` field permits mutation-through but not reassignment (BIND-01). A `@mut` field may be declared only in a class declared `@mut` (MUT-04).
 
-A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a field is rejected as redundant: every field — functional-interface or not — owns its value by default, and a functional interface's call mode is a property of its type, not of the field (CLO-03).
+A field is owned by default: a bare `T x;` declares storage that owns its value and is dropped with the enclosing instance (DROP-05). `@bound` on a field declares a borrow slot; an instance with any `@bound` field — including via `@bound`-substituted generic arguments (BIND-08) — can only be produced as a `@bound` value, with lifetime per LIFE-03. `@take` on a field is currently not supported: it would be redundant, since every field — functional-interface or not — owns its value by default, and a functional interface's call mode is a property of its type, not of the field (CLO-03).
 
 ```laterita
 @mut class User {
@@ -63,9 +63,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 ### BIND-05 — Methods declare mutation of `this` with `@mutating`
 
-A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot.
-
-`@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token avoids a collision: `@mut` already denotes binding mutability wherever it appears, including immediately before a return type (BIND-02), so reusing it in modifier position for receiver mutation would make `@mut R foo()` ambiguous between the two. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07).
+A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07).
 
 ```laterita
 @mut class Counter {
@@ -131,7 +129,7 @@ String greeting = sb.build();            // consumes sb; yields owned String
 
 `@bound` is admitted in a type argument. It composes cleanly: a class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-03 (and the idempotence rule of LIFE-06 when `@bound` stacks). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
 
-On a local binding, only `@mut` is admitted; `@take` and `@bound` are documentary at best (the local's owned-vs-borrow mode follows its RHS per MOVE-02, and any borrow-substituted return is already `@bound` at the producer side) and are rejected to keep one canonical form.
+On a local binding, only `@mut` is admitted; `@take` and `@bound` are currently not supported, to keep one canonical form (the local's owned-vs-borrow mode follows its RHS per MOVE-02, and any borrow-substituted return is already `@bound` at the producer side).
 
 ```laterita
 record Pair<L, R>(L left, R right) {}
@@ -191,11 +189,13 @@ A type that needs to mutate its contents through a bare receiver must hold those
 
 ### MUT-03 — `@mut` class declaration
 
-A class or abstract class may be declared `@mut` (`@mut class C`, `@mut abstract class C`). The marker declares that the class has a *mutable surface*: `@mut` fields may be declared in it (MUT-04) and `@mutating` methods are callable on its instances (MUT-06). A class not declared `@mut` is a *value class* — its instances expose no callable `@mutating` method and cannot be mutated through any binding.
+A class, abstract class, or interface may be declared `@mut` (`@mut class C`, `@mut abstract class C`, `@mut interface I`). The marker declares a *mutable surface*: `@mut` fields may be declared in it (MUT-04, classes only) and `@mutating` methods may be declared on it (BIND-05).
 
-`@mut` is rejected on a `record`: a record is a value class by construction. `@mut` is not applied to interfaces — an interface is mutability-neutral, may be implemented by both `@mut` classes and value classes, and may declare `@mutating` methods without itself carrying the marker.
+A type not declared `@mut` is a *value class*. No `@mutating` method may be declared on it, and a non-`@mut` interface may declare only methods that do not carry `@mutating`. Because no mutation is observable through a value-class binding, a copy of a value-class instance is interchangeable with a borrow under the same lifetime constraints — the compiler may substitute either form without changing the observable result. Value classes are non-`@local` (STD-07) unless they hold a transitively `@local` field (`Rc<T>`, `Cell<T>`); those primitives are themselves value classes whose hidden mutation makes them thread-affine.
 
-`Object` is `@mut`. `String` and `Number` — and therefore `Integer`, `Long`, `Float`, and the other boxed numeric types — are value classes.
+`@mut` is currently not supported on a `record` or an `enum`: both are value classes by construction.
+
+`Object` is `@mut`. `Number` is a value class; therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes.
 
 ### MUT-04 — `@mut` fields require a `@mut` class
 
@@ -232,9 +232,9 @@ fc.inc();       // ERROR: inc is @mutating; FrozenCounter is a value class (MUT-
 A `@mutating` method is callable on a receiver only when both conditions hold, each checked statically:
 
 - the receiver binding is `@mut` (BIND-06), and
-- the receiver's static type is a `@mut` class, or an interface.
+- the receiver's static type is a `@mut` class or a `@mut` interface.
 
-When the static type is an interface, the `@mut`-binding requirement together with MUT-07 already guarantees the receiver's dynamic class is `@mut`.
+When the static type is a `@mut` interface, the `@mut`-binding requirement together with MUT-07 already guarantees the receiver's dynamic class is `@mut`.
 
 A constructor is exempt: within a constructor, `@mutating` methods may be called on `this` and inherited `@mut` fields assigned, whatever the class kind. This is the initialization phase; the value-class freeze takes effect when the constructor returns. A value class therefore establishes its inherited mutable state during construction — typically by chaining `super(...)` — after which that state is permanently unreachable for mutation.
 
@@ -310,7 +310,7 @@ store(makeName(), list);    // OK: temporary moved in
 inspect(give(name));        // ERROR: inspect only borrows; do not transfer
 ```
 
-The laterita annotations on a parameter (`@take`, `@mut`, `@bound`) are not part of the Java overload signature, and neither are the method-level receiver-mode annotations (`@mutating`, BIND-05; `@consuming`, BIND-07). Two same-name methods that differ only in these annotations are a duplicate declaration and rejected by `javac`. An API that needs both shapes — borrow and consume on the same parameter slot, or shared-receiver and consuming-receiver on the same operation — uses distinct method names; the array surface follows this pattern with `splitAt` and `splitOff` (ARR-01).
+Laterita annotations are not part of the Java overload signature; two same-name methods differing only in `@take` / `@mut` / `@bound` / `@mutating` / `@consuming` are a duplicate declaration. APIs needing both borrow and consume shapes use distinct method names (e.g. `splitAt` / `splitOff`, ARR-01).
 
 ### MOVE-04 — Borrow exclusivity
 
@@ -743,7 +743,7 @@ When a binding of type `T?` leaves scope, the compiler-inserted `onDrop()` call 
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
-This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
+Java's exception syntax is preserved unchanged: `throws`, `try`/`catch`/`finally`, and the `Throwable` hierarchy. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
 
 ### EXC-02 — Cleanup runs on exception unwind
 
@@ -829,9 +829,9 @@ A functional-interface value has two independent properties.
 | `@consuming` | **once-call** | once; the call consumes the value |
 
 ```laterita
-interface MissResolver<T> { T resolve(String key); }            // shared-call
-interface HitListener     { @mutating void onHit(String key); } // mut-call
-interface Finalizer       { @consuming void run(); }              // once-call
+interface MissResolver<T> { T resolve(String key); }                // shared-call
+@mut interface HitListener  { @mutating void onHit(String key); }   // mut-call
+interface Finalizer         { @consuming void run(); }              // once-call
 ```
 
 **Binding mode** is a property of the *binding* that holds the value. A functional-interface binding follows the ordinary binding rules with no special case: a field owns its value by default (BIND-03); a parameter receives ownership with `@take` or a borrow otherwise (MOVE-03); `@mut` grants mutability (BIND-01); `@bound` marks a borrowed field or return (BIND-03, LIFE-02); a local follows its RHS (MOVE-02).
@@ -854,7 +854,7 @@ A functional-interface type used as a parameter or return combines modifiers fro
 | The binding holding the value | `@mut`, `@take`, `@bound`, ownership | BIND-01–08, MOVE-03, LIFE-02 |
 
 ```laterita
-interface F<T, R> { @mutating R apply(@take T); }   // call mode mut-call; SAM parameter @take T
+@mut interface F<T, R> { @mutating R apply(@take T); }   // call mode mut-call; SAM parameter @take T
 
 void process(@mut F<Job, Done> fn) { /* … */ }      // @mut: binding mode of the parameter
 ```
@@ -893,7 +893,7 @@ A less-demanding lambda satisfies a more-demanding type — a read lambda is a v
 Assignability concerns the value only. Whether the binding that receives the value can invoke its SAM is the separate question settled by CLO-03 (binding mode versus call mode).
 
 ```laterita
-interface Doubler { @mutating int apply(int x); }   // mut-call
+@mut interface Doubler { @mutating int apply(int x); }   // mut-call
 
 @mut int calls = 0;
 Doubler counting = (x) -> { calls = calls + 1; return x * 2; };  // mutate lambda → mut-call type: OK
@@ -937,9 +937,9 @@ A closure value carries the lifetimes of every binding it captures by borrow. Th
 
 ## 12. Strings
 
-### STR-01 — `String` is a normal class
+### STR-07 — `String` is a value class
 
-`String` is not final. Classes may extend it. The compiler must permit user-defined subclasses such as `class Email extends String`.
+`String` is a value class (MUT-03): no `@mutating` method exists or can be added by extension (MUT-05). A binding or field may still be declared `@mut String` — `@mut` then grants reassignment per BIND-03 — but no `String` method mutates in place. Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per binding
 
@@ -960,10 +960,6 @@ class String {
 
 Methods that produce new storage (e.g., `toUpperCase`, `concat`) return an owned `String` with no lifetime tie to the receiver.
 
-### STR-05 — User-defined subclasses are owned
-
-Subclasses of `String` declared by user code are owned. They cannot be returned as borrows into other storage.
-
 ### STR-06 — String literals are static borrows
 
 A string literal expression has type `@bound String` with a static lifetime. A binding initialized from a literal is borrowed; to obtain owned storage, call `.clone()` (OBJ-02).
@@ -978,27 +974,9 @@ void inspect(String s);                 // accepts a literal directly (borrow)
 void store(@take String s);             // requires `.clone()` on a literal
 ```
 
-### STR-07 — `String` is a value class
-
-`String` is a value class (MUT-03): it declares no `@mut` fields and no `@mutating` methods, and none can be introduced by extension (MUT-05). A binding or field may still be declared `@mut String` — `@mut` then grants reassignment per BIND-03 — but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`, which is `@mut`.
-
-```laterita
-@mut String s = readLine();       // declaration permitted: @mut grants reassignment
-s = readLine();                   // OK: reassigning a @mut binding
-// String is a value class — no in-place mutation method can exist
-```
-
 ### STR-08 — Default receiver mode of `String` methods is borrow
 
 Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`@consuming`) are rare and explicitly marked; per STR-07, no `@mutating` methods exist.
-
-```laterita
-class String {
-    @bound String trim();            // borrow this, return slice
-    String toUpperCase();            // borrow this, return owned
-    int length();                    // borrow this
-}
-```
 
 ---
 
@@ -1024,7 +1002,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 `splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
 
-`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. A different method name from `splitAt` is used because the receiver mode differs; two same-name methods that differed only in receiver-mode annotations would be a duplicate declaration (the annotations are not part of the overload signature per MOVE-03).
+`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows MOVE-03 (annotation-only differences are duplicate declarations).
 
 **Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 
@@ -1161,7 +1139,7 @@ A cycle of `Rc<T>` handles whose strong references form a closed loop is not rec
 
 ### STD-02 — `Arc<T>`
 
-The cross-thread analog of `Rc<T>`. Reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is non-`@local` per STD-07 and may be moved or borrowed across thread boundaries.
+The cross-thread analog of `Rc<T>`. Reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
 
 ### STD-03 — `WeakReference<T>`
 
@@ -1194,9 +1172,9 @@ The standard library declares `@local`:
 - `Cell<T>` (STD-05)
 - `Heap<T>` (STD-06)
 
-A class is `@local` by inference if any field in its transitive field hierarchy is of an `@local` type. A class is **non-local** otherwise. A class may be annotated `@local` to opt in despite having no `@local` fields (used for thread-affine resources whose affinity is not visible to the type system: OS handles, GPU contexts, etc.).
+A class with any transitively `@local` field must carry an explicit `@local` annotation — either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation). Failure to declare one is a compile error; the choice is the author's, not the compiler's. A class with no `@local` fields is non-`@local` by default; it may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
 
-A class may be annotated `@unsafe @nonlocal` to override inferred `@local`-ness despite containing `@local` fields. This declaration asserts that the class internally synchronizes access to those fields per UNS-04. The compiler does not verify the assertion. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are annotated `@unsafe @nonlocal`.
+`@local(false)` asserts that the class encapsulates its `@local` fields — the compiler does not verify the assertion. The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify (notably cross-thread move of `@local`). `@local(false)` lives on the class, `@unsafe` lives on individual methods — they are independent. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are declared `@local(false)`.
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a binding whose type is `@local`.
@@ -1232,7 +1210,35 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
-`Mutex<T>` is annotated `@unsafe @nonlocal` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) require `@unsafe`; the closure-scoped surface above is safe.
+`Mutex<T>` is declared `@local(false)` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods; the closure-scoped surface above is safe.
+
+### STD-10 — `ReentrantLock`
+
+A reentrant mutual-exclusion primitive without a protected value: the lock alone. Unlike `Mutex<T>` (STD-09), `ReentrantLock` owns no data, hands out no borrow of protected state, and may be re-entered by the same thread; the data it guards lives in fields of the surrounding object and is reached through ordinary `@mut` access (BIND-06). Acquisition returns a `LockGuard` (STD-11) whose `onDrop` releases the lock — forgetting to unlock is structurally impossible (DROP-01). Method names and shapes mirror `java.util.concurrent.locks.ReentrantLock`.
+
+**Constructor.** `new ReentrantLock()` — creates an unlocked, unfair lock. Fairness is not configurable on this surface.
+
+**Acquisition.** Names and signatures match `java.util.concurrent.locks.ReentrantLock`; each method returns a `@bound LockGuard` that the Java caller may ignore.
+- `@bound LockGuard lock()` — blocks until the lock is held; ignores interrupt. Reentrant: the same thread acquiring twice receives two guards; the lock is released only after both are dropped.
+- `@bound LockGuard lockInterruptibly() throws InterruptedException` — as `lock()` but is an interruption point (THR-04).
+- `@bound LockGuard? tryLock()` — non-blocking; returns the guard or `null` if another thread holds the lock.
+- `@bound LockGuard? tryLock(long timeout, TimeUnit unit) throws InterruptedException` — timed variant; interruption point.
+
+**Condition variables.** `@bound Condition newCondition()` — returns a fresh `Condition` (STD-12) bound to this lock. May be called any number of times; one lock can pair with multiple conditions (the classic bounded-buffer "not full" / "not empty" pattern).
+
+`ReentrantLock` is `@local(false)` per STD-07.
+
+### STD-11 — `LockGuard`
+
+A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` is `@local`; it cannot be borrowed across threads.
+
+`LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
+
+`LockGuard` exposes nothing beyond its existence and its `@internal` `onDrop` (DROP-06). Its only role is to make scope exit equivalent to lock release.
+
+### STD-12 — `Condition`
+
+As `java.util.concurrent.locks.Condition`, created by `ReentrantLock.newCondition()`.
 
 ---
 
@@ -1244,7 +1250,7 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 A `Thread`'s lifetime is bound to the owner of its reference: when the owning binding goes out of scope, `Thread.onDrop()` runs (DROP-03), interrupting the worker and waiting for it to terminate. Long-lived threads (server accept loops, background flushers) must be owned by bindings whose lifetime matches — typically a top-level binding in `main` or a field of an object that is itself owned at top level.
 
-`Thread` is annotated `@unsafe @nonlocal` per STD-07 and may be moved or borrowed across thread boundaries.
+`Thread` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
 
 ### THR-02 — Thread creation
 
@@ -1366,33 +1372,46 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ## 18. Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `ReentrantLock`, `LockGuard`, `Condition`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
-**Laterita introduces no new keywords.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; the five non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) are gated to `.lat` sources per §19. The annotations and stdlib static methods that carry laterita-specific semantics are:
+**Laterita requires no new keywords or constructs.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; some non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) and class extensions are gated to `.lat` sources per §19.
+Below is a list of laterita annotations. Combinations not listed are currently not supported and won't compile.
 
-| Concept | Form | Spec rule |
+| Annotation | `@Target` | Additional condition | Meaning | Spec rule |
+|---|---|---|---|---|
+| `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-03 |
+| `@mut` | `LOCAL_VARIABLE` | - | Local binding is mutable (reassignable; mutation-through when the type is `@mut`) | BIND-01 |
+| `@mut` | `FIELD` | only in a `@mut` class | Field is mutable | BIND-03, MUT-04 |
+| `@mut` | `PARAMETER` | on `@mut` types | Mutable parameter (mutable borrow) | MOVE-03 |
+| `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` binding | BIND-02, LIFE-02 |
+| `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | BIND-10 |
+| `@mutating` | `METHOD` | - | Method mutates its receiver | BIND-05 |
+| `@consuming` | `METHOD` | - | Method consumes its receiver | BIND-07 |
+| `@take` | `PARAMETER` | - | Parameter receives ownership | MOVE-03 |
+| `@bound` | `PARAMETER` | - | Borrow source | LIFE-02, BIND-03, BIND-08 |
+| `@bound` | `FIELD` | - | Field is only borrowed (default: owned) | LIFE-02, BIND-03, BIND-08 |
+| `@bound` | `METHOD` | non `void`, non `static` | return is borrowed from `this` | LIFE-02, BIND-03, BIND-08 |
+| `@bound` | `TYPE_USE` | in type arguments | Instances of this type argument are only borrowed to the declared instance | LIFE-02, BIND-03, BIND-08 |
+| `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
+| `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
+| `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
+| `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
+| `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
+
+The annotations are declared in `laterita.lang.annotation`. Stdlib static methods that carry laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier:
+
+| Intrinsic | Meaning | Spec rule |
 |---|---|---|
-| Mutable binding / field / parameter | `@mut` | BIND-02 |
-| Method mutates its receiver | `@mutating` | BIND-05 |
-| Class with a mutable surface | `@mut` on the class declaration | MUT-03 |
-| Owned parameter or LHS prefix | `@take` | MOVE-03 |
-| Method consumes its receiver | `@consuming` | BIND-07 |
-| Borrow source on parameter or return | `@bound` | LIFE-02 |
-| Compiler-only-callable method | `@internal` | DROP-06 |
-| Private unsafe method | `@unsafe` | UNS-01 |
-| Class is thread-affine | `@local` | STD-07 |
-| Class overrides inferred `local`-ness | `@nonlocal` (with `@unsafe`) | STD-07 |
-| Nullable type in `.java` mode | `@Nullable T` | NULL-02, COMP-06 |
-| Move at a use site (expression or statement) | `Intrinsics.give(x)` | MOVE-02, MOVE-08 |
-| Unreachable path | `Intrinsics.broken()` | UNR-01 |
+| `Intrinsics.give(x)` | Explicitly removes ownership from `x` | MOVE-02, MOVE-08 |
+| `Intrinsics.broken(reason?)` | Compilation fails if an execution path would lead to this statement | UNR-01 |
 
-The annotations are declared in `laterita.lang.annotation`. The static methods live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier. To `javac` they are ordinary annotations and ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
+To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
 Type inference uses Java's `var` keyword. In laterita mode every binding is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` locks reassignment on a `@mut` binding (BIND-01); it is otherwise redundant.
 
-Java's `synchronized` keyword is removed: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (and related stdlib types). The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided; condition-variable-style coordination is a stdlib concern.
+Java's `synchronized` keyword is not supported: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (STD-09) for data-bound locking and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less / multi-condition cases. The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided. Condition-variable-style coordination uses `Condition` (STD-12) bound to a `ReentrantLock`.
 
 Java's existing keywords and their meanings are otherwise preserved unless explicitly modified by this specification.
 
@@ -1404,13 +1423,15 @@ A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-c
 
 ### LAT-00 — The `.lat` surface is pure syntactic sugar
 
-Each form in this section is syntactic sugar: it has an exact `.java`-surface equivalent into which the compiler desugars it before any type, ownership, lifetime, or runtime analysis. No `.lat` form introduces type-system, ownership, or runtime semantics absent from the `.java` surface. Consequently:
+Forms LAT-01 through LAT-05 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it before any type, ownership, lifetime, or runtime analysis. Consequently:
 
-- Any `.lat` source can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
-- A program's meaning never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06).
-- A proposed `.lat` form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §18.
+- Any `.lat` source built from LAT-01–LAT-05 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
+- A program's meaning over the LAT-01–LAT-05 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06).
+- A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §18.
 
-The forms are listed below with their `.java`-surface desugarings.
+A `.lat` source may additionally use the structural extensions listed at the end of this section (currently STR-01 only) — rules whose meaning the core spec already defines but whose surface `javac` cannot parse or compile and which therefore cannot appear in `.java`. Such extensions are explicitly enumerated; the default assumption for new `.lat` forms remains "pure sugar".
+
+The sugar forms are listed below with their `.java`-surface desugarings.
 
 ### LAT-01 — `T?` nullable-type suffix
 
@@ -1445,3 +1466,11 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
 The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes.
+
+### Structural extensions
+
+Rules below appear in `.lat` because `javac` cannot parse or compile their source form. They have no desugaring to the `.java` surface; the `.java` analog is "this declaration is not expressible". The laterita compiler accepts them only in `.lat` units.
+
+### STR-01 — `String` is a normal class
+
+In `.lat`, `String` is not `final` and classes may extend it: `class Email extends String`. The platform's `java.lang.String` is declared `final`, so `javac` rejects this construct and it cannot appear in `.java`. Subclasses participate in the per-binding owned-vs-borrowed tracking (STR-02), inherit the value-class restrictions of STR-07 (no `@mutating` methods can be introduced), and are constrained by all other rules in §12.
