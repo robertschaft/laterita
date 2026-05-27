@@ -109,7 +109,7 @@ Declares that a method may mutate its receiver — reassign or mutate-through th
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `MOVE-03`, `MOVE-04`.
 
 ### Mutex<T>
-A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
+A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with(@mut @mutating (@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The action slot is mut-call so the closure may capture state by mutable borrow. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
 
 ### nullable type (also `T?` / `@Nullable T`)
 A type that admits both a value and the special value `null`. Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`). Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`, `LAT-01`.

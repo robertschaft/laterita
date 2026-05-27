@@ -1067,7 +1067,7 @@ public final class Arrays {
 
 ### ARR-03 — `MutableConsumer<T>`
 
-The written-out form of the anonymous functional type `@mutating (@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (the inline functional-interface spelling is `.lat`-only per LAT-05). The interface is declared `@mut` so its SAM may carry `@mutating` per MUT-03 / MUT-04.
+The written-out form of the anonymous functional type `@mutating (@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (the inline functional-interface spelling is `.lat`-only per LAT-05). The interface is declared `@mut` so its SAM may carry `@mutating` (MUT-03, BIND-05).
 
 ```java
 package laterita.lang;
@@ -1486,7 +1486,7 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
-The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling, including its optional `@mutating` / `@consuming` call-mode prefix. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes; the call-mode prefix attaches to the SAM as `@mutating` or `@consuming`, and the synthesized interface is declared `@mut` whenever the SAM is `@mutating` (per MUT-03 / MUT-04).
+The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling, including its optional `@mutating` / `@consuming` call-mode prefix. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes; the call-mode prefix attaches to the SAM as `@mutating` or `@consuming`, and the synthesized interface is declared `@mut` whenever the SAM is `@mutating` (per MUT-03).
 
 ### LAT-06 — Diamond `<>` is optional on constructor calls
 
