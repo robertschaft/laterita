@@ -1218,10 +1218,11 @@ A reentrant mutual-exclusion primitive without a protected value: the lock alone
 
 **Constructor.** `new ReentrantLock()` — creates an unlocked, unfair lock. Fairness is not configurable on this surface.
 
-**Acquisition.**
-- `@bound LockGuard lock() throws InterruptedException` — blocks until the lock is held, returns a guard bound to this lock. Reentrant: the same thread acquiring twice receives two guards; the lock is released only after both are dropped. Is an interruption point (THR-04).
-- `@bound LockGuard? tryLock() throws InterruptedException` — non-blocking; returns the guard or `null` if another thread holds the lock.
-- `@bound LockGuard? tryLock(long timeout, TimeUnit unit) throws InterruptedException` — timed variant.
+**Acquisition.** Names and signatures match `java.util.concurrent.locks.ReentrantLock`; each method returns a `@bound LockGuard` that the Java caller may ignore.
+- `@bound LockGuard lock()` — blocks until the lock is held; ignores interrupt. Reentrant: the same thread acquiring twice receives two guards; the lock is released only after both are dropped.
+- `@bound LockGuard lockInterruptibly() throws InterruptedException` — as `lock()` but is an interruption point (THR-04).
+- `@bound LockGuard? tryLock()` — non-blocking; returns the guard or `null` if another thread holds the lock.
+- `@bound LockGuard? tryLock(long timeout, TimeUnit unit) throws InterruptedException` — timed variant; interruption point.
 
 **Condition variables.** `@bound Condition newCondition()` — returns a fresh `Condition` (STD-12) bound to this lock. May be called any number of times; one lock can pair with multiple conditions (the classic bounded-buffer "not full" / "not empty" pattern).
 
@@ -1229,7 +1230,7 @@ A reentrant mutual-exclusion primitive without a protected value: the lock alone
 
 ### STD-11 — `LockGuard`
 
-A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` is `@local`; it cannot be borrowed across threads.
+A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` is `@local`; it cannot be borrowed across threads.
 
 `LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
 

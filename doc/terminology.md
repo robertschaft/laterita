@@ -145,10 +145,10 @@ A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryW
 A reference-counted smart pointer for single-threaded shared ownership. Like Java's garbage collector but manual: each holder holds a reference, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero. Single-threaded only; use `Arc<T>` for cross-thread sharing. See `STD-01`.
 
 ### ReentrantLock
-A reentrant mutual-exclusion primitive in `laterita.lang` that owns no data — the lock alone. Modelled on `java.util.concurrent.locks.ReentrantLock` but with safer surface: `acquire()` returns a `LockGuard` whose `onDrop` releases the lock, so "forgot to unlock" is impossible. Use when the data being guarded does not fit `Mutex<T>` (state spread across several fields of `this`, or genuinely data-less coordination). Pair with `Condition` for `wait`/`signal` patterns. See `STD-10`.
+A reentrant mutual-exclusion primitive in `laterita.lang` that owns no data — the lock alone. Modelled on `java.util.concurrent.locks.ReentrantLock` but with safer surface: `lock()` returns a `LockGuard` whose `onDrop` releases the lock, so "forgot to unlock" is impossible. Use when the data being guarded does not fit `Mutex<T>` (state spread across several fields of `this`, or genuinely data-less coordination). Pair with `Condition` for `wait`/`signal` patterns. See `STD-10`.
 
 ### LockGuard
-A value witnessing that the calling thread holds a `ReentrantLock`. Returned by `ReentrantLock.acquire` / `acquireInterruptibly` / `tryAcquire`. Owns one acquisition; releases it via `onDrop` when its scope ends. The owning scope is therefore the critical section. See `STD-11`.
+A value witnessing that the calling thread holds a `ReentrantLock`. Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`. Owns one acquisition; releases it via `onDrop` when its scope ends. The owning scope is therefore the critical section. See `STD-11`.
 
 ### Condition
 A condition variable bound to a `ReentrantLock`, created by `lock.newCondition()`. `await` atomically releases the bound lock and blocks; on signal, re-acquires. `signal` / `signalAll` wake waiters. Names and shapes match `java.util.concurrent.locks.Condition`. The "caller must hold the bound lock" precondition is a runtime check — laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime. See `STD-12`.
