@@ -67,7 +67,7 @@ Only one mutable borrow may exist at a time. No other borrows (mutable or immuta
 A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `BIND-03`.
 
 ### functional interface (also "function type")
-An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`, legal only as a parameter type or a return type (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
+An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`, legal only as a parameter type or a return type (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode — its call mode (CLO-03). Laterita treats nominal and anonymous forms uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is the `@consuming` annotation on the method (BIND-07).
@@ -223,7 +223,7 @@ A non-owning reference to a value managed by `Rc<T>` or `Arc<T>`. The weak refer
 |----------|---------|
 | `T`, `U`, etc. | Type variable; represents any type |
 | `T?` | Nullable version of type `T` (`.lat` form; `.java` writes `@Nullable T` per LAT-01) |
-| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R` (`.lat`-only per LAT-05) |
+| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R`; shared-call by default. Prefix with `@mutating` or `@consuming` for mut-call / once-call. (`.lat`-only per LAT-05) |
 | `binding:` or `method:` or `parameter:` | Marks the following code snippet's scope (e.g., method signature, local binding) |
 
 ### Spec Code Prefixes

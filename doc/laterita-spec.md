@@ -774,27 +774,33 @@ Laterita extends Java's *functional interface* concept (an interface with one ab
 An anonymous functional interface is written
 
 ```
-(P1, P2, …, Pn) -> R
+[ @mutating | @consuming ] (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The form is anonymous and structural: no named interface need be declared.
+where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The optional `@mutating` or `@consuming` prefix declares the SAM's receiver mode — the FI's *call mode* per CLO-03. With no prefix, the SAM has a bare receiver (shared-call); `@mutating` makes the SAM `@mutating` (mut-call); `@consuming` makes the SAM `@consuming` (once-call). The two prefixes are mutually exclusive on a single anonymous form: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) is expressible only through a nominal interface. The form is anonymous and structural: no named interface need be declared.
 
 The single abstract method of an anonymous functional interface is named `apply`. A value `f` of such a type is invoked through it — `f.apply(a1, …, an)`. Laterita has no call-on-binding syntax: a functional-interface value is an object, invoked through its SAM exactly as in Java.
 
 An anonymous functional interface type expression may be written only in two positions: as a parameter type or as a return type. It may not be written as the declared type of a field, the declared type of a local binding, or a generic type argument — a function value held in any of those positions uses a nominal functional interface. The restriction governs the written type expression, not value flow: a `var` local may still hold an anonymous functional-interface value whose type is inferred, such as the result of a closure-returning call.
 
 ```laterita
-(int, int) -> int                 // owned-int args, owned-int return
-(@take String, @mut StringBuilder) -> String
-(@bound Record, RecordKey) -> Field
-() -> void
+(int, int) -> int                            // shared-call; owned-int args, owned-int return
+@mutating (@mut StringBuilder) -> void       // mut-call; mutates argument; mutate captures allowed
+@consuming (@take Result) -> void            // once-call; called at most once; consume captures allowed
+(@take String, @mut StringBuilder) -> String // shared-call
+(@bound Record, RecordKey) -> Field          // shared-call
+() -> void                                   // shared-call
 ```
+
+The `@mutating` and `@consuming` prefixes correspond to Rust's `FnMut` and `FnOnce` traits; the bare form is Rust's `Fn`. CLO-04's containment rule preserves the `Fn ⊆ FnMut ⊆ FnOnce` ordering — a less-demanding lambda fits a more-demanding type.
 
 A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (LAT-05).
 
 ### FN-02 — Identity
 
-Two anonymous functional interfaces are identical iff their arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
+Two anonymous functional interfaces are identical iff their call mode (per FN-01's optional prefix), arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
+
+Assignment of an FI *value* (not a freshly-constructed lambda) from one FI type to another is governed by CLO-04's containment rule: a value of an FI type with call mode `M1` flows into a slot of FI type with call mode `M2` when `M1 ≤ M2` under the order `shared-call < mut-call < once-call`, and the parameter modes, return type, and `@bound` relationships agree. The types remain distinct, but value flow across them follows the same `Fn ⊆ FnMut ⊆ FnOnce` containment that governs lambdas.
 
 ### FN-03 — Anonymous synthesis per construction
 
@@ -871,7 +877,17 @@ A function may return a functional-interface value. `@mut` written before a retu
 
 A once-call functional-interface value cannot be a `@bound` source: the call that would produce the return consumes it.
 
-The anonymous form `(P1, …, Pn) -> R` (FN-01) denotes a shared-call functional interface. A spelling for mut-call and once-call anonymous forms is unresolved (OQ-29); until it is resolved, a callback that must be mut-call or once-call uses a nominal functional interface whose SAM carries the receiver mode.
+The anonymous form spells call mode with an optional `@mutating` or `@consuming` prefix per FN-01: bare `(P) -> R` is shared-call, `@mutating (P) -> R` is mut-call, `@consuming (P) -> R` is once-call. The binding-mode annotation on the parameter or field holding the value is independent — invoking the SAM requires the binding mode that BIND-06 / BIND-07 demand of the SAM's receiver mode (bare → any; `@mutating` → `@mut`; `@consuming` → owned, i.e. `@take` on a parameter).
+
+```laterita
+void process(@mut @mutating (Event) -> void handler) {     // mut-call slot, mut binding
+    handler.apply(e);                                       // OK: @mut binding + @mutating SAM
+}
+
+void fireOnce(@take @consuming (Event) -> void handler) {  // once-call slot, owned binding
+    handler.apply(e);                                       // OK: owned + @consuming SAM
+}
+```
 
 ### CLO-04 — Lambdas are values of functional interfaces
 
@@ -905,29 +921,31 @@ Doubler pure     = (x) -> x * 2;                                 // read lambda 
 
 ### CLO-05 — Override variance for FI parameters
 
-A functional-interface parameter is an ordinary parameter and MOVE-10 (override variance) applies, with one inversion noted below.
+A functional-interface parameter has two annotation axes — the *call-mode prefix* on the FI type (FN-01: bare / `@mutating` / `@consuming`) and the *binding-mode* annotations on the parameter (`@take`, `@mut`, `@bound`). Each is governed by its own variance rule.
 
-**Override variance — inverted for slot modes.** MOVE-10 says `@mut` on an ordinary parameter is contravariant: an override may *drop* `@mut` because the override demands less of the caller. For an FI slot the relationship is reversed — an override may **add** `@mut` to a bare slot, but not remove it. The reason: a `@mut` slot accepts strictly more closures (read and mutate) than a bare slot (read only), and an override must continue to accept every closure the inherited declaration accepted. The `@take` axis remains invariant per MOVE-10: an override that flipped `@take` on the slot would either refuse closures the inherited contract accepted or accept closures the inherited contract rejected.
+**Call-mode prefix — covariant in strength.** An override may *strengthen* the call mode of an FI slot (bare → `@mutating` → `@consuming`) but never *weaken* it. The reason: a stronger call mode accepts strictly more closures (CLO-04: shared-call accepts read only; mut-call adds mutate; once-call adds consume), and an override must continue to accept every closure the inherited declaration accepted. Strengthening the slot's call mode broadens the admissible-closure set; weakening it would reject closures the inherited contract said it would accept.
+
+**Binding-mode axes — same as MOVE-10.** `@mut` on the parameter is contravariant (override may drop, not add); `@take` is invariant; `@bound` follows the same rules as on any parameter. These govern how the function holds the FI value, not which closures fit the slot — that is the call-mode axis above.
 
 ```laterita
 interface Source<T> {
-    void forEach((T) -> void fn);                           // base: bare slot
+    void forEach((T) -> void fn);                                 // base: shared-call slot
 }
 
 class Tracing<T> implements Source<T> {
-    @Override void forEach(@mut (T) -> void fn) { ... }     // OK: bare → @mut accepts strictly more
+    @Override void forEach(@mut @mutating (T) -> void fn) { ... } // OK: shared-call → mut-call accepts strictly more
 }
 
 interface MutSource<T> {
-    void forEach(@mut (T) -> void fn);                      // base: @mut slot
+    void forEach(@mut @mutating (T) -> void fn);                  // base: mut-call slot
 }
 
 class Bare<T> implements MutSource<T> {
-    @Override void forEach((T) -> void fn) { ... }          // ERROR: @mut → bare rejects mutate closures
+    @Override void forEach((T) -> void fn) { ... }                // ERROR: mut-call → shared-call rejects mutate closures
 }
 ```
 
-The SAM type itself is invariant under override (FN-02): two anonymous FIs whose parameter or return modes differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
+The SAM type itself is invariant under override (FN-02): two anonymous FIs whose parameter modes or return type differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
 
 ### CLO-06 — Capture lifetimes propagate
 
@@ -991,10 +1009,10 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
     @mutating @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(int mid);
 
     @mutating void forEachChunk(int chunkSize,
-            @mut (@mut T[]) -> void body);
+            @mut @mutating (@mut T[]) -> void body);
 
     @mutating void forEachChunkExact(int chunkSize,
-            @mut (@mut T[]) -> void body);
+            @mut @mutating (@mut T[]) -> void body);
 
     @consuming Pair<T[], T[]> splitOff(int mid);
 }
@@ -1049,14 +1067,15 @@ public final class Arrays {
 
 ### ARR-03 — `MutableConsumer<T>`
 
-The written-out form of the anonymous functional type `(@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (the inline functional-interface spelling is `.lat`-only per LAT-05).
+The written-out form of the anonymous functional type `@mutating (@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (the inline functional-interface spelling is `.lat`-only per LAT-05). The interface is declared `@mut` so its SAM may carry `@mutating` per MUT-03 / MUT-04.
 
 ```java
 package laterita.lang;
 
 @FunctionalInterface
+@mut
 public interface MutableConsumer<T> {
-    void accept(@mut T data);
+    @mutating void accept(@mut T data);
 }
 ```
 
@@ -1200,7 +1219,7 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 **Constructor.** `new Mutex<T>(@take T value)` — wraps `value`, initially unlocked and unpoisoned.
 
-**Scoped acquisition.** `<R> R with((@bound @mut T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result. `<R> Optional<R> tryWith((@bound @mut T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped. The protected `T` is reachable only as the parameter of `action`; there is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
+**Scoped acquisition.** `<R> R with(@mut @mutating (@bound @mut T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result. `<R> Optional<R> tryWith(@mut @mutating (@bound @mut T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped. The action slot is mut-call (FN-01 `@mutating` prefix) so the closure may capture state by mutable borrow — the typical critical-section shape; CLO-04's containment also admits read-only closures. The protected `T` is reachable only as the parameter of `action`; there is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
 **Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock. `tryWith` throws `PoisonedException` only.
 
@@ -1388,7 +1407,9 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` binding | BIND-02, LIFE-02 |
 | `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | BIND-10 |
 | `@mutating` | `METHOD` | - | Method mutates its receiver | BIND-05 |
+| `@mutating` | `TYPE_USE` | only on an anonymous FI type expression (FN-01) | Declares the FI's SAM is `@mutating` (mut-call) | FN-01, CLO-03 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver | BIND-07 |
+| `@consuming` | `TYPE_USE` | only on an anonymous FI type expression (FN-01) | Declares the FI's SAM is `@consuming` (once-call) | FN-01, CLO-03 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | MOVE-03 |
 | `@bound` | `PARAMETER` | - | Borrow source | LIFE-02, BIND-03, BIND-08 |
 | `@bound` | `FIELD` | - | Field is only borrowed (default: owned) | LIFE-02, BIND-03, BIND-08 |
@@ -1465,7 +1486,7 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
-The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes.
+The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling, including its optional `@mutating` / `@consuming` call-mode prefix. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes; the call-mode prefix attaches to the SAM as `@mutating` or `@consuming`, and the synthesized interface is declared `@mut` whenever the SAM is `@mutating` (per MUT-03 / MUT-04).
 
 ### LAT-06 — Diamond `<>` is optional on constructor calls
 

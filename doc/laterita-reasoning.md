@@ -435,6 +435,23 @@ Admitting the anonymous form in field, local-binding, and generic-argument posit
 
 The restriction governs the written type expression, not value flow. A `var` local may still hold an anonymous-FI value by inference, because no type is spelled there; what is forbidden is writing the anonymous spelling in a position where a future reader must decode it without the call-site context that makes it legible.
 
+### Why the anonymous form spells call mode with `@mutating` / `@consuming` prefix (FN-01)
+
+The SAM of an anonymous FI must carry the same three receiver modes that nominal SAMs do (CLO-03: shared-call / mut-call / once-call), or the anonymous form is restricted to shared-call and every mut-call or once-call callback forces the caller back to a nominal interface — reintroducing the interface-name pressure FN-01 exists to remove. The question is only *how* to spell the mode on a nameless type.
+
+A prefix on the type expression — `@mutating (P) -> R`, `@consuming (P) -> R` — wins over the alternatives. The annotations are not new vocabulary: `@mutating` (BIND-05) and `@consuming` (BIND-07) already declare exactly these receiver modes on regular methods. The anonymous form simply attaches them to the SAM that the type expression denotes, and the desugaring (LAT-05) places them on the synthesized SAM declaration unchanged. No new annotation, no new keyword, and the `.java` mirror — a nominal interface with the same annotation on its SAM — reads identically.
+
+The Rust correspondence is direct: bare `(P) -> R` is `Fn`, `@mutating (P) -> R` is `FnMut`, `@consuming (P) -> R` is `FnOnce`, and CLO-04's containment carries the `Fn ⊆ FnMut ⊆ FnOnce` ordering across both surfaces. Java developers reading the form learn one rule — "the prefix is the SAM's receiver mode" — and the rest follows from receiver-mode rules they already know.
+
+Alternatives evaluated and rejected:
+
+- **A trailing marker on the arrow** (`(P) -mut> R`, `(P) -once> R`). Introduces new arrow forms with no precedent in either Java or Rust; obscures the connection to `@mutating` / `@consuming` on regular methods; doubles the grammar surface for the FI arrow.
+- **Encoding mode in the binding annotations** (treat `@mut (P) -> R` as mut-call). Conflates the binding's mutability with the SAM's receiver mode — two genuinely separate axes (CLO-03). The conflation makes owned, multi-call FI bindings inexpressible, and forces an inversion of MOVE-10's contravariance for the FI slot's `@mut` — an inversion that is an artifact of treating one annotation as two.
+- **Inverting the default to once-call** so that `(P) -> R` accepts any closure and stricter modes are opt-in. The inversion sounds appealing for the "I forgot to annotate" worst case, but it pessimizes the dominant case (read callbacks invocable many times), forces an annotation on every `forEach`-shaped API in the language, and breaks the example shape `<A, B, R> @bound (B) -> R partial(...)` in CLO-03 — which borrows a captured closure and calls it repeatedly, only sound when the closure is shared-call. Defaulting to shared-call matches Java's prior expectation and Rust's `Fn` semantics.
+- **Restricting the anonymous form to shared-call permanently**, leaving mut-call and once-call to nominal interfaces. This was the position before this rule resolved; it leaves ARR-01's chunk callback (mutate-mode by design) and `Mutex.with`'s critical-section closure (typically mutate-mode) requiring nominal interfaces purely because they cannot be shared-call. The interface-name pressure FN-01 exists to remove returns, just for the call-mode axis.
+
+The prefix is mutually exclusive between `@mutating` and `@consuming` on a single anonymous form: a SAM that is both is rare (a one-shot mutator with no further calls) and stays expressible through a nominal interface — there is no inline spelling for `@mutating @consuming`. The two together do not appear in the surveyed Rust ecosystem either: `FnOnce` already covers "called at most once" without a separate "mutating once" variant.
+
 ### Why FN covers type syntax, identity, and synthesis — but not call or binding behavior
 
 FN-01 through FN-03 address the type-system properties of anonymous functional interfaces: what the type expression means (FN-01), when two such types are the same (FN-02), and how values of that type are materialized (FN-03). These rules exist independent of how the value is used through a binding.
@@ -469,13 +486,15 @@ A lambda literal is one way to construct a value of a functional-interface type.
 
 Making lambdas the *only* construction (collapsing FN and CLO into one section) is rejected. Method references are the immediate counter-example: `String::length` produces a functional-interface value with no captures and no lambda body. Future constructions (curried partial applications, function composition results) would also be functional-interface values without being lambdas. Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the type-system surface stable as more value-constructions appear.
 
-### Why slot-mode override variance is inverted (CLO-05)
+### Why call-mode override variance is covariant in strength (CLO-05)
 
-MOVE-10 makes `@mut` contravariant for ordinary parameters: an override may *drop* `@mut`. CLO-05 inverts this for the slot mode of a functional-interface parameter: an override may *add* `@mut`, never drop it. The two rules look opposite but are the same principle expressed in different domains — *an override must continue to accept every value the inherited declaration accepted.*
+MOVE-10 makes `@mut` contravariant for ordinary parameters: an override may *drop* `@mut` because the override demands less of the caller. CLO-05 carries the same principle to the call-mode axis of an FI slot, but in the *opposite syntactic direction*: an override may *strengthen* the call mode (bare → `@mutating` → `@consuming`), never weaken it. Both rules are the same principle — *an override must continue to accept every value the inherited declaration accepted* — applied to two different axes.
 
-For an ordinary parameter `mut Buf b`, the modifier names a capability the function reserves over the caller's value. Dropping `@mut` reduces what the function will do with `b`; callers with mutable borrow sources continue to work because mutable degrades to immutable on demand. Contravariance is sound.
+For an ordinary parameter `@mut Buf b`, `@mut` names a capability the function reserves over the caller's value. Dropping it reduces what the function will do; callers continue to work because a mutable borrow degrades to immutable on demand. Contravariance is sound.
 
-For a functional-interface slot `mut (T) -> R fn`, the modifier still names the slot's invocation capability — but that capability *defines what closures may be assigned into the slot* (CLO-04). A `@mut` slot accepts read **and** mutate closures; a bare slot accepts only read. Dropping `@mut` shrinks the admissible-closure set, breaking callers who satisfied the inherited contract with a mutate closure. The safe direction is to add `@mut`, broadening the set.
+For an FI slot, the call-mode prefix on the type determines which closures fit (CLO-04). A shared-call slot accepts read closures only; a mut-call slot adds mutate; a once-call slot adds consume. *Strengthening* the slot's call mode broadens the admissible-closure set; weakening it would reject closures the inherited contract said it would accept. So overrides may strengthen the call mode, never weaken it.
+
+The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries acceptance-set semantics, and the binding-mode annotations on the parameter (`@mut`, `@take`, `@bound`) carry MOVE-10 semantics — `@mut` contravariant, `@take` invariant. Acceptance-set widening lives where it belongs (on the type expression that determines acceptance), MOVE-10's direction lives where it belongs (on the parameter annotation), and each axis follows the rule appropriate to its meaning with no inversion to memorize.
 
 ### Why closures carry capture lifetimes (CLO-06)
 
