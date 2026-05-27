@@ -42,6 +42,12 @@ The five `.lat` forms are confined to §19, and §19 carries a hard constraint: 
 
 The constraint also resolves where a future feature belongs. A proposed addition that is genuinely just notation — a shorter spelling for something the annotation-and-intrinsic surface (§18) already expresses — goes in §19. A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar; it belongs in §1–18, expressed through annotations or intrinsics so that the `.java` surface carries it too. Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise — that the surfaces are interchangeable — would quietly fail.
 
+### Why `.lat` drops the diamond on constructor calls (LAT-06)
+
+Java requires the diamond `<>` on a parameterized constructor call because the diamond-less form `new Pair(...)` is the *raw-type* constructor, preserved from before Java 5. The diamond is the syntactic marker that distinguishes "infer the type arguments" from "construct the raw type."
+
+Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02), and the absence of reflection (COMP-05) leave the escape hatch with no purpose. The diamond therefore carries no information in `.lat` — its absence cannot mean "raw type" because raw types are not a surface form. Requiring it would pay Java's backward-compatibility tax for a constraint Laterita does not share. LAT-06 makes it optional; the `.java` mirror inserts it back, because `.java` must remain `javac`-parseable (COMP-06) and the diamond-less form there is the raw-type constructor.
+
 ---
 
 ## Bindings (BIND-01 through BIND-07)
