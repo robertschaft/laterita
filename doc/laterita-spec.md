@@ -1139,7 +1139,7 @@ A cycle of `Rc<T>` handles whose strong references form a closed loop is not rec
 
 ### STD-02 — `Arc<T>`
 
-The cross-thread analog of `Rc<T>`. Reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@nonlocal` per STD-07 and may be moved or borrowed across thread boundaries.
+The cross-thread analog of `Rc<T>`. Reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@threadsafe` per STD-07 and may be moved or borrowed across thread boundaries.
 
 ### STD-03 — `WeakReference<T>`
 
@@ -1172,9 +1172,9 @@ The standard library declares `@local`:
 - `Cell<T>` (STD-05)
 - `Heap<T>` (STD-06)
 
-A class with any transitively `@local` field must be declared either `@local` or `@nonlocal`. Failure to do so is a compile error — the choice is the author's, not the compiler's. A class with no `@local` fields is non-`@local` by default; it may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
+A class with any transitively `@local` field must be declared either `@local` or `@threadsafe`. Failure to do so is a compile error — the choice is the author's, not the compiler's. A class with no `@local` fields is non-`@local` by default; it may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
 
-`@nonlocal` asserts that the class encapsulates its `@local` fields — the compiler does not verify the assertion. The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify (notably cross-thread move of `@local`). The two annotations are independent: `@nonlocal` lives on the class, `@unsafe` lives on individual methods. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are declared `@nonlocal`.
+`@threadsafe` asserts that the class encapsulates its `@local` fields — the compiler does not verify the assertion. The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify (notably cross-thread move of `@local`). The two annotations are independent: `@threadsafe` lives on the class, `@unsafe` lives on individual methods. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are declared `@threadsafe`.
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a binding whose type is `@local`.
@@ -1210,7 +1210,7 @@ A mutual-exclusion primitive wrapping an owned value. Access to the protected va
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
-`Mutex<T>` is declared `@nonlocal` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods; the closure-scoped surface above is safe.
+`Mutex<T>` is declared `@threadsafe` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods; the closure-scoped surface above is safe.
 
 ### STD-10 — `ReentrantLock`
 
@@ -1226,7 +1226,7 @@ A reentrant mutual-exclusion primitive without a protected value: the lock alone
 
 **Condition variables.** `@bound Condition newCondition()` — returns a fresh `Condition` (STD-12) bound to this lock. May be called any number of times; one lock can pair with multiple conditions (the classic bounded-buffer "not full" / "not empty" pattern).
 
-`ReentrantLock` is `@nonlocal` per STD-07.
+`ReentrantLock` is `@threadsafe` per STD-07.
 
 ### STD-11 — `LockGuard`
 
@@ -1250,7 +1250,7 @@ As `java.util.concurrent.locks.Condition`, created by `ReentrantLock.newConditio
 
 A `Thread`'s lifetime is bound to the owner of its reference: when the owning binding goes out of scope, `Thread.onDrop()` runs (DROP-03), interrupting the worker and waiting for it to terminate. Long-lived threads (server accept loops, background flushers) must be owned by bindings whose lifetime matches — typically a top-level binding in `main` or a field of an object that is itself owned at top level.
 
-`Thread` is declared `@nonlocal` per STD-07 and may be moved or borrowed across thread boundaries.
+`Thread` is declared `@threadsafe` per STD-07 and may be moved or borrowed across thread boundaries.
 
 ### THR-02 — Thread creation
 
@@ -1396,8 +1396,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@bound` | `TYPE_USE` | in type arguments | Instances of this type argument are only borrowed to the declared instance | LIFE-02, BIND-03, BIND-08 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
-| `@local` | `TYPE` | not with `@nonlocal` | Class instances are thread-affine | STD-07 |
-| `@nonlocal` | `TYPE` | class contains `@local` fields | Asserts class encapsulates its `@local` fields; class is thread-safe | STD-07 |
+| `@local` | `TYPE` | not with `@threadsafe` | Class instances are thread-affine | STD-07 |
+| `@threadsafe` | `TYPE` | class contains `@local` fields | Asserts class encapsulates its `@local` fields; class is thread-safe | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 
 The annotations are declared in `laterita.lang.annotation`. Stdlib static methods that carry laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier:

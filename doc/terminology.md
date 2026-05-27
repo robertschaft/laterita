@@ -111,9 +111,6 @@ A borrow that grants both read and write access to the borrowed value. Only one 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
 
-### @nonlocal (annotation)
-Used with `@unsafe` to explicitly declare that a class is safe to move across thread boundaries despite containing `@local` fields. The class internally synchronizes access. Applied to standard library types like `Arc<T>` and `Mutex<T>`. See `STD-07`.
-
 ### nullable type (also `T?` / `@Nullable T`)
 A type that admits both a value and the special value `null`. Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`). Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`, `LAT-01`.
 
@@ -194,6 +191,9 @@ Declares that a parameter receives ownership of its argument (consumed upon call
 
 ### thread-affine (also "thread-local")
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
+
+### @threadsafe (annotation)
+Declared on a class to assert that the class is safe to use across threads despite containing transitively `@local` fields. The class is responsible for encapsulating those fields; access to them goes through `@unsafe` methods (UNS-01). The compiler does not verify the encapsulation claim. Applied to standard library types like `Arc<T>`, `Mutex<T>`, and `Thread`. See `STD-07`.
 
 ### transitivity (of mutability)
 Immutability propagates through a binding. A bare (immutable) binding cannot call `@mutating` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
