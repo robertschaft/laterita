@@ -40,7 +40,7 @@ config = loadConfig();                   // ERROR — final locks reassignment
 
 ### BIND-02 — `@mut` is the unified mutability marker
 
-The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types; on a class declaration it marks a mutable surface (MUT-03). A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability. Java's `final` is orthogonal to `@mut` (BIND-01).
+The annotation `@mut` denotes mutability in every binding position it appears: local bindings, fields, parameters, and return types; on a class declaration it marks a mutable surface (MUT-03). A method declares mutation of its receiver with the companion annotation `@mutating` (BIND-05). These two annotations are the only surface forms for mutability.
 
 ### BIND-03 — Field declarations follow binding rules
 
@@ -63,9 +63,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 ### BIND-05 — Methods declare mutation of `this` with `@mutating`
 
-A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot.
-
-`@mutating` is a declaration annotation on the method, distinct from `@mut`. Keeping it a separate token avoids a collision: `@mut` already denotes binding mutability wherever it appears, including immediately before a return type (BIND-02), so reusing it in modifier position for receiver mutation would make `@mut R foo()` ambiguous between the two. `@mutating` is a visibility-like predicate rather than a behavioral one: by BIND-06, a `@mutating` method is only callable on receivers whose binding is itself `@mut`, so the marker narrows the method's visible API surface to mutable receivers. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07).
+A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07).
 
 ```laterita
 @mut class Counter {
@@ -191,7 +189,9 @@ A type that needs to mutate its contents through a bare receiver must hold those
 
 ### MUT-03 — `@mut` class declaration
 
-A class, abstract class, or interface may be declared `@mut` (`@mut class C`, `@mut abstract class C`, `@mut interface I`). The marker declares that the type has a *mutable surface*: `@mut` fields may be declared in it (MUT-04, classes only) and `@mutating` methods may be declared on it (BIND-05). A type not declared `@mut` is a *value type* — its instances expose no callable `@mutating` method and cannot be mutated through any binding; a non-`@mut` interface may declare only methods that do not carry `@mutating`. Both `@mut` and non-`@mut` interfaces may be implemented by either `@mut` classes or value classes.
+A class, abstract class, or interface may be declared `@mut` (`@mut class C`, `@mut abstract class C`, `@mut interface I`). The marker declares a *mutable surface*: `@mut` fields may be declared in it (MUT-04, classes only) and `@mutating` methods may be declared on it (BIND-05).
+
+A type not declared `@mut` is a *value class*. No `@mutating` method may be declared on it, and a non-`@mut` interface may declare only methods that do not carry `@mutating`. Because no mutation is observable through a value-class binding, a copy of a value-class instance is interchangeable with a borrow under the same lifetime constraints — the compiler may substitute either form without changing the observable result. Value classes are non-`@local` (STD-07) unless they hold a transitively `@local` field (`Rc<T>`, `Cell<T>`); those primitives are themselves value classes whose hidden mutation makes them thread-affine.
 
 `@mut` is currently not supported on a `record` or an `enum`: both are value classes by construction.
 
@@ -310,7 +310,7 @@ store(makeName(), list);    // OK: temporary moved in
 inspect(give(name));        // ERROR: inspect only borrows; do not transfer
 ```
 
-The laterita annotations on a parameter (`@take`, `@mut`, `@bound`) are not part of the Java overload signature, and neither are the method-level receiver-mode annotations (`@mutating`, BIND-05; `@consuming`, BIND-07). Two same-name methods that differ only in these annotations are a duplicate declaration and rejected by `javac`. An API that needs both shapes — borrow and consume on the same parameter slot, or shared-receiver and consuming-receiver on the same operation — uses distinct method names; the array surface follows this pattern with `splitAt` and `splitOff` (ARR-01).
+Laterita annotations are not part of the Java overload signature; two same-name methods differing only in `@take` / `@mut` / `@bound` / `@mutating` / `@consuming` are a duplicate declaration. APIs needing both borrow and consume shapes use distinct method names (e.g. `splitAt` / `splitOff`, ARR-01).
 
 ### MOVE-04 — Borrow exclusivity
 
@@ -743,7 +743,7 @@ When a binding of type `T?` leaves scope, the compiler-inserted `onDrop()` call 
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
-This specification does not redefine Java's exception syntax. Methods may declare `throws`, callers use `try`/`catch`/`finally`, exceptions propagate through the call stack, and the `Throwable` hierarchy is reused. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
+Java's exception syntax is preserved unchanged: `throws`, `try`/`catch`/`finally`, and the `Throwable` hierarchy. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
 
 ### EXC-02 — Cleanup runs on exception unwind
 
@@ -939,13 +939,7 @@ A closure value carries the lifetimes of every binding it captures by borrow. Th
 
 ### STR-07 — `String` is a value class
 
-`String` is a value class (MUT-03): it declares no `@mut` fields and no `@mutating` methods, and none can be introduced by extension (MUT-05). A binding or field may still be declared `@mut String` — `@mut` then grants reassignment per BIND-03 — but no `String` method mutates the value in place. Bulk text construction belongs in `StringBuilder`, which is `@mut`.
-
-```laterita
-@mut String s = readLine();       // declaration permitted: @mut grants reassignment
-s = readLine();                   // OK: reassigning a @mut binding
-// String is a value class — no in-place mutation method can exist
-```
+`String` is a value class (MUT-03): no `@mutating` method exists or can be added by extension (MUT-05). A binding or field may still be declared `@mut String` — `@mut` then grants reassignment per BIND-03 — but no `String` method mutates in place. Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per binding
 
@@ -984,14 +978,6 @@ void store(@take String s);             // requires `.clone()` on a literal
 
 Methods declared on `String` borrow the receiver unless the signature marks otherwise. Methods that consume the receiver (`@consuming`) are rare and explicitly marked; per STR-07, no `@mutating` methods exist.
 
-```laterita
-class String {
-    @bound String trim();            // borrow this, return slice
-    String toUpperCase();            // borrow this, return owned
-    int length();                    // borrow this
-}
-```
-
 ---
 
 ## 13. Arrays
@@ -1016,7 +1002,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 `splitAt` re-borrows the receiver (BIND-06); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-03). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by MOVE-06. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
 
-`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. A different method name from `splitAt` is used because the receiver mode differs; two same-name methods that differed only in receiver-mode annotations would be a duplicate declaration (the annotations are not part of the overload signature per MOVE-03).
+`splitOff` consumes the receiver (BIND-07) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows MOVE-03 (annotation-only differences are duplicate declarations).
 
 **Example — long-lived workers.** Each half is pre-extracted by partial move (MOVE-07) before spawning, so each thread captures and consumes its own owning binding.
 

@@ -60,19 +60,11 @@ Rust's transitivity insight: immutability is only meaningful if it propagates. I
 
 ### Why methods declare mutation in the signature (BIND-05)
 
-A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. It also matches Rust's `&self`/`&mut self`, expressed in Java's syntactic vocabulary. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
-
-`@mutating` is a dedicated annotation rather than another use of `@mut`. The binding-mutability `@mut` already occupies the position immediately before a type, including a return type (BIND-02). Spelling receiver mutation with that same token in modifier position would make `@mut R foo()` ambiguous between "mutates its own receiver" and "returns a `@mut` binding." A distinct token removes the clash outright, and a modifier-position annotation keeps the common case (every setter, every mutator) free of an explicit-`this` parameter.
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
 
 ### Why methods declare consumption of `this` with `@consuming` (BIND-07)
 
-Receiver mutation and receiver consumption are the two non-bare receiver modes. They are declared the same way: a modifier-position annotation on the method, no explicit `this` parameter, reading like `public` or `final`. The two compose freely (`@mutating @consuming` for a method that both mutates and consumes), and either annotation alone narrows the method's visible API surface to receivers whose binding mode supports it (BIND-06, BIND-07).
-
-Spelling consumption with `@take` on an explicit `this` parameter was considered — it would have made `@take` mean exactly one thing everywhere ("this slot receives ownership"), reusing the parameter-side annotation. It was rejected because it forces a `(@take ClassName this)` slot onto every consuming method, restating the class name and adding a parameter slot that carries no name and no use. `@mutating` already broke the parameter-uniformity argument by lifting receiver mutation out of the parameter list; `@consuming` finishes the symmetry. `@take` keeps a single role on the parameter side (MOVE-03); `@consuming` carries the receiver-consumption role under its own banner.
-
-### Why constructors are a special initialization case (BIND-04)
-
-This is the same accommodation Rust makes for struct initialization and Java already makes for `final` fields. Immutable fields have to be assigned somewhere; the constructor is the only place that makes sense. Generalizing today's `final` to be the default for every field is straightforward.
+Receiver mutation and receiver consumption are the two non-bare receiver modes. Both are declared the same way: a modifier-position annotation on the method, reading like `public` or `final`. The two compose (`@mutating @consuming` for a method that does both), and either alone narrows the visible API surface to receivers whose binding mode supports it.
 
 ### Why mutability is transitive (BIND-06)
 
@@ -102,9 +94,9 @@ The inheritance rule (MUT-05) keeps the property legible: a `@mut` class extends
 
 MUT-07 is what keeps MUT-06's check static. If a value-class instance could be widened into a `@mut` binding of a `@mut` superclass, a `@mutating` method called through that binding would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` binding refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the binding mode, with no runtime tag.
 
-`Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. "Value class" therefore means "no `@mut` *surface*," not "immutable in every byte" — the same scoping `@local` uses for thread-affinity (STD-07). The reference-counted handles depend on exactly this: `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
+`Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. The reference-counted handles depend on this — `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
 
-Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The `@mut`-interface restriction "only `@mut` interfaces may declare `@mutating` methods" makes the surface readable from the interface header alone, mirrors the class rule, and lets MUT-06's static check rely on a single uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner MUT-05 already opens for value-class inheritance from `@mut` classes.
+Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The restriction "only `@mut` interfaces may declare `@mutating` methods" lets MUT-06's static check use one uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner MUT-05 opens for class inheritance.
 
 ---
 
@@ -399,11 +391,7 @@ Java's checked-exception model has been a three-decade experiment that the field
 
 ### Why cleanup runs on unwind (EXC-02)
 
-This is the same problem C++ destructors solve and Rust's drop-on-unwind solves. Without it, exceptions through ownership transfers would leak. The user writes ordinary code; the compiler emits the cleanup along the unwind path.
-
-### Why drop flags participate (EXC-03)
-
-Same reasoning as DROP-04 generalized: the unwinder must consult per-field move state, otherwise partial moves followed by exceptions either leak (no cleanup) or double-free (cleanup on already-moved fields). The flags are already there from DROP-04; the unwind path just consults them.
+This is the same problem C++ destructors solve and Rust's drop-on-unwind solves. Without it, exceptions through ownership transfers would leak. The user writes ordinary code; the compiler emits the cleanup along the unwind path. EXC-03 generalizes DROP-04 to the unwind path — same drop flags, consulted on the same condition.
 
 ### Why lazy stack-trace resolution (EXC-04)
 
@@ -461,9 +449,7 @@ The SAM of an anonymous functional interface is named `apply`, giving the namele
 
 ## Closures (CLO-01 through CLO-06)
 
-### Why three modes, inferred (CLO-01, CLO-02)
-
-Rust's `Fn` / `FnMut` / `FnOnce` distinction, which Rust forces the user to think about because closures need precise typing for trait dispatch. Laterita keeps the three categories — read, mutate, consume — but lets the compiler infer them from the body. Users write a lambda; the compiler does the work.
+Laterita keeps Rust's three capture categories (read / mutate / consume = `Fn` / `FnMut` / `FnOnce`) but infers them from the body rather than asking the user to declare them.
 
 ### Why call mode and binding mode are separate (CLO-03)
 
@@ -655,11 +641,7 @@ These are the irreducible escape hatches. `Cell<T>` is the documented hole in MU
 
 ### Why `@local`, not `Send` (STD-07)
 
-Cross-thread move and borrow safety needs to be tracked. Rust uses two positive auto-traits (`Send` and `Sync`); Laterita inverts the marker and uses one negative property: `@local`. The few stdlib primitives that are not safe to cross thread boundaries (`Rc<T>`, `Cell<T>`, `Heap<T>`) are declared `@local`; everything else is non-local by default and may cross threads.
-
-The reason for inverting is Java-target ergonomics. With a positive marker, every user class would have to declare `implements Send` (or be silently inferred via auto-trait machinery) to be usable in concurrent code. With the inverted marker, the *default* for ordinary user classes is "sendable," which is what Java programmers expect. The annotation surface is concentrated in the small set of stdlib primitives plus the rare thread-affine class.
-
-Send and Sync are collapsed into one property because the distinction (Send-but-not-Sync, e.g., Rust's `Cell<T>`) is rare and unusable without the kind of fine-grained borrow reasoning Java programmers don't expect. The single `@local` marker covers both move and borrow restrictions.
+Rust uses two positive auto-traits (`Send` + `Sync`); Laterita inverts to one negative marker (`@local`). The inversion makes the common case — ordinary user classes are safe to cross threads — the unannotated default, which is what Java programmers expect. The `Send`/`Sync` split is collapsed because `Send`-but-not-`Sync` requires fine-grained borrow reasoning Java programmers don't expect.
 
 Hand-synchronized stdlib types (`Arc<T>`, `Mutex<T>`, `Thread`) override the inferred `@local` property by annotating themselves `@unsafe @nonlocal`. The `@unsafe` annotation is the same admission of proof obligation as every other `@unsafe` in the language: the author is asserting a property the compiler cannot verify, and UNS-04 still applies.
 
@@ -782,14 +764,6 @@ The whole point of the exercise. Java's GC papers over ownership. Removing it fo
 ### Why monomorphization (COMP-02)
 
 Without GC, generic dispatch through type erasure (Java's current model) has nowhere to put the type information at runtime. Monomorphization — emitting one specialized version of a generic per concrete type — is the proven solution from C++ templates and Rust. The cost is binary size; the gain is that generic code runs at the same speed as hand-specialized code.
-
-### Why compiler-inserted cleanup is invisible (COMP-03)
-
-The user shouldn't see drop calls in their source. This is what makes `onDrop()` feel like a language feature rather than a discipline. The compiler emits the calls, the user writes ordinary code.
-
-### Why drop flags are an optimization target (COMP-04)
-
-Most drop flags are statically determined — the compiler can prove a field is always moved by a certain point, or never moved. In those cases, the flag becomes a constant and gets optimized away. The runtime overhead in real code is near zero. This isn't critical to specify, but it matters for implementers worried that drop flags will slow things down. They won't, in practice.
 
 ### Why no reflection (COMP-05)
 
