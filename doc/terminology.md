@@ -94,7 +94,7 @@ The reference laterita compiler. Accepts `.lat` and `.java` in a single compilat
 The span of time during which a binding is valid. A borrowed binding's lifetime is bounded by the binding it borrows from; it cannot outlive the referent. A compiler error to use a binding after the value it refers to is dropped. See `LIFE-01`.
 
 ### @local (annotation on types)
-A class or type annotated `@local` if its instances cannot safely cross thread boundaries. Instances of `@local` types cannot be moved across threads or captured by closures that might run on other threads. Examples: `Rc<T>`, `Cell<T>`. See `STD-07`.
+Declared on a class to express its relationship to threads. `@local` (or `@local(true)`) pins instances to a single thread — they cannot be moved across threads or captured by closures that might run on other threads. `@local(false)` asserts the inverse: the class encapsulates any transitively `@local` fields and is safe to use across threads. A class with `@local` fields must carry one form or the other explicitly. Examples: `Rc<T>`, `Cell<T>` are `@local`; `Arc<T>`, `Mutex<T>`, `Thread` are `@local(false)`. See `STD-07`.
 
 ### monomorphization
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
@@ -191,9 +191,6 @@ Declares that a parameter receives ownership of its argument (consumed upon call
 
 ### thread-affine (also "thread-local")
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
-
-### @threadsafe (annotation)
-Declared on a class to assert that the class is safe to use across threads despite containing transitively `@local` fields. The class is responsible for encapsulating those fields; access to them goes through `@unsafe` methods (UNS-01). The compiler does not verify the encapsulation claim. Applied to standard library types like `Arc<T>`, `Mutex<T>`, and `Thread`. See `STD-07`.
 
 ### transitivity (of mutability)
 Immutability propagates through a binding. A bare (immutable) binding cannot call `@mutating` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
