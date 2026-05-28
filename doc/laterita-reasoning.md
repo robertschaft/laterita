@@ -450,12 +450,6 @@ Alternatives evaluated and rejected:
 
 The prefix is mutually exclusive between `@mutating` and `@consuming` on a single anonymous form: a SAM that is both is rare (a one-shot mutator with no further calls) and stays expressible through a nominal interface — there is no inline spelling for `@mutating @consuming`. The two together do not appear in the surveyed Rust ecosystem either: `FnOnce` already covers "called at most once" without a separate "mutating once" variant.
 
-### Why FN covers type syntax, identity, and synthesis — but not call or binding behavior
-
-FN-01 through FN-03 address the type-system properties of anonymous functional interfaces: what the type expression means (FN-01), when two such types are the same (FN-02), and how values of that type are materialized (FN-03). These rules exist independent of how the value is used through a binding.
-
-The call-mode and binding-mode rules (CLO-03) and override variance (CLO-05) live in the closure chapter because they govern how an FI *value* is held and invoked through a binding — the same axis as capture mode. The organizing principle is that the FN section answers "what is this type?" while the CLO section answers "what can you do with a binding that holds a value of that type?"
-
 ### Why anonymous synthesis lives in FN (FN-03)
 
 Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime. Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler. The class still exists at runtime, just produced statically and not addressable from source code. The user's mental model is "the lambda is the value"; the synthesized class is implementation detail. The rule belongs in FN because synthesis is a property of the anonymous FI type, not of the binding that holds it.

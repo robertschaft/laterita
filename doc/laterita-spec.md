@@ -808,9 +808,7 @@ void submit(@consuming (@take Result) -> void onComplete) { … }
 // project from rec (e.g. rec -> rec.name), not allocate a fresh Field
 ```
 
-The `@mutating` and `@consuming` prefixes correspond to Rust's `FnMut` and `FnOnce` traits; the bare form is Rust's `Fn`. CLO-04's containment rule preserves the `Fn ⊆ FnMut ⊆ FnOnce` ordering — a less-demanding lambda fits a more-demanding type.
-
-A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (LAT-05).
+Mapping to Rust: bare = `Fn`, `@mutating` = `FnMut`, `@consuming` = `FnOnce`; CLO-04 carries the containment ordering. A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, accepted only in `.lat` sources (LAT-05).
 
 ### FN-02 — Assignability
 
@@ -936,7 +934,7 @@ A functional-interface type used as a parameter or return combines modifiers fro
 void process(@mut F<Job, Done> fn) { /* … */ }      // @mut: binding mode of the parameter
 ```
 
-A function may return a functional-interface value. `@mut` written before a return type is the binding mutability of the returned binding (BIND-02); on an owned return it is redundant, meaningful only together with `@bound`. A `@bound` before a returned functional-interface type is the ordinary return-binding annotation (LIFE-02): it declares that the returned value borrows a `@bound` source, and arises when a function returns a closure that captures one of its parameters:
+FI return-type binding annotations follow BIND-02 / LIFE-02 unchanged. A once-call FI value cannot be a `@bound` source — the call that would produce the return consumes it.
 
 ```laterita
 // The returned closure borrows `fn` and `first`,
@@ -944,19 +942,13 @@ A function may return a functional-interface value. `@mut` written before a retu
 <A, B, R> @bound (B) -> R partial(@bound (A, B) -> R fn, @bound A first) {
     return (b) -> fn.apply(first, b);
 }
-```
 
-A once-call functional-interface value cannot be a `@bound` source: the call that would produce the return consumes it.
-
-The anonymous form spells call mode with an optional `@mutating` or `@consuming` prefix per FN-01: bare `(P) -> R` is shared-call, `@mutating (P) -> R` is mut-call, `@consuming (P) -> R` is once-call. The binding-mode annotation on the parameter or field holding the value is independent — invoking the SAM requires the binding mode that BIND-06 / BIND-07 demand of the SAM's receiver mode (bare → any; `@mutating` → `@mut`; `@consuming` → owned, i.e. `@take` on a parameter).
-
-```laterita
 void process(@mut @mutating (Event) -> void handler) {     // mut-call slot, mut binding
-    handler.apply(e);                                       // OK: @mut binding + @mutating SAM
+    handler.apply(e);                                       // OK
 }
 
 void fireOnce(@take @consuming (Event) -> void handler) {  // once-call slot, owned binding
-    handler.apply(e);                                       // OK: owned + @consuming SAM
+    handler.apply(e);                                       // OK
 }
 ```
 
@@ -967,9 +959,7 @@ A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional i
 - the expected type at the position where the lambda appears (target typing); or
 - inference from the body together with any explicit parameter annotations otherwise.
 
-The lambda's capture mode (CLO-01) fixes the receiver mode of its synthesized SAM (FN-03), and therefore its call mode (CLO-03): read → shared-call, mutate → mut-call, consume → once-call. A lambda is a value of a functional-interface type of call mode `M` iff the lambda's own call mode is no greater than `M` under the order `shared-call < mut-call < once-call`.
-
-A less-demanding lambda satisfies a more-demanding type — a read lambda is a value of a shared-call, mut-call, or once-call interface; a mutate lambda is a value of a mut-call or once-call interface — never the reverse. This is the `Fn ⊆ FnMut ⊆ FnOnce` containment, expressed through the SAM's receiver mode.
+The lambda's capture mode (CLO-01) fixes the receiver mode of its synthesized SAM (FN-03), and therefore its call mode (CLO-03): read → shared-call, mutate → mut-call, consume → once-call. A lambda is a value of an FI type of call mode `M` iff its own call mode is `≤ M` under `shared-call < mut-call < once-call` — the `Fn ⊆ FnMut ⊆ FnOnce` containment expressed through the SAM's receiver mode.
 
 | Lambda capture mode | Lambda call mode | shared-call type | mut-call type | once-call type |
 |---|---|:---:|:---:|:---:|
@@ -1146,7 +1136,7 @@ public final class Arrays {
 
 ### ARR-03 — `MutableConsumer<T>`
 
-The written-out form of the anonymous functional type `@mutating (@mut T) -> void` used by ARR-01 in the `.lat` surface, for `.java` callers (the inline functional-interface spelling is `.lat`-only per LAT-05). The interface is declared `@mut` so its SAM may carry `@mutating` (MUT-03, BIND-05).
+The written-out form of the anonymous functional type `@mutating (@mut T) -> void` used by ARR-01, for `.java` callers (LAT-05). Declared `@mut` per FN-03.
 
 ```java
 package laterita.lang;
@@ -1565,7 +1555,7 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
-The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling, including its optional `@mutating` / `@consuming` call-mode prefix. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-04 specify the type semantics and allowed positions; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes; the call-mode prefix attaches to the SAM as `@mutating` or `@consuming`, and the synthesized interface is declared `@mut` whenever the SAM is `@mutating` (per MUT-03). For the generic-bound and generic-type-argument positions admitted by FN-04, the desugaring substitutes the same nominal interface at that position — e.g. `<F extends @mutating (T) -> R>` becomes `<F extends $Anon<T, R>>` where `$Anon` is the synthesized interface, and `Stream<(T) -> R>` becomes `Stream<$Anon<T, R>>`.
+The anonymous structural FI expression of FN-01 is a `.lat`-only spelling; FN-01 through FN-04 specify the type semantics and allowed positions. A `.java` source expresses the same SAM by declaring a nominal functional interface in the corresponding position — the synthesized shape is given by FN-03. For the generic-bound and generic-type-argument positions admitted by FN-04, the desugaring substitutes that nominal interface in the corresponding generic slot — e.g. `<F extends @mutating (T) -> R>` becomes `<F extends $Anon<T, R>>`, and `Stream<(T) -> R>` becomes `Stream<$Anon<T, R>>`.
 
 ### LAT-06 — Diamond `<>` is optional on constructor calls
 
