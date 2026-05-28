@@ -63,7 +63,7 @@ Every field of a class must be assigned exactly once in every constructor before
 
 ### BIND-05 — Methods declare mutation of `this` with `@mutating`
 
-A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07).
+A method annotated `@mutating` may mutate `this` (i.e., reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`). A method without it cannot. A method that both mutates and consumes its receiver carries both `@mutating` and `@consuming` (BIND-07). For override variance — whether an override may add or drop `@mutating` — see MOVE-10.
 
 ```laterita
 @mut class Counter {
@@ -89,7 +89,7 @@ c2.inc();                   // OK
 
 A method annotated `@consuming` consumes its receiver. The body owns `this`, may move out of `this`'s fields (MOVE-07), and may hand `this` itself to a `@take` parameter or to another `@consuming` method. After the call returns, the binding that held the receiver is consumed (MOVE-02); subsequent uses are rejected.
 
-`@consuming` is a declaration annotation on the method, in modifier position alongside `public` / `final` / `@mutating`. It is orthogonal to `@mutating` (BIND-05) and the two compose: a method that both mutates and consumes its receiver carries both. Calling a `@consuming` method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer.
+`@consuming` is a declaration annotation on the method, in modifier position alongside `public` / `final` / `@mutating`. It is orthogonal to `@mutating` (BIND-05) and the two compose: a method that both mutates and consumes its receiver carries both. Calling a `@consuming` method requires the receiver binding to own its value; the call site needs no `give(...)` wrapper — the signature already declares the transfer. For override variance — whether an override may weaken `@consuming` to `@mutating` or bare — see MOVE-10.
 
 ```laterita
 class Connection {
@@ -208,7 +208,7 @@ A class declared `@mut` may extend only a `@mut` class. A value class may extend
 - every superclass of a `@mut` class is itself `@mut`, up to `Object`;
 - once a class in a hierarchy is a value class, every subclass of it is a value class.
 
-A value class that extends a `@mut` class inherits its ancestors' `@mut` fields and `@mutating` methods. The inherited `@mutating` methods are not callable on the value class (MUT-06): the value class is a frozen view of the inherited surface. This is the mechanism for deriving an immutable variant of a mutable class — a collection, a configuration holder, a builder — without re-declaring its API.
+A value class that extends a `@mut` class inherits its ancestors' `@mut` fields and `@mutating` methods. The inherited `@mutating` methods are not callable on the value class (MUT-06): the value class is a frozen view of the inherited surface. This is the mechanism for deriving an immutable variant of a mutable class — a collection, a configuration holder, a builder — without re-declaring its API. This is the class-level case of MOVE-10's override variance: the value subclass relaxes the receiver demand from `@mut` to bare.
 
 ```laterita
 @mut class Counter {
@@ -356,25 +356,37 @@ if (changedMyMind()) { give(worker); }  // run Thread.onDrop() now; binding cons
 
 Applies to any owning binding. For `Thread`, it is the standard mechanism for early termination per THR-06.
 
-### MOVE-10 — Override variance for `@take` and `@mut`
+### MOVE-10 — Override variance
 
-For overrides of inherited methods (subclass override, interface implementation):
+An override of an inherited method — subclass override or interface implementation — may **relax its demands on callers** and **strengthen its guarantees to callers**, but never the reverse. One principle covers every annotation:
 
-- **`@take` matches invariantly.** An override's parameter must carry `@take` if and only if the inherited declaration does. An override that dropped `@take` would refuse a binding the caller transferred through the inherited contract; an override that added `@take` would silently consume a binding the inherited contract said it would only borrow. Both directions break callers using the inherited type.
+- **Parameters** and **the receiver** describe what the method demands of its caller; an override may demand less.
+- **The return** describes what the method gives back; an override may give more (a stronger value than the base contract promised).
 
-- **`@mut` matches contravariantly.** An override may drop `@mut` from a parameter that the inherited declaration marks `@mut`, but may not add `@mut` to a parameter the inherited declaration leaves bare. Dropping `@mut` is sound — the override demands less of the caller than the inherited contract promises. Adding `@mut` is unsound — callers holding only an immutable borrow could no longer satisfy the override through the inherited type.
+Applied to each annotation:
+
+| Annotation | Position | Override may drop | Override may add | Reason |
+|---|---|---|---|---|
+| `@take` | parameter | ✗ | ✗ | Either direction breaks the caller's transfer expectation |
+| `@mut` | parameter | ✓ | ✗ | Override needs only shared access; adding `@mut` rejects shared-borrow callers |
+| `@bound` | parameter | ✓ (jointly with return) | ✗ | Source for a return borrow (LIFE-02); dropping requires the return to drop `@bound` too |
+| `@bound` | return | ✓ | ✗ | Returning owned where the base promised `@bound` is a stronger guarantee |
+| `@mutating` | method | ✓ | ✗ | Drops the `@mut` demand on the receiver |
+| `@consuming` | method | ✓ (to `@mutating` or bare) | ✗ | Drops the ownership demand on the receiver |
+| `@mut` | class | ✓ (value subclass of `@mut` parent) | ✗ | Per MUT-05 |
+| Call mode of an FI slot | parameter (FI type) | ✗ | ✓ (strengthen) | A stronger slot accepts strictly more closures; per CLO-05 |
+
+The FI-slot call-mode row inverts the surface direction because what's being relaxed is the *closure-acceptance* condition: a stronger call mode (bare → `@mutating` → `@consuming`) accepts strictly more closures, so every closure the base accepted is still accepted by the override. The underlying principle is the same — never reject what the base contract promised to accept.
 
 ```laterita
 interface Visitor {
     void visit(@mut Node n);
+    @bound String describe(@bound Node n);
 }
 
 class CountingVisitor implements Visitor {
-    @Override void visit(Node n) { ... }       // OK: drops @mut; requires less
-}
-
-class RewritingVisitor implements Visitor {
-    @Override void visit(@mut Node n) { ... }  // OK: matches exactly
+    @Override void visit(Node n) { ... }                       // OK: drops @mut on parameter
+    @Override String describe(Node n) { return "counting"; }   // OK: drops @bound jointly; returns owned (stronger)
 }
 
 interface Reader {
@@ -382,11 +394,11 @@ interface Reader {
 }
 
 class BadReader implements Reader {
-    @Override void read(@mut Node n) { ... }   // ERROR: cannot strengthen @mut
+    @Override void read(@mut Node n) { ... }                   // ERROR: adds @mut, rejects shared callers
 }
 ```
 
-The variance rule mirrors Java's existing treatment of `throws`: an override may declare fewer or narrower checked exceptions than the inherited signature, never more. The principle is the same — an override may relax its demands on callers, never tighten them.
+The rule mirrors Java's existing treatment of `throws`: an override may declare fewer or narrower checked exceptions than the inherited signature, never more.
 
 ---
 
@@ -779,11 +791,7 @@ An anonymous functional interface is written
 
 where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The optional `@mutating` or `@consuming` prefix declares the SAM's receiver mode — the FI's *call mode* per CLO-03. With no prefix, the SAM has a bare receiver (shared-call); `@mutating` makes the SAM `@mutating` (mut-call); `@consuming` makes the SAM `@consuming` (once-call). The two prefixes are mutually exclusive on a single anonymous form: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) is expressible only through a nominal interface. The form is anonymous and structural: no named interface need be declared.
 
-When `@bound` appears on a SAM parameter, the library author is declaring a lifetime contract: the SAM's return must be a borrow derived from that argument rather than a fresh allocation. The compiler checks this against any lambda body assigned to the type; the lambda implementor does not choose which parameter is `@bound` — the type expression does.
-
 The single abstract method of an anonymous functional interface is named `apply`. A value `f` of such a type is invoked through it — `f.apply(a1, …, an)`. Laterita has no call-on-binding syntax: a functional-interface value is an object, invoked through its SAM exactly as in Java.
-
-An anonymous functional interface type expression may be written only in two positions: as a parameter type or as a return type. It may not be written as the declared type of a field, the declared type of a local binding, or a generic type argument — a function value held in any of those positions uses a nominal functional interface. The restriction governs the written type expression, not value flow: a `var` local may still hold an anonymous functional-interface value whose type is inferred, such as the result of a closure-returning call.
 
 The following examples show each type expression as a method parameter. Each comment describes what a lambda assigned to that parameter type **can** and **cannot** do.
 
@@ -808,12 +816,10 @@ void submit(@consuming (@take Result) -> void onComplete) { … }
 //   CANNOT: mutate captured state (shared-call)
 void format(@take String tmpl, (@take String, @mut StringBuilder) -> String fn, @mut StringBuilder out) { … }
 
-// shared-call parameter with @bound contract — the library author writes @bound on Record to declare:
-//   the returned Field must borrow from the Record argument (not be a fresh allocation)
-//   the compiler checks this contract against the lambda body; the implementor may not return a new Field
+// @bound on a SAM parameter pairs with @bound on its return (LIFE-02): the lambda must project, not allocate.
 //   CAN:    project a field out of Record (e.g. lambda body: rec -> rec.name)
-//   CANNOT: return a freshly-constructed Field (would escape the Record's borrow)
-<F extends Field> F lookup(Record rec, RecordKey key, (@bound Record, RecordKey) -> F selector) { … }
+//   CANNOT: return a freshly-constructed Field (LIFE-05: a @bound return needs a @bound source)
+<F extends Field> @bound F lookup(@bound Record rec, RecordKey key, (@bound Record, RecordKey) -> @bound F selector) { … }
 
 // shared-call parameter with no inputs — may be invoked any number of times, including concurrently
 //   CAN:    read captured state
@@ -825,19 +831,76 @@ The `@mutating` and `@consuming` prefixes correspond to Rust's `FnMut` and `FnOn
 
 A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, not a replacement, and is accepted only in `.lat` sources (LAT-05).
 
-### FN-02 — Identity
+### FN-02 — Assignability
 
-Two anonymous functional interfaces are identical iff their call mode (per FN-01's optional prefix), arity, each parameter's mode and underlying type, the return type, and any `@bound` relationships match. Distinct expressions denote distinct types; one is not implicitly convertible to another. A nominal functional interface and an anonymous one are never equal — even when their SAMs match — because the nominal one carries an interface identity the anonymous one lacks.
+Two anonymous FI types are *identical* — the same compile-time type — only when their call mode, arity, parameter modes, underlying types, return type, and `@bound` relationships all match exactly. Distinct expressions denote distinct types. A nominal FI and an anonymous one are never identical, even when their SAMs match — the nominal one carries an interface identity the anonymous one lacks.
 
-Assignment of an FI *value* (not a freshly-constructed lambda) from one FI type to another is governed by CLO-04's containment rule: a value of an FI type with call mode `M1` flows into a slot of FI type with call mode `M2` when `M1 ≤ M2` under the order `shared-call < mut-call < once-call`, and the parameter modes, return type, and `@bound` relationships agree. The types remain distinct, but value flow across them follows the same `Fn ⊆ FnMut ⊆ FnOnce` containment that governs lambdas.
+For most code, identity is the wrong question: anonymous types can't be reflected on or compared at runtime. What matters is *assignability* — when a value of FI type `A` may flow into a slot of FI type `B`. Assignability follows MOVE-10's override variance, applied to the SAM's own parameters and return:
+
+| Axis | Rule for `A` → `B` |
+|---|---|
+| Call mode | `A.call_mode ≤ B.call_mode` under `shared-call < mut-call < once-call` (CLO-04 containment) |
+| SAM parameter `@mut` | `A` may have it dropped relative to `B` (contravariant) |
+| SAM parameter `@take` | invariant |
+| SAM parameter `@bound` | `A` may have it dropped relative to `B` jointly with the return |
+| SAM return `@bound` | `A` may return owned where `B` promises `@bound` (covariant in strength) |
+| Underlying parameter and return types | must agree |
+
+```laterita
+(@mut Record) -> String           // type α — slot
+(Record)      -> String           // type β — value
+(Record)      -> @bound String    // type γ — slot
+
+// β flows into α:  parameter drops @mut (contravariant) ✓
+// β flows into γ:  return owned satisfies @bound (covariant) ✓
+// γ does NOT flow into β: @bound return cannot satisfy owned slot
+```
+
+A lambda literal is checked against the expected FI type by CLO-04; the same variance applies to it as to an already-typed FI value.
 
 ### FN-03 — Anonymous synthesis per construction
 
-Each value-construction of an anonymous functional interface yields an anonymous class implementing the SAM dictated by the type expression. The synthesized class is not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods are expressed with a nominal functional interface; the anonymous form covers the "callback parameter" case.
+Each value-construction of an anonymous functional interface yields a synthesized interface whose single abstract method, named `apply`, carries the parameter and return modes written in the type expression. The interface and its implementing class are not addressable from source code. Function-shaped contracts that need a name, documentation, or related methods use a nominal functional interface instead.
+
+Minimal — `(int) -> int` synthesizes:
+
+```laterita
+interface $Anon { int apply(int p0); }
+```
+
+Maximal — `@consuming (@take String, @mut List<T>) -> @bound String` synthesizes:
+
+```laterita
+@mut interface $Anon<T> {
+    @consuming @bound String apply(@take String p0, @mut List<T> p1);
+}
+```
+
+The synthesized interface is declared `@mut` whenever the SAM carries `@mutating` or `@consuming` — required by MUT-03 / BIND-05.
+
+### FN-04 — Allowed positions
+
+An anonymous functional-interface type expression (FN-01) may be written as:
+
+- a parameter type
+- a return type
+- a generic bound — e.g. `<F extends @mutating (T) -> R>`
+- a generic type argument — e.g. `Stream<(T) -> R>`
+
+It may not be written as:
+
+- the declared type of a field — stored function values use a nominal FI, which keeps a stable name for documentation and debugging
+- the declared type of a local binding — `var` inference still holds an anonymous FI value when the RHS produces one
+
+The restrictions govern the written type expression, not value flow: a `var` local may hold an anonymous-FI value whose type is inferred, such as the result of a closure-returning call.
 
 ---
 
 ## 11. Closures
+
+A closure value is a lambda together with the bindings it references from the enclosing scope. It can be thought of as a synthesized object: each captured binding becomes a field; the lambda body becomes the implementation of a single method. The object is passed to (or returned from) a function, and that function invokes the lambda body by calling the single method.
+
+The mode in which each captured binding is held — shared borrow, mutable borrow, or moved owned — determines what the closure may do with it, and therefore how many times and how concurrently the closure may be invoked. CLO-01 classifies these modes; CLO-03 connects them to the FI type that holds the closure.
 
 ### CLO-01 — Three capture modes
 
@@ -935,6 +998,14 @@ A less-demanding lambda satisfies a more-demanding type — a read lambda is a v
 | Mutate  | mut-call    | reject | accept | accept |
 | Consume | once-call   | reject | reject | accept |
 
+Inverted — what each slot guarantees to the function holding the closure:
+
+| Slot call mode | Lambda author must ensure | Slot holder is guaranteed |
+|---|---|---|
+| shared-call | closure works read-only on captures | closure never mutates captures; may be invoked any number of times, concurrently (subject to STD-07) |
+| mut-call | mutate captures only if needed; closure remains re-callable | closure may mutate captures; must be invoked sequentially, never concurrently |
+| once-call | closure may consume captures | closure may be invoked at most once |
+
 Assignability concerns the value only. Whether the binding that receives the value can invoke its SAM is the separate question settled by CLO-03 (binding mode versus call mode).
 
 ```laterita
@@ -950,11 +1021,11 @@ Doubler pure     = (x) -> x * 2;                                 // read lambda 
 
 ### CLO-05 — Override variance for FI parameters
 
-A functional-interface parameter has two annotation axes — the *call-mode prefix* on the FI type (FN-01: bare / `@mutating` / `@consuming`) and the *binding-mode* annotations on the parameter (`@take`, `@mut`, `@bound`). Each is governed by its own variance rule.
+A functional-interface parameter has two annotation axes — the *call-mode prefix* on the FI type (FN-01: bare / `@mutating` / `@consuming`) and the *binding-mode* annotations on the parameter (`@take`, `@mut`, `@bound`). Both follow MOVE-10's unified override-variance table.
 
-**Call-mode prefix — covariant in strength.** An override may *strengthen* the call mode of an FI slot (bare → `@mutating` → `@consuming`) but never *weaken* it. The reason: a stronger call mode accepts strictly more closures (CLO-04: shared-call accepts read only; mut-call adds mutate; once-call adds consume), and an override must continue to accept every closure the inherited declaration accepted. Strengthening the slot's call mode broadens the admissible-closure set; weakening it would reject closures the inherited contract said it would accept.
+The call-mode axis is the row in MOVE-10 whose surface direction inverts: an override may *strengthen* the slot's call mode (bare → `@mutating` → `@consuming`) because a stronger slot accepts strictly more closures (CLO-04: shared-call accepts read only; mut-call adds mutate; once-call adds consume). The override continues to accept every closure the inherited declaration accepted.
 
-**Binding-mode axes — same as MOVE-10.** `@mut` on the parameter is contravariant (override may drop, not add); `@take` is invariant; `@bound` follows the same rules as on any parameter. These govern how the function holds the FI value, not which closures fit the slot — that is the call-mode axis above.
+The binding-mode annotations on the FI parameter — `@take`, `@mut`, `@bound` — follow MOVE-10 directly: they govern how the override's binding holds the FI value, not which closures fit the slot.
 
 ```laterita
 interface Source<T> {
@@ -974,7 +1045,7 @@ class Bare<T> implements MutSource<T> {
 }
 ```
 
-The SAM type itself is invariant under override (FN-02): two anonymous FIs whose parameter modes or return type differ are distinct types. A nominal SAM declared as a regular interface continues to follow MOVE-10 on its own method signatures unchanged.
+The SAM *type itself* is invariant under override in the sense that the SAM's underlying parameter and return *types* must agree (FN-02): annotation variance applies, type substitution does not. A nominal SAM declared as a regular interface follows MOVE-10 on its own method signatures unchanged.
 
 ### CLO-06 — Capture lifetimes propagate
 
@@ -1515,7 +1586,7 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
-The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling, including its optional `@mutating` / `@consuming` call-mode prefix. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-03 specify the type semantics; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes; the call-mode prefix attaches to the SAM as `@mutating` or `@consuming`, and the synthesized interface is declared `@mut` whenever the SAM is `@mutating` (per MUT-03).
+The anonymous, structural functional-interface type expression specified by FN-01 is a `.lat`-only spelling, including its optional `@mutating` / `@consuming` call-mode prefix. A `.java` source expresses the same SAM signature by declaring a nominal functional interface at the same position. FN-01 through FN-04 specify the type semantics and allowed positions; this rule records that the inline spelling is gated to `.lat`. The desugaring substitutes a nominal interface whose single abstract method — named `apply`, per FN-01 — has the written parameter and return modes; the call-mode prefix attaches to the SAM as `@mutating` or `@consuming`, and the synthesized interface is declared `@mut` whenever the SAM is `@mutating` (per MUT-03).
 
 ### LAT-06 — Diamond `<>` is optional on constructor calls
 
