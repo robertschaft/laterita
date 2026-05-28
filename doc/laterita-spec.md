@@ -789,42 +789,23 @@ An anonymous functional interface is written
 [ @mutating | @consuming ] (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The optional `@mutating` or `@consuming` prefix declares the SAM's receiver mode — the FI's *call mode* per CLO-03. With no prefix, the SAM has a bare receiver (shared-call); `@mutating` makes the SAM `@mutating` (mut-call); `@consuming` makes the SAM `@consuming` (once-call). The two prefixes are mutually exclusive on a single anonymous form: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) is expressible only through a nominal interface. The form is anonymous and structural: no named interface need be declared.
+where each `Pi` follows MOVE-03 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03): bare → shared-call, `@mutating` → mut-call, `@consuming` → once-call. The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface. The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)` — there is no call-on-binding syntax.
 
-The single abstract method of an anonymous functional interface is named `apply`. A value `f` of such a type is invoked through it — `f.apply(a1, …, an)`. Laterita has no call-on-binding syntax: a functional-interface value is an object, invoked through its SAM exactly as in Java.
-
-The following examples show each type expression as a method parameter. Each comment describes what a lambda assigned to that parameter type **can** and **cannot** do.
+Examples — each comment describes what a lambda assigned to that parameter type may do:
 
 ```laterita
-// shared-call parameter — may be invoked any number of times, including from multiple threads
-//   CAN:    read captured state
-//   CANNOT: mutate or consume captured state
 void fold(int seed, (int, int) -> int reducer) { … }
+// shared-call: invocable any number of times, concurrently; lambda may only read captures
 
-// mut-call parameter — invoked sequentially, never concurrently
-//   CAN:    mutate captured state (e.g. a running counter); be called multiple times
-//   CANNOT: be called from multiple threads simultaneously
 void buildAll(@mutating (@mut StringBuilder) -> void appender) { … }
+// mut-call: invoked sequentially; lambda may mutate captures
 
-// once-call parameter — receives ownership of its Result argument; called at most once
-//   CAN:    consume the Result argument; consume captured values
-//   CANNOT: be invoked a second time
 void submit(@consuming (@take Result) -> void onComplete) { … }
+// once-call: invoked at most once; lambda may consume captures and the Result argument
 
-// shared-call parameter — takes ownership of String, borrows StringBuilder for mutation
-//   CAN:    consume the String argument; write into the StringBuilder
-//   CANNOT: mutate captured state (shared-call)
-void format(@take String tmpl, (@take String, @mut StringBuilder) -> String fn, @mut StringBuilder out) { … }
-
-// @bound on a SAM parameter pairs with @bound on its return (LIFE-02): the lambda must project, not allocate.
-//   CAN:    project a field out of Record (e.g. lambda body: rec -> rec.name)
-//   CANNOT: return a freshly-constructed Field (LIFE-05: a @bound return needs a @bound source)
 <F extends Field> @bound F lookup(@bound Record rec, RecordKey key, (@bound Record, RecordKey) -> @bound F selector) { … }
-
-// shared-call parameter with no inputs — may be invoked any number of times, including concurrently
-//   CAN:    read captured state
-//   CANNOT: mutate or consume captured state
-void onIdle(() -> void action) { … }
+// @bound on the SAM parameter pairs with @bound on its return (LIFE-02 / LIFE-05): lambda must
+// project from rec (e.g. rec -> rec.name), not allocate a fresh Field
 ```
 
 The `@mutating` and `@consuming` prefixes correspond to Rust's `FnMut` and `FnOnce` traits; the bare form is Rust's `Fn`. CLO-04's containment rule preserves the `Fn ⊆ FnMut ⊆ FnOnce` ordering — a less-demanding lambda fits a more-demanding type.
@@ -898,9 +879,7 @@ The restrictions govern the written type expression, not value flow: a `var` loc
 
 ## 11. Closures
 
-A closure value is a lambda together with the bindings it references from the enclosing scope. It can be thought of as a synthesized object: each captured binding becomes a field; the lambda body becomes the implementation of a single method. The object is passed to (or returned from) a function, and that function invokes the lambda body by calling the single method.
-
-The mode in which each captured binding is held — shared borrow, mutable borrow, or moved owned — determines what the closure may do with it, and therefore how many times and how concurrently the closure may be invoked. CLO-01 classifies these modes; CLO-03 connects them to the FI type that holds the closure.
+A closure value is a lambda together with the bindings it references from the enclosing scope — a synthesized object whose fields are the captured bindings and whose single method is the lambda body, passed to (or returned from) a function and invoked through that method. The mode in which each binding is captured — shared borrow, mutable borrow, or moved owned — determines what the closure may do and how often it may be invoked. CLO-01 classifies these modes; CLO-03 connects them to the FI type that holds the closure.
 
 ### CLO-01 — Three capture modes
 
