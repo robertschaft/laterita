@@ -779,17 +779,46 @@ An anonymous functional interface is written
 
 where each `Pi` is a parameter declaration following MOVE-03 form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per LIFE-02), and `R` is the return type. The optional `@mutating` or `@consuming` prefix declares the SAM's receiver mode — the FI's *call mode* per CLO-03. With no prefix, the SAM has a bare receiver (shared-call); `@mutating` makes the SAM `@mutating` (mut-call); `@consuming` makes the SAM `@consuming` (once-call). The two prefixes are mutually exclusive on a single anonymous form: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) is expressible only through a nominal interface. The form is anonymous and structural: no named interface need be declared.
 
+When `@bound` appears on a SAM parameter, the library author is declaring a lifetime contract: the SAM's return must be a borrow derived from that argument rather than a fresh allocation. The compiler checks this against any lambda body assigned to the type; the lambda implementor does not choose which parameter is `@bound` — the type expression does.
+
 The single abstract method of an anonymous functional interface is named `apply`. A value `f` of such a type is invoked through it — `f.apply(a1, …, an)`. Laterita has no call-on-binding syntax: a functional-interface value is an object, invoked through its SAM exactly as in Java.
 
 An anonymous functional interface type expression may be written only in two positions: as a parameter type or as a return type. It may not be written as the declared type of a field, the declared type of a local binding, or a generic type argument — a function value held in any of those positions uses a nominal functional interface. The restriction governs the written type expression, not value flow: a `var` local may still hold an anonymous functional-interface value whose type is inferred, such as the result of a closure-returning call.
 
+The following examples show each type expression as a method parameter. Each comment describes what a lambda assigned to that parameter type **can** and **cannot** do.
+
 ```laterita
-(int, int) -> int                            // shared-call; owned-int args, owned-int return
-@mutating (@mut StringBuilder) -> void       // mut-call; mutates argument; mutate captures allowed
-@consuming (@take Result) -> void            // once-call; called at most once; consume captures allowed
-(@take String, @mut StringBuilder) -> String // shared-call
-(@bound Record, RecordKey) -> Field          // shared-call
-() -> void                                   // shared-call
+// shared-call parameter — may be invoked any number of times, including from multiple threads
+//   CAN:    read captured state
+//   CANNOT: mutate or consume captured state
+void fold(int seed, (int, int) -> int reducer) { … }
+
+// mut-call parameter — invoked sequentially, never concurrently
+//   CAN:    mutate captured state (e.g. a running counter); be called multiple times
+//   CANNOT: be called from multiple threads simultaneously
+void buildAll(@mutating (@mut StringBuilder) -> void appender) { … }
+
+// once-call parameter — receives ownership of its Result argument; called at most once
+//   CAN:    consume the Result argument; consume captured values
+//   CANNOT: be invoked a second time
+void submit(@consuming (@take Result) -> void onComplete) { … }
+
+// shared-call parameter — takes ownership of String, borrows StringBuilder for mutation
+//   CAN:    consume the String argument; write into the StringBuilder
+//   CANNOT: mutate captured state (shared-call)
+void format(@take String tmpl, (@take String, @mut StringBuilder) -> String fn, @mut StringBuilder out) { … }
+
+// shared-call parameter with @bound contract — the library author writes @bound on Record to declare:
+//   the returned Field must borrow from the Record argument (not be a fresh allocation)
+//   the compiler checks this contract against the lambda body; the implementor may not return a new Field
+//   CAN:    project a field out of Record (e.g. lambda body: rec -> rec.name)
+//   CANNOT: return a freshly-constructed Field (would escape the Record's borrow)
+<F extends Field> F lookup(Record rec, RecordKey key, (@bound Record, RecordKey) -> F selector) { … }
+
+// shared-call parameter with no inputs — may be invoked any number of times, including concurrently
+//   CAN:    read captured state
+//   CANNOT: mutate or consume captured state
+void onIdle(() -> void action) { … }
 ```
 
 The `@mutating` and `@consuming` prefixes correspond to Rust's `FnMut` and `FnOnce` traits; the bare form is Rust's `Fn`. CLO-04's containment rule preserves the `Fn ⊆ FnMut ⊆ FnOnce` ordering — a less-demanding lambda fits a more-demanding type.
