@@ -158,13 +158,23 @@ When a method's body needs `@mut` access to a parameter or needs to consume it, 
 
 This is non-normative — methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`. The default mental model is the goal: *the cost the caller can read from the signature is the cost the caller bears*.
 
-### Why override variance differs for `@take` and `@mut` (MOVE-10)
+### Why override variance follows one principle across every annotation (MOVE-10)
 
-`@take` is invariant. An override that dropped `@take` would refuse a binding the caller transferred through the inherited contract; an override that added `@take` would silently consume a binding the inherited contract said it would only borrow. Both directions break callers using the inherited type — `give(x)` through an interface would mean "x might be consumed, depending on which implementation wins dispatch," exactly the invisibility the annotation exists to eliminate.
+One principle drives every row of MOVE-10's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse. The Java parallel — `throws` relaxes on overrides; parameter types stay invariant — names the same pattern, applied to a single axis. MOVE-10 unifies that pattern across every binding-mode annotation Laterita carries.
 
-`@mut` is contravariant: an override may drop `@mut`, not add it. An interface that promises "I might mutate your argument" may be implemented by a class that doesn't; any caller satisfying the inherited `@mut` requirement automatically satisfies the override's bare one. The reverse is unsound: a `@mut`-demanding override cannot stand behind an inherited bare signature, because callers through the interface would supply only an immutable borrow.
+`@take` is invariant: it is identity, not strength. An override that dropped `@take` would refuse a binding the caller transferred through the inherited contract; an override that added `@take` would silently consume a binding the inherited contract said it would only borrow. Both directions break callers using the inherited type — `give(x)` through an interface would mean "x might be consumed, depending on which implementation wins dispatch," exactly the invisibility the annotation exists to eliminate.
 
-The Java parallel — `throws` relaxes on overrides; parameter types stay invariant — names the pattern: modifier strength relaxes, identity does not. `@mut` is a strength; `@take` is identity.
+`@mut` on a parameter is contravariant: an override may drop `@mut`, not add it. An interface that promises "I might mutate your argument" may be implemented by a class that doesn't; any caller satisfying the inherited `@mut` requirement automatically satisfies the override's bare one. The reverse is unsound: a `@mut`-demanding override cannot stand behind an inherited bare signature, because callers through the interface would supply only an immutable borrow.
+
+`@bound` on a parameter is contravariant *jointly* with the return. The annotation is a lifetime source for the return (LIFE-02): dropping it only makes sense when the override's return drops `@bound` as well — i.e. returns an owned value. The override then has no lifetime obligation to track and demands no `@bound` source from the caller. Adding `@bound` would silently tie the return to a parameter the inherited contract said was independent — callers would acquire a borrow they did not expect to manage.
+
+`@bound` on the return is covariant in strength: an override may return owned where the base promised `@bound`. Owned is a stronger guarantee — a value the caller may freely move or hold past the conceptual borrow scope. Callers using the inherited type treat the result as `@bound` (the more constrained view) and remain sound. The reverse — returning `@bound` where the base promised owned — would silently turn an owned value into a lifetime-constrained borrow, breaking every caller that moves or stores it.
+
+`@mutating` and `@consuming` follow the same demand-less rule, applied to the receiver. `@mutating` may be dropped: an override that does not mutate `this` requires only a bare receiver, so a caller holding a `@mut` binding still satisfies it. `@consuming` may be weakened to `@mutating` or bare: an override that does not consume `this` requires only a borrow, so a caller transferring ownership still satisfies it. Adding either direction would tighten the call-site demand — callers with weaker receiver access would be rejected.
+
+The FI-slot call-mode row inverts the surface direction because it is about *closure acceptance*, not parameter binding. Strengthening the slot's call mode (bare → `@mutating` → `@consuming`) widens the set of closures the slot accepts, so every closure the base accepted is still accepted by the override. The underlying principle — never reject what the base contract promised to accept — is unchanged; only the surface direction of the annotation flips because the annotation governs acceptance, not demand.
+
+The class-level case (MUT-05) follows the same shape: a value subclass of a `@mut` parent drops the `@mut`-receiver demand for its inherited `@mutating` methods, making them uncallable on the subclass binding. The subclass demands less of its users, never more.
 
 ---
 
@@ -427,13 +437,19 @@ The trade-off is that source-level `import` of an anonymous functional interface
 
 This dissolves the question: there are no closure-interface names to fix because there are no closure interfaces.
 
-### Why anonymous functional interfaces are restricted to parameter and return positions (FN-01)
+### Why anonymous functional interfaces are restricted to positions read at a call site (FN-04)
 
-The anonymous form has no name, and a type with no name is ergonomic only where it is also transient. A callback parameter is read once, at the call site, against a signature the caller is already looking at; the inline `(P) -> R` spelling there saves a named interface and costs nothing. A return type is the same case viewed from the other end — a closure-returning function (partial application, LIFE-02) is still a callback that happens to be produced rather than consumed, and its type is read at that same call site.
+The anonymous form has no name, and a type with no name is ergonomic where it is read in the same place it is written. The allowed positions — parameter, return, generic bound, generic type argument — share that property: each appears within a signature or call expression that a reader is already looking at when they encounter the FI type. The forbidden positions — field type, declared local type — do not.
 
-Admitting the anonymous form in field, local-binding, and generic-argument positions is rejected. A field of anonymous-FI type puts an unnameable type on a class's published surface: every reader must reconstruct the SAM signature from the type expression, with no name to anchor documentation or to `import`. A generic argument — `List<(int) -> int>` — propagates that unnameable type through every instantiation that touches the collection. These are exactly the "function-shaped contract that outlives a single call" cases the structural form was never meant to serve: a stored or collected function value carries the richer obligations — a name, documentation, a place for related methods — that a nominal functional interface exists to hold (FN-03). Restricting the positions makes FN-01 enforce what FN-03 otherwise only recommends.
+Parameter and return are the canonical callback shape: a `(P) -> R` parameter saves a named interface and costs nothing, since the type is read against the signature the caller already has open. A return-position FI is the same case viewed from the producer end (LIFE-02 partial application).
 
-The restriction governs the written type expression, not value flow. A `var` local may still hold an anonymous-FI value by inference, because no type is spelled there; what is forbidden is writing the anonymous spelling in a position where a future reader must decode it without the call-site context that makes it legible.
+Generic bound — `<F extends @mutating (T) -> R>` — names the closure contract a generic method requires of its callers. The FI expression lives inside the method's own signature; readers reading the signature read the bound. Forbidding it would force every `map`/`filter`/`reduce`-shaped method to declare a nominal `Mapper` / `Predicate` / `Reducer` interface for the bound, defeating the purpose of the structural form in exactly the API surface where it matters most.
+
+Generic type argument — `Stream<(T) -> R>` — propagates the closure type through the collection's instantiation. The type expression is still read at a call site: the user constructs `new Stream<(T) -> R>(...)` or annotates a return as `Stream<(T) -> R>`. The same legibility rule that admits the form as a parameter type admits it as a parameter to a generic. BIND-08 already permits `@bound`-substituted generic arguments to carry lifetime information through; the FI case is the same mechanism applied to a function-shaped type.
+
+Field and declared-local positions are excluded for the inverse reason. A field of anonymous-FI type puts an unnameable type on a class's published surface: every reader of the class must reconstruct the SAM signature from the type expression, with no name to anchor documentation, `import`, or IDE navigation. A declared local of anonymous-FI type adds an annotation cost where `var` inference already does the work: the RHS is what produced the FI value, the local binding only needs to hold it. The "function-shaped contract that outlives a single call" cases carry richer obligations — a name, documentation, a place for related methods — that a nominal functional interface exists to hold (FN-03).
+
+The restriction governs the written type expression, not value flow. A `var` local may hold an anonymous-FI value by inference, because no type is spelled there; what is forbidden is writing the anonymous spelling in a position where a future reader must decode it without the call-site context that makes it legible.
 
 ### Why the anonymous form spells call mode with `@mutating` / `@consuming` prefix (FN-01)
 
