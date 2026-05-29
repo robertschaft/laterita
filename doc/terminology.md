@@ -111,8 +111,14 @@ A borrow that grants both read and write access to the borrowed value. Only one 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with(@mut @mutating (@mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The action slot is mut-call so the closure may capture state by mutable borrow. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
 
+### newtype
+A field-less subclass of a value class — the Laterita form of Rust's `struct Meters(f64)` / `struct UserId(u64)`. Because it declares no instance field it has the same representation as its parent (the compiler erases the wrapper, `COMP-01`), inherits the parent's full method surface by ordinary subtyping (no generated delegates), and is a distinct nominal type that does not interconvert with its parent or siblings. The zero-cost guarantee needs no annotation: "declares no field" is the structural trigger. `class Email extends String` (`STR-01`) and `class UserId extends Long` are newtypes. See `EXT-01`.
+
 ### nullable type (also `T?` / `@Nullable T`)
 A type that admits both a value and the special value `null`. Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`). Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`, `LAT-01`.
+
+### @Operator (annotation on methods)
+Marks an instance method as the desugaring target for an arithmetic operator in `.lat` sources. The annotation names the operator — `@Operator(PLUS)`, `MINUS`, `TIMES`, `DIVIDE`, `NEGATE` — and the method name is unconstrained, so `BigDecimal.add`, `Instant.plus`/`minus`, and `Duration.negated` qualify under their existing names. Arity must match the operator (one parameter for the binary kinds, zero for `NEGATE`). `a + b` then means the annotated `PLUS` method call on `a`. The operator set is bounded (no `%`, `[]`, or compound assignment) with no user-defined or trait-based overloading; the comparison operators `< <= > >=` desugar separately through `Comparable.compareTo`, needing no annotation. See `LAT-07`.
 
 ### onDrop()
 A method the compiler invokes to clean up a value. Only a `final` class may implement it with a body (`DROP-09`); a class without an implementation contributes no body. The compiler runs the implementation (if any) as step 1 of the value's drop sequence (`DROP-05`: own body, then own fields in reverse, then each superclass), and triggers the drop sequence on every binding that leaves scope, in reverse declaration order (`DROP-01`, `DROP-02`).
