@@ -528,7 +528,7 @@ The *newtype* pattern — a distinct nominal type wrapping an existing one, with
 - **GEN-01** (`@Delegate` codegen) is needed for composition-over-inheritance generally: any record or class that wraps another and wants to expose the wrapped API uses it.
 - **COMP-08** (inlining permission) is a general compiler optimization that applies to all small methods, not only to forwarding methods.
 
-A named `@newtype` annotation would only restate that `@Delegate` is present — information the compiler already has. A named spec rule `NT-01` would combine three orthogonal rules into one composite, making each harder to reason about independently and making the spec harder to extend. The composition is the design.
+A named `@newtype` annotation would only restate that `@Delegate` is present — information the compiler already has. A single named rule unifying the pattern would combine three orthogonal rules into one composite, making each harder to reason about independently and making the spec harder to extend. The composition is the design.
 
 ---
 
