@@ -1451,7 +1451,7 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ### COMP-08 — Inlining permission
 
-The compiler is permitted and encouraged to inline any function whose body is small enough that call overhead dominates. No annotation is required. In particular, generated forwarding methods (GEN-01 through GEN-07) and accessor methods on records and value classes are considered candidates for inlining. The compiler may apply any combination of inlining, constant folding, dead-code elimination, and other classical optimizations that preserve the semantics specified in §1–19. This permission is the mechanism by which the newtype idiom (a `@Delegate` record — GEN-01) achieves zero runtime overhead: the generated forwarder inlines to a direct field access or method call on the wrapped value.
+The compiler is permitted and encouraged to inline any function whose body is small enough that call overhead dominates. No annotation is required. Generated forwarding methods (GEN-01 through GEN-07) and accessor methods on records and value classes are primary candidates. The compiler may apply any semantics-preserving combination of inlining, constant folding, and dead-code elimination.
 
 ---
 
@@ -1596,29 +1596,19 @@ Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multip
 
 ### NABI-01 — Single-field aggregate layout and calling convention
 
-A value class (MUT-03) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component. The compiler emits no struct wrapper, object header, or padding. At every call site the aggregate is passed in the same register(s) and returned in the same way as a bare value of the field's type.
-
-This guarantee is unconditional for value classes and records meeting the one-field criterion. A class with two or more fields, or any `@mut` class, is excluded.
+A value class (MUT-03) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register(s) as a bare value of the field's type. A class with two or more fields, or any `@mut` class, is excluded.
 
 ---
 
 ## 21. Code Generation Annotations
 
-Laterita provides a set of compiler-driven code-generation annotations modeled on [Project Lombok](https://projectlombok.org/). The compiler processes these annotations at compile time and generates methods as if they were explicitly declared in the source. Generated methods are visible to the type checker, overload resolution, and all other consumers of the class's method surface.
-
-Generated methods carry ownership annotations (`@take`, `@bound`, `@mutating`, `@consuming`) derived mechanically from the rules in each section below. An explicitly declared method with the same name and same erased parameter types shadows the corresponding generated method; the generated method is suppressed for that signature.
-
-Annotations not listed in this section are not Laterita compiler annotations and pass through to downstream annotation processors unchanged.
+Laterita provides compiler-driven code-generation annotations modeled on [Project Lombok](https://projectlombok.org/). Generated methods are visible to the type checker and overload resolution. Ownership annotations (`@take`, `@bound`, `@mutating`, `@consuming`) are derived mechanically per the rules below. An explicitly declared method with the same name and erased parameter types shadows the generated one. Annotations not listed here pass through to downstream annotation processors unchanged.
 
 ### GEN-01 — `@Delegate`
 
 `@Delegate` on the sole component of a `record` causes the compiler to generate, for every `public` instance method of the component's declared type, a forwarding method on the record that invokes the same method on the component. `@Delegate` on a component that is not the sole record component is a compile error.
 
-Generated method return types are the component method's own return types (*decay*): `email.substring(1)` returns `String`, not `Email`. Ownership annotations on the source method are propagated to the generated forwarder: a `@consuming` source method generates a `@consuming` forwarder (consuming the record's component field); a `@mutating` source method generates a `@mutating` forwarder (requiring the record to be held in a `@mut` binding).
-
-The record component's accessor (e.g., `raw()` for `record Email(@Delegate String raw)`) is the only path back to the wrapped value; no implicit widening to the component's type exists.
-
-Combined with NABI-01 (single-field layout guarantee) and COMP-08 (inlining permission), a `@Delegate` record forms the *newtype idiom*: a distinct nominal type that forwards its full interface to the wrapped value at zero runtime overhead.
+Generated method return types are the component method's own return types (*decay*): `email.substring(1)` returns `String`, not `Email`. Ownership annotations are propagated: a `@consuming` source generates a `@consuming` forwarder; a `@mutating` source generates a `@mutating` forwarder. The record component's accessor (e.g., `raw()` for `record Email(@Delegate String raw)`) is the only path back to the wrapped value; no implicit widening to the component's type exists.
 
 ### GEN-02 — `@Getter`
 
