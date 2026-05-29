@@ -512,23 +512,11 @@ Resolution is left-operand-directed with a built-in fallback and no implicit con
 
 ### Why adopt the Lombok annotation surface natively (GEN-01 through GEN-07)
 
-The Lombok project exists because Java's boilerplate burden is high enough that a significant fraction of the ecosystem delegates the generation of getters, setters, builders, `equals`/`hashCode`, and `toString` to a third-party tool. The need is real and widely acknowledged. The question for Laterita is whether to solve it by adopting the Lombok surface natively or by defining a new annotation set.
+Lombok exists because Java's boilerplate burden is high enough that the ecosystem delegates codegen to a third-party tool. Laterita adopts the same surface natively: the names are already the closest thing Java has to a standard codegen vocabulary, and accepting them natively removes a migration friction point. The adoption is not uncritical — several annotations are subsumed (`@Value`/`@Data` by records, `@NonNull` by the nullability system, `@Cleanup` by `onDrop()`), and conflicting ones are compile errors (`@Synchronized` because `synchronized` is removed; `@Setter` on a value class because value classes have no mutable fields). `@SneakyThrows` is deferred pending OQ-22: with all exceptions currently unchecked (EXC-05) it has no purpose, but if OQ-22 restores checked exceptions it becomes a legitimate controlled-unchecking mechanism.
 
-The Lombok surface is the right answer for two reasons. First, it is already the closest thing Java has to a standard codegen vocabulary — the names `@Getter`, `@Builder`, `@With`, `@ToString`, `@EqualsAndHashCode` carry clear meaning to the majority of Java developers Laterita targets, so adopting them costs no learning. Second, the names are already in source files across the ecosystem; the Laterita compiler accepting them natively means that migration from Java + Lombok to Laterita reduces one friction point.
+### How Laterita supports the newtype idiom
 
-The adoption is not uncritical. Lombok was designed against Java's mutable-by-default model, so several annotations are subsumed by Laterita features that already exist: `@Value` and `@Data` are what records are; `@NonNull` is what the nullability type system provides; `@Cleanup` is what `onDrop()` provides. Re-adding these would create two spellings of one thing. The Lombok annotations that conflict with Laterita's model are explicitly not supported: `@Synchronized` because `synchronized` is removed (STD-09/STD-10 replace it), `@Setter` on a value class because value classes have no mutable fields (MUT-04). These are not silently ignored — they are compile errors, so a migrating codebase discovers the incompatibility immediately and can replace the construct with its Laterita equivalent.
-
-`@SneakyThrows` is deferred rather than rejected because its purpose depends on OQ-22. Lombok uses it to propagate a checked exception without declaring it — a workaround for the Java checked-exception burden. All Laterita exceptions are currently unchecked (EXC-05), so the annotation has no purpose today. If OQ-22 restores checked exceptions, the annotation becomes a legitimate mechanism for controlled unchecking at a call boundary and should be specified at that point.
-
-### Why the newtype idiom emerges from composition rather than a named construct
-
-The *newtype* pattern — a distinct nominal type wrapping an existing one, with its full interface available and zero runtime overhead — is the most commonly requested Rust ergonomic improvement over Java. The spec does not introduce a dedicated `@newtype` construct or a named rule that unifies the pattern, because the pattern decomposes cleanly into three independent rules that each have value elsewhere:
-
-- **NABI-01** (single-field aggregate layout) is needed for native interop regardless of newtypes: any value-class or record wrapping a primitive for FFI purposes needs the layout guarantee.
-- **GEN-01** (`@Delegate` codegen) is needed for composition-over-inheritance generally: any record or class that wraps another and wants to expose the wrapped API uses it.
-- **COMP-08** (inlining permission) is a general compiler optimization that applies to all small methods, not only to forwarding methods.
-
-A named `@newtype` annotation would only restate that `@Delegate` is present — information the compiler already has. A single named rule unifying the pattern would combine three orthogonal rules into one composite, making each harder to reason about independently and making the spec harder to extend. The composition is the design.
+The newtype pattern decomposes into three independent rules that each have value elsewhere: NABI-01 (single-field layout, needed for FFI regardless), GEN-01 (`@Delegate` codegen, useful for any composition-over-inheritance wrapper), and COMP-08 (inlining, a general optimization). A dedicated `@newtype` annotation would only restate that `@Delegate` is present; a named unifying rule would bundle three orthogonal concepts into one composite. The composition is the design.
 
 ---
 
