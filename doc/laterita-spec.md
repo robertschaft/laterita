@@ -252,16 +252,6 @@ FrozenCounter fc = new FrozenCounter(5);
 @mut Counter bad = (@mut Counter) fc;     // ERROR (MUT-07): a cast cannot manufacture @mut access
 ```
 
-### NT-01 — Newtype records
-
-A *newtype* is a `record` with exactly one component annotated `@Delegate`. The compiler erases the wrapper at the ABI level (COMP-01): the record has the same size and alignment as its single component. The newtype is a distinct nominal type; it is not a subtype of the component's type and does not widen to it implicitly. The only path back to the wrapped value is the record's generated accessor.
-
-`@Delegate` on a record component causes the compiler to generate, for every `public` instance method of the component's declared type, a forwarding method on the record that invokes the same method on the component. Generated methods return the component's type (they decay: `email.substring(1)` returns `String`). A method explicitly declared on the record shadows the generated delegate for that signature, so closed operations such as `Amount / int → Amount` are added by declaring an `@Operator`-annotated method that returns the record's own type.
-
-Arithmetic and comparison on a numeric newtype follow LAT-07. Without an `@Operator` method a numeric expression widens to the component's primitive base via the delegate. With `@Operator` methods it stays closed over the newtype (`Meters + Meters → Meters`).
-
-`@Delegate` is rejected on any component that is not the sole component of the record. Records with more than one component, or zero components, are ordinary records and receive no delegation. The form is `javac`-parseable, so it needs no `.lat`-only spelling.
-
 ---
 
 ## 3. Move and Borrow
@@ -1459,6 +1449,10 @@ Both extensions denote the same language: the type system, annotation/intrinsic 
 
 The reference laterita compiler is named `latc`. It accepts both `.lat` and `.java` sources in a single compilation unit, dispatches by file extension per COMP-06, and emits the artifacts required by COMP-01 through COMP-04.
 
+### COMP-08 — Inlining permission
+
+The compiler is permitted and encouraged to inline any function whose body is small enough that call overhead dominates. No annotation is required. In particular, generated forwarding methods (GEN-01 through GEN-07) and accessor methods on records and value classes are considered candidates for inlining. The compiler may apply any combination of inlining, constant folding, dead-code elimination, and other classical optimizations that preserve the semantics specified in §1–19. This permission is the mechanism by which the newtype idiom (a `@Delegate` record — GEN-01) achieves zero runtime overhead: the generated forwarder inlines to a direct field access or method call on the wrapped value.
+
 ---
 
 ## 18. Reserved Names
@@ -1491,7 +1485,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 | `@Operator(op)` | `METHOD` | instance method; arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method provides the arithmetic operator `op` (`.lat` sugar) | LAT-07 |
-| `@Delegate` | `PARAMETER` | sole component of a `record` | Generates forwarding methods from the component's type onto the record; makes the record a newtype | NT-01 |
+| `@Delegate` | `PARAMETER` | sole component of a `record` | Generates forwarding methods from the component's type onto the record | GEN-01 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
@@ -1592,6 +1586,85 @@ Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18). 
 
 The method name is unconstrained. `@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method or where arity does not match. An operator parameter should be a plain borrow (`@take` / `@mut` discouraged). Comparison needs no annotation because implementing `Comparable` is the opt-in.
 
-`a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including NT-01 newtypes whose delegate widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
+`a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including GEN-01 `@Delegate` records whose generated forwarder widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
 Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
+
+---
+
+## 20. Native ABI Guarantees
+
+### NABI-01 — Single-field aggregate layout and calling convention
+
+A value class (MUT-03) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component. The compiler emits no struct wrapper, object header, or padding. At every call site the aggregate is passed in the same register(s) and returned in the same way as a bare value of the field's type.
+
+This guarantee is unconditional for value classes and records meeting the one-field criterion. A class with two or more fields, or any `@mut` class, is excluded.
+
+---
+
+## 21. Code Generation Annotations
+
+Laterita provides a set of compiler-driven code-generation annotations modeled on [Project Lombok](https://projectlombok.org/). The compiler processes these annotations at compile time and generates methods as if they were explicitly declared in the source. Generated methods are visible to the type checker, overload resolution, and all other consumers of the class's method surface.
+
+Generated methods carry ownership annotations (`@take`, `@bound`, `@mutating`, `@consuming`) derived mechanically from the rules in each section below. An explicitly declared method with the same name and same erased parameter types shadows the corresponding generated method; the generated method is suppressed for that signature.
+
+Annotations not listed in this section are not Laterita compiler annotations and pass through to downstream annotation processors unchanged.
+
+### GEN-01 — `@Delegate`
+
+`@Delegate` on the sole component of a `record` causes the compiler to generate, for every `public` instance method of the component's declared type, a forwarding method on the record that invokes the same method on the component. `@Delegate` on a component that is not the sole record component is a compile error.
+
+Generated method return types are the component method's own return types (*decay*): `email.substring(1)` returns `String`, not `Email`. Ownership annotations on the source method are propagated to the generated forwarder: a `@consuming` source method generates a `@consuming` forwarder (consuming the record's component field); a `@mutating` source method generates a `@mutating` forwarder (requiring the record to be held in a `@mut` binding).
+
+The record component's accessor (e.g., `raw()` for `record Email(@Delegate String raw)`) is the only path back to the wrapped value; no implicit widening to the component's type exists.
+
+Combined with NABI-01 (single-field layout guarantee) and COMP-08 (inlining permission), a `@Delegate` record forms the *newtype idiom*: a distinct nominal type that forwards its full interface to the wrapped value at zero runtime overhead.
+
+### GEN-02 — `@Getter`
+
+`@Getter` on a field of a class generates a `public` getter method named after the field (`fieldName()`) returning the field's declared type. The method is bare (non-`@mutating`). On an owned field the return is owned; on a `@bound` field the return is `@bound`. `@Getter` on a record component is redundant: records already generate canonical accessors.
+
+### GEN-03 — `@Setter`
+
+`@Setter` on a field of a `@mut` class generates a `public @mutating` setter method named `setFieldName(T value)` where `T` is the field's declared type. The parameter receives the value by the same mode as the field would be assigned. `@Setter` on a field of a value class (non-`@mut`) is a compile error: value classes have no `@mut` fields (MUT-04).
+
+### GEN-04 — `@With`
+
+`@With` on a field of a value class generates a `public withFieldName(T value)` method that returns a new instance of the declaring class with the specified field replaced and all other fields copied from `this`. The method is bare (non-`@mutating`). Parameter ownership matches the field mode. `@With` on a `@mut` class field is a compile error; mutation is expressed through `@Setter` or `@Builder`.
+
+### GEN-05 — `@Builder`
+
+`@Builder` on a class or record generates a nested `public @mut class Builder` with a fluent API. Each field (or record component) contributes a `public @mutating Builder setFieldName(T value)` setter. The builder exposes a `public DeclaredType build()` method that invokes the canonical constructor. Fields with `@take` parameters in the canonical constructor are taken by `@take` in the corresponding builder setter; other fields are taken by value.
+
+### GEN-06 — `@ToString`
+
+`@ToString` on a class generates a `public String toString()` override returning the class name followed by the field values in declaration order, separated by commas and enclosed in parentheses. A `@ToString.Exclude` annotation on a field suppresses that field. `@ToString` on a record is redundant: records already generate a canonical `toString()`.
+
+### GEN-07 — `@EqualsAndHashCode`
+
+`@EqualsAndHashCode` on a class generates `public boolean equals(Object)` and `public int hashCode()` based on all non-`@mut` fields in declaration order. A `@EqualsAndHashCode.Exclude` annotation on a field suppresses that field. `@EqualsAndHashCode` on a record is redundant: records already generate canonical implementations.
+
+### Subsumed by existing language features
+
+The following Lombok annotations have no Laterita equivalent because existing language features already serve their purpose. Introducing them would create two ways to say the same thing.
+
+| Lombok annotation | Subsumed by |
+|---|---|
+| `@Value` | `record` + value-class default (MUT-03) |
+| `@Data` | `record` + `@Getter` + `@Builder` |
+| `@NonNull` | Non-nullable type default (NULL-01); `@Nullable` opts in |
+| `@Cleanup` | `onDrop()` (DROP-01 through DROP-09) |
+| `val` | `var` (immutable by default in Laterita) |
+| `var` (Lombok) | `@mut var` |
+
+### Not supported
+
+| Lombok annotation | Reason |
+|---|---|
+| `@Synchronized` | `synchronized` is not supported; use `Mutex<T>` (STD-09) or `ReentrantLock` (STD-10) |
+
+### Deferred
+
+| Lombok annotation | Status |
+|---|---|
+| `@SneakyThrows` | Deferred pending OQ-22. If OQ-22 restores checked exceptions, `@SneakyThrows` becomes relevant as a mechanism to propagate a checked exception as unchecked across a call boundary. If OQ-22 resolves with all exceptions remaining unchecked, the annotation has no purpose and will be listed as subsumed. |

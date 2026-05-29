@@ -494,19 +494,7 @@ A closure that borrows `name` cannot outlive `name`. This is the same lifetime-b
 
 ---
 
-## Strings (STR-02 through STR-08)
-
-### Why newtypes are `@Delegate` records, and why operators are bounded sugar (NT-01, LAT-07)
-
-The microtype pattern needs three properties simultaneously: a distinct nominal type (the compiler rejects `Email` where `String` is expected), a full forwarding surface (the newtype can do everything the base type can), and zero runtime overhead. The design space has two candidate shapes.
-
-A field-less subclass — `class Email extends String` — achieves all three via subtyping: representation erasure is sound when no field is added, and the subclass inherits the base's method surface for free. The problem is that subtyping is the wrong relation. A subclass widens to its parent, so `String s = email` is legal without any explicit conversion. The implicit widening loses the type brand silently: code that should demand `Email` accepts a raw `String` without complaint at the call site. What domain modelling needs is *nominal distinctness at declaration boundaries*, not a subtype — the compiler catches `Email`/`Name` swaps precisely because neither widens to the other. A field-less subclass gives the type safety in the constructor but gives it back whenever the value crosses a call boundary through widening. This form is therefore rejected.
-
-The `@Delegate` record makes the correct tradeoff. `record Email(@Delegate @take String raw)` is not a subtype of `String`: `Email` and `String` are unrelated types, and no implicit widening exists. The full `String` method surface is available through generated forwarding methods, which return `String` (they decay — `email.substring(1)` is a `String`). An explicit `.raw()` accessor is the only path back to the wrapped value. COMP-01 erases the wrapper at the ABI level — a single-component record has the same size and alignment as the component, so there is no object header and no Valhalla dependency.
-
-`@Delegate` is not newtype-specific machinery: it is a general annotation that means "generate forwarding methods from this component's type." Its effect on a record component is the same as what a programmer would write by hand. The single-component layout guarantee is similarly general — it is the natural consequence of how a one-field struct compiles under AOT. Neither rule exists solely to support newtypes; the newtype pattern emerges from composing them.
-
-Closed arithmetic on a numeric newtype uses the same `@Operator` annotation the rest of the language uses. Without `@Operator` methods a numeric expression widens to the base via the delegate. With them it stays closed: the explicitly declared method shadows the generated delegate for that signature.
+### Why operators are bounded sugar (LAT-07)
 
 The operator question has three candidate shapes, and the C++/Rust/Java history rules out two of them rather than the feature itself. C++ made every operator overloadable with arbitrary semantics — `<<` for stream insertion, comma operators, expression templates no one can read — and that unbounded surface is rejected. Rust's trait-based form is disciplined but heavy: the `Add`/`AddAssign`/`Add<&T>` matrix, the by-value/by-borrow permutations, and orphan/coherence rules are more machinery than a Java-shaped language wants. Java declined operators entirely and kept only `String +` — and the cost of that abstention is real: `BigDecimal` arithmetic reads as nested method calls, and the audience that needs expression-level math (finance, graphics, scientific code) self-selects out of the language, so the absence is self-reinforcing rather than evidence of no demand. The third shape — bounded sugar, as in Kotlin, Python, Swift, and C# — avoids both traps: a *fixed* set of operators, each desugaring to a designated method resolved by ordinary overload resolution, with no traits and no coherence rules. None of those languages collapsed into C++ chaos from it; the disasters there come from the edges they left in (`invoke`, `[]`, custom operators), not from `+` on a value type.
 
@@ -516,7 +504,35 @@ Comparison is gated differently, and deliberately. `< <= > >=` desugar through `
 
 Gating arithmetic by annotation rather than by a single `Arithmetic<Self>` interface — the obvious mirror of the `Comparable` treatment — is the deliberate choice, because such an interface is too narrow. It assumes homogeneous, closed operations (`Self op Self → Self`), but real arithmetic is neither: dividing `Money` by `Money` yields a scalar, not `Money`; multiplying `Money` by `Money` is meaningless; a vector times a vector is ambiguous; `Instant` minus `Instant` is a `Duration`. Capturing these needs distinct operand and result types per operator — Rust's `Add<Rhs, Output>` matrix — and Java cannot even implement one generic interface twice with different type arguments (`Instant - Instant` and `Instant - Duration` would collide on erasure), so the interface cannot express the cases that matter. A per-method `@Operator(op)` annotation has none of these limits: each operator is an ordinary method carrying its own parameter and return types, so heterogeneous and non-closed operators fall out for free, and a type can expose `divide` returning a different type than it returns from `multiply`. Eligibility being a method-level opt-in rather than a type-level one is the price, and it is small. Comparison stays on `Comparable` precisely because ordering genuinely *is* the single homogeneous total operation an interface assumes.
 
-Resolution is left-operand-directed with a built-in fallback and no implicit conversion (LAT-07's three steps), which is what dissolves the obvious objection — that `value + literal` and `literal + value` might disagree. They cannot diverge into "one works, one fails": the built-in numeric fallback (step 2) either catches *both* orderings (the operands reduce to primitives, so a numeric newtype's expression with a literal yields the primitive base) or *neither* (a non-numeric value class such as `BigInteger` or a `Vec3` has no fallback, so both orderings are a type error that points at an explicit conversion). A reflected form or implicit numeric coercion would buy symmetry at the cost of the silent conversions Laterita avoids everywhere else, so it is declined. The newtype's core guarantee stays nominal distinctness at declaration boundaries; closed value-typed arithmetic (`Meters + Meters → Meters`) is the opt-in a newtype layers on by declaring `@Operator` methods that take precedence over the widening fallback.
+Resolution is left-operand-directed with a built-in fallback and no implicit conversion (LAT-07's three steps), which is what dissolves the obvious objection — that `value + literal` and `literal + value` might disagree. They cannot diverge into "one works, one fails": the built-in numeric fallback (step 2) either catches *both* orderings (the operands reduce to primitives, so a numeric newtype's expression with a literal yields the primitive base) or *neither* (a non-numeric value class such as `BigInteger` or a `Vec3` has no fallback, so both orderings are a type error that points at an explicit conversion). A reflected form or implicit numeric coercion would buy symmetry at the cost of the silent conversions Laterita avoids everywhere else, so it is declined. Closed value-typed arithmetic (`Meters + Meters → Meters`) is the opt-in a type layers on by declaring `@Operator` methods that take precedence over the widening fallback.
+
+---
+
+## Code Generation Annotations (§21)
+
+### Why adopt the Lombok annotation surface natively (GEN-01 through GEN-07)
+
+The Lombok project exists because Java's boilerplate burden is high enough that a significant fraction of the ecosystem delegates the generation of getters, setters, builders, `equals`/`hashCode`, and `toString` to a third-party tool. The need is real and widely acknowledged. The question for Laterita is whether to solve it by adopting the Lombok surface natively or by defining a new annotation set.
+
+The Lombok surface is the right answer for two reasons. First, it is already the closest thing Java has to a standard codegen vocabulary — the names `@Getter`, `@Builder`, `@With`, `@ToString`, `@EqualsAndHashCode` carry clear meaning to the majority of Java developers Laterita targets, so adopting them costs no learning. Second, the names are already in source files across the ecosystem; the Laterita compiler accepting them natively means that migration from Java + Lombok to Laterita reduces one friction point.
+
+The adoption is not uncritical. Lombok was designed against Java's mutable-by-default model, so several annotations are subsumed by Laterita features that already exist: `@Value` and `@Data` are what records are; `@NonNull` is what the nullability type system provides; `@Cleanup` is what `onDrop()` provides. Re-adding these would create two spellings of one thing. The Lombok annotations that conflict with Laterita's model are explicitly not supported: `@Synchronized` because `synchronized` is removed (STD-09/STD-10 replace it), `@Setter` on a value class because value classes have no mutable fields (MUT-04). These are not silently ignored — they are compile errors, so a migrating codebase discovers the incompatibility immediately and can replace the construct with its Laterita equivalent.
+
+`@SneakyThrows` is deferred rather than rejected because its purpose depends on OQ-22. Lombok uses it to propagate a checked exception without declaring it — a workaround for the Java checked-exception burden. All Laterita exceptions are currently unchecked (EXC-05), so the annotation has no purpose today. If OQ-22 restores checked exceptions, the annotation becomes a legitimate mechanism for controlled unchecking at a call boundary and should be specified at that point.
+
+### Why the newtype idiom emerges from composition rather than a named construct
+
+The *newtype* pattern — a distinct nominal type wrapping an existing one, with its full interface available and zero runtime overhead — is the most commonly requested Rust ergonomic improvement over Java. The spec does not introduce a dedicated `@newtype` construct or a named rule that unifies the pattern, because the pattern decomposes cleanly into three independent rules that each have value elsewhere:
+
+- **NABI-01** (single-field aggregate layout) is needed for native interop regardless of newtypes: any value-class or record wrapping a primitive for FFI purposes needs the layout guarantee.
+- **GEN-01** (`@Delegate` codegen) is needed for composition-over-inheritance generally: any record or class that wraps another and wants to expose the wrapped API uses it.
+- **COMP-08** (inlining permission) is a general compiler optimization that applies to all small methods, not only to forwarding methods.
+
+A named `@newtype` annotation would only restate that `@Delegate` is present — information the compiler already has. A named spec rule `NT-01` would combine three orthogonal rules into one composite, making each harder to reason about independently and making the spec harder to extend. The composition is the design.
+
+---
+
+## Strings (STR-02 through STR-08)
 
 ### Why owned vs. borrowed strings tracked per-binding (STR-02 through STR-04)
 
