@@ -1583,7 +1583,7 @@ The method name is unconstrained. `@Operator` names the operator, so `BigDecimal
 
 Resolve `a OP b` by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including EXT-01 newtypes widened to their base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
-Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only. `%`, `[]`, and compound assignment are not eligible.
+Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
 
 ### Structural extensions
 
