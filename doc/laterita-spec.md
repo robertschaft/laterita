@@ -1585,8 +1585,6 @@ The method name is unconstrained. `@Operator` names the operator, so `BigDecimal
 
 Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
 
-Other operators are currently unsupported (see reasoning).
-
 ### Structural extensions
 
 Rules below appear in `.lat` because `javac` cannot parse or compile their source form. They have no desugaring to the `.java` surface; the `.java` analog is "this declaration is not expressible". The laterita compiler accepts them only in `.lat` units.
