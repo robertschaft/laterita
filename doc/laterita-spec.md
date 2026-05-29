@@ -797,11 +797,13 @@ Examples — each comment describes what a lambda assigned to that parameter typ
 void fold(int seed, (int, int) -> int reducer) { … }
 // shared-call: invocable any number of times, concurrently; lambda may only read captures
 
-void buildAll(@mutating (@mut StringBuilder) -> void appender) { … }
+void buildAll(@mut @mutating (@mut StringBuilder) -> void appender) { … }
 // mut-call: invoked sequentially; lambda may mutate captures
+// (@mut on the binding is what lets buildAll invoke a mut-call SAM, per CLO-03)
 
-void submit(@consuming (@take Result) -> void onComplete) { … }
+void submit(@take @consuming (@take Result) -> void onComplete) { … }
 // once-call: invoked at most once; lambda may consume captures and the Result argument
+// (@take on the binding is what lets submit invoke a once-call SAM, per CLO-03)
 
 <F extends Field> @bound F lookup(@bound Record rec, RecordKey key, (@bound Record, RecordKey) -> @bound F selector) { … }
 // @bound on the SAM parameter pairs with @bound on its return (LIFE-02 / LIFE-05): lambda must
@@ -814,16 +816,7 @@ Mapping to Rust: bare = `Fn`, `@mutating` = `FnMut`, `@consuming` = `FnOnce`; CL
 
 Two anonymous FI types are *identical* — the same compile-time type — only when their call mode, arity, parameter modes, underlying types, return type, and `@bound` relationships all match exactly. Distinct expressions denote distinct types. A nominal FI and an anonymous one are never identical, even when their SAMs match — the nominal one carries an interface identity the anonymous one lacks.
 
-For most code, identity is the wrong question: anonymous types can't be reflected on or compared at runtime. What matters is *assignability* — when a value of FI type `A` may flow into a slot of FI type `B`. Assignability follows MOVE-10's override variance, applied to the SAM's own parameters and return:
-
-| Axis | Rule for `A` → `B` |
-|---|---|
-| Call mode | `A.call_mode ≤ B.call_mode` under `shared-call < mut-call < once-call` (CLO-04 containment) |
-| SAM parameter `@mut` | `A` may have it dropped relative to `B` (contravariant) |
-| SAM parameter `@take` | invariant |
-| SAM parameter `@bound` | `A` may have it dropped relative to `B` jointly with the return |
-| SAM return `@bound` | `A` may return owned where `B` promises `@bound` (covariant in strength) |
-| Underlying parameter and return types | must agree |
+For most code, identity is the wrong question: anonymous types can't be reflected on or compared at runtime. What matters is *assignability* — when a value of FI type `A` may flow into a slot of FI type `B`. This is MOVE-10's override variance applied to the SAM: read the slot `B` as the base declaration and the value `A` as the override. `A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s — its call mode is `≤` `B`'s (CLO-04 containment), a `@mut` or `@bound` parameter may be dropped, `@take` is invariant, a `@bound` return may be strengthened to owned, and the underlying parameter and return types agree.
 
 ```laterita
 (@mut Record) -> String           // type α — slot
@@ -1475,10 +1468,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `PARAMETER` | on `@mut` types | Mutable parameter (mutable borrow) | MOVE-03 |
 | `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` binding | BIND-02, LIFE-02 |
 | `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | BIND-10 |
-| `@mutating` | `METHOD` | - | Method mutates its receiver | BIND-05 |
-| `@mutating` | `TYPE_USE` | only on an anonymous FI type expression (FN-01) | Declares the FI's SAM is `@mutating` (mut-call) | FN-01, CLO-03 |
-| `@consuming` | `METHOD` | - | Method consumes its receiver | BIND-07 |
-| `@consuming` | `TYPE_USE` | only on an anonymous FI type expression (FN-01) | Declares the FI's SAM is `@consuming` (once-call) | FN-01, CLO-03 |
+| `@mutating` | `METHOD` | - | Method mutates its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | BIND-05, FN-01 |
+| `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | BIND-07, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | MOVE-03 |
 | `@bound` | `PARAMETER` | - | Borrow source | LIFE-02, BIND-03, BIND-08 |
 | `@bound` | `FIELD` | - | Field is only borrowed (default: owned) | LIFE-02, BIND-03, BIND-08 |
@@ -1489,6 +1480,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
+
+An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
 The annotations are declared in `laterita.lang.annotation`. Stdlib static methods that carry laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier:
 
