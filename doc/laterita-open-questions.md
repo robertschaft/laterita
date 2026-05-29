@@ -66,38 +66,6 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 **Related codes:** STD-07, STD-09, THR-01, THR-04, MOVE-03.
 
-## OQ-24 — Operator overloading for arithmetic value types
-
-**Surfaced when:** considering value-typed math (`BigDecimal`, `Vec3`, `Money`, `Duration`) which in Rust uses `Add`/`Sub`/`Mul`/`Div` traits.
-
-**The issue.** Java has no operator overloading except `+` on `String`. Rust does, by trait. Without overloading, Laterita value types read `a.plus(b).times(c)` where Rust reads `(a + b) * c`. For a language whose elevator pitch is "Rust ergonomics in Java syntax," math-heavy code stays verbose.
-
-**The question.**
-- Does Laterita introduce a fixed-set annotation surface — e.g. `@operator(PLUS)` on a method named `plus` — that the parser desugars `a + b` into the annotated call, with overload resolution unchanged?
-- Which operators are eligible? At minimum `+ - * / %` and `== !=` (the latter via `Object.equals` already); what about `< <= > >=` (Rust's `PartialOrd`) and `[]` indexing (Rust's `Index`)?
-- How does ownership interact: do operator methods take `@bound this` by default (like Rust's `&self` reference forms), with `@take` versions opted in?
-- Does the form coexist with `String`'s built-in `+`, or replace it?
-
-**Why it matters.** Value-typed arithmetic is one of the most visible everyday differences between Rust and Java code. The decision affects how libraries like `java.math`, vector math, and unit-typed quantities look in Laterita.
-
-**Related codes:** BIND-07, MOVE-03.
-
-## OQ-26 — Newtype wrappers as zero-cost value classes
-
-**Surfaced when:** considering the Rust idiom `struct Meters(f64)` / `struct UserId(u64)` — a one-field tuple struct that the compiler erases to the inner representation but the type system treats as distinct.
-
-**The issue.** Java records always allocate (unless Valhalla value-classes apply). Laterita could offer the Rust newtype pattern as a guaranteed zero-overhead wrapper: `record Meters(double value) {}` compiles to the same memory layout as `double` when used as a field or parameter, with no separate object header, but the type system rejects mixing `Meters` with `Seconds`.
-
-**The question.**
-- Is there an annotation, e.g. `@newtype` or `@valuewrapper`, on single-field records that obligates the compiler to elide allocation and treat the wrapper as the inner type at the ABI level?
-- Does it inherit the inner type's ownership semantics automatically: `@newtype record Owned(String inner) {}` behaves as an owned `String` in move/borrow analysis?
-- How does it interact with sealed hierarchies — can a sealed type with all `@newtype` variants compile as a tagged union with discriminant + inner data, à la Rust enums?
-- Does it require Valhalla in the JVM-targeting story, or does AOT native compilation (COMP-01) sidestep that?
-
-**Why it matters.** The newtype pattern is the most cited Rust ergonomic improvement over Java for domain modelling ("type aliases are not types; newtype wrappers are"). Without a zero-cost form, Laterita developers will skip the pattern for performance and lose the type-safety benefit.
-
-**Related codes:** BIND-04, COMP-01, COMP-02.
-
 ## OQ-27 — `From`/`Into`-style conversions and implicit-coercion control
 
 **Surfaced when:** noting that Rust's `From<T>`/`Into<U>` traits provide an ergonomic but controlled conversion surface (`let s: String = my_str.into();`), used heavily for error conversion in conjunction with the `?` operator.

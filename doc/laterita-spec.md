@@ -1569,4 +1569,14 @@ Rules below appear in `.lat` because `javac` cannot parse or compile their sourc
 
 ### STR-01 — `String` is a normal class
 
-In `.lat`, `String` is not `final` and classes may extend it: `class Email extends String`. The platform's `java.lang.String` is declared `final`, so `javac` rejects this construct and it cannot appear in `.java`. Subclasses participate in the per-binding owned-vs-borrowed tracking (STR-02), inherit the value-class restrictions of STR-07 (no `@mutating` methods can be introduced), and are constrained by all other rules in §12.
+In `.lat`, `String` is not `final` and classes may extend it: `class Email extends String`. The platform's `java.lang.String` is declared `final`, so `javac` rejects this construct and it cannot appear in `.java`. Subclasses participate in the per-binding owned-vs-borrowed tracking (STR-02), inherit the value-class restrictions of STR-07 (no `@mutating` methods can be introduced), and are constrained by all other rules in §12. STR-01 is the `String` instance of the general newtype rule EXT-01.
+
+### EXT-01 — Newtype extension of value classes
+
+A `.lat` class may extend any value class (MUT-03), including the `final` platform types that `javac` forbids extending: `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01 this has no `.java` desugaring; the laterita compiler accepts it only in `.lat` units. Extension inherits the parent's entire method surface by ordinary subtyping — no delegate methods are generated — and carries the parent's value-class restrictions (MUT-05): no `@mutating` method may be introduced, and the subclass's ownership behavior is the parent's.
+
+A subclass that **declares no instance field** is a *newtype*. It has the same representation as its parent — no object header and no added storage; COMP-01 erases the wrapper at the ABI level with no dependence on JVM value classes — and is a distinct nominal type that does not interconvert with its parent or its siblings except by the ordinary widening upcast to the parent. The newtype guarantee is the zero-overhead nominal distinction Java records cannot give without allocating.
+
+A subclass that declares one or more instance fields is an ordinary value subclass with its own layout; the zero-cost guarantee does not apply. The newtype/ordinary distinction is structural — the presence of a declared field — so no annotation marks a newtype.
+
+Laterita has no operator overloading: the operators are exactly Java's fixed set on the primitive and wrapper types. A numeric newtype therefore widens to its parent under `+ - * / %` and the relational operators, so such an expression has the parent's type and re-wrapping the result to the newtype is an explicit constructor call. A newtype's guarantee is nominal distinctness at declaration boundaries (parameters, fields, returns); value-typed arithmetic that must stay closed over a domain type uses named methods on a value class (`Money.add`, `Vec3.plus`), exactly as on any other value class.
