@@ -1480,6 +1480,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
+| `@Operator` | `METHOD` | name and arity per LAT-07 | Method is the desugaring target for an arithmetic operator (`.lat` sugar) | LAT-07 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
@@ -1506,13 +1507,15 @@ A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-c
 
 ### LAT-00 — The `.lat` surface is pure syntactic sugar
 
-Forms LAT-01 through LAT-05 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it before any type, ownership, lifetime, or runtime analysis. Consequently:
+Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it. Consequently:
 
-- Any `.lat` source built from LAT-01–LAT-05 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
-- A program's meaning over the LAT-01–LAT-05 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06).
+- Any `.lat` source built from LAT-01–LAT-07 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
+- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06).
 - A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §18.
 
-A `.lat` source may additionally use the structural extensions listed at the end of this section (currently STR-01 only) — rules whose meaning the core spec already defines but whose surface `javac` cannot parse or compile and which therefore cannot appear in `.java`. Such extensions are explicitly enumerated; the default assumption for new `.lat` forms remains "pure sugar".
+Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
+
+A `.lat` source may additionally use the structural extensions listed at the end of this section (STR-01 and the general newtype rule EXT-01) — rules whose meaning the core spec already defines but whose surface `javac` cannot parse or compile and which therefore cannot appear in `.java`. Such extensions are explicitly enumerated; the default assumption for new `.lat` forms remains "pure sugar".
 
 The sugar forms are listed below with their `.java`-surface desugarings.
 
@@ -1563,6 +1566,34 @@ Pair<String, Int> p = new Pair("hello".clone(), 42);     // .lat: diamond implic
 Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .lat
 ```
 
+### LAT-07 — Arithmetic operator sugar
+
+In `.lat`, the binary operators `+ - * /` and unary `-` may be written between or before operands whose type provides the matching operator method. Each form is sugar for that method call:
+
+| Form | Desugars to | Method | Arity |
+|---|---|---|---|
+| `a + b` | `a.add(b)` | `add` | 1 param |
+| `a - b` | `a.subtract(b)` | `subtract` | 1 param |
+| `a * b` | `a.multiply(b)` | `multiply` | 1 param |
+| `a / b` | `a.divide(b)` | `divide` | 1 param |
+| `-a` | `a.negate()` | `negate` | 0 params |
+
+The method names are `BigInteger` / `BigDecimal`'s arithmetic vocabulary, so those types and any type modelled on them are operator-eligible without renaming.
+
+A method is a desugaring target only when annotated `@Operator` (§18) — naming a method `add` is not enough, so the many existing non-arithmetic `add` methods (`Collection.add` and the like) never give their receiver a `+` meaning. `@Operator` is permitted only on a method whose name and arity match a row above; elsewhere it is rejected. The annotated parameter should be a plain borrow: `@take` or `@mut` on an operator parameter is permitted but discouraged, since `a + b` reads as neither consuming nor mutating its operands.
+
+`a OP b` is resolved by the static type of the left operand `a` (for unary `-a`, by `a`):
+
+1. If `a`'s type has an accessible `@Operator` method for OP applicable to `b`, the form means that call.
+2. Otherwise, if the built-in numeric operator applies to `a` and `b` — primitives, their wrapper types, and EXT-01 newtypes widened to their primitive base — the built-in operator applies, with its ordinary primitive result type.
+3. Otherwise the expression is a type error.
+
+There is no reflected form (no right-operand dispatch) and no implicit conversion of an operand to make a method applicable. `value + literal` and `literal + value` thus agree only through step 2; value-typed arithmetic with no built-in fallback (`BigInteger`, a `Vec3` value class) requires both operands to share the operator-eligible type, or an explicit conversion.
+
+Desugaring preserves Java's arithmetic precedence and associativity: unary `-` binds tightest, then `* /`, then `+ -`, each binary operator left-associative. `a + b * c` desugars to `a.add(b.multiply(c))`; `-a * b` to `a.negate().multiply(b)`. The desugared calls are ordinary method calls under all §1–18 rules — the compiler is expected to inline them, but their observable typing, ownership, and borrow behaviour is exactly that of the written-out call, which is also the form a `.java` mirror carries (`javac` rejects `+` on these types, so the operator spelling is `.lat`-only).
+
+`%`, `[]`, the comparison operators, and the compound-assignment operators are not operator-eligible: `%` is integer-only and rarely wanted on value types, and `[]` would imply the constant-time indexing a general operator method cannot promise.
+
 ### Structural extensions
 
 Rules below appear in `.lat` because `javac` cannot parse or compile their source form. They have no desugaring to the `.java` surface; the `.java` analog is "this declaration is not expressible". The laterita compiler accepts them only in `.lat` units.
@@ -1579,4 +1610,4 @@ A subclass that **declares no instance field** is a *newtype*. It has the same r
 
 A subclass that declares one or more instance fields is an ordinary value subclass with its own layout; the zero-cost guarantee does not apply. The newtype/ordinary distinction is structural — the presence of a declared field — so no annotation marks a newtype.
 
-Laterita has no operator overloading: the operators are exactly Java's fixed set on the primitive and wrapper types. A numeric newtype therefore widens to its parent under `+ - * / %` and the relational operators, so such an expression has the parent's type and re-wrapping the result to the newtype is an explicit constructor call. A newtype's guarantee is nominal distinctness at declaration boundaries (parameters, fields, returns); value-typed arithmetic that must stay closed over a domain type uses named methods on a value class (`Money.add`, `Vec3.plus`), exactly as on any other value class.
+The built-in arithmetic operators reach a numeric newtype through its primitive base: a newtype extending a wrapper type widens to that wrapper's primitive under `+ - * /`, so an expression in which neither operand carries an `@Operator` method has the primitive result type and re-wrapping to the newtype is explicit (LAT-07, step 2). To keep arithmetic closed over the newtype — `Meters + Meters → Meters` — the newtype declares `@Operator`-annotated methods (`add`, `multiply`, …), which take precedence over the built-in widening (LAT-07, step 1). A newtype's core guarantee is nominal distinctness at declaration boundaries (parameters, fields, returns); closed value-typed arithmetic is the opt-in layered on top.
