@@ -67,7 +67,7 @@ Only one mutable borrow may exist at a time. No other borrows (mutable or immuta
 A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `BIND-03`.
 
 ### functional interface (also "function type")
-An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`, legal only as a parameter type or a return type (`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position). Laterita treats them uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
+An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`. The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04); fields and declared local types use a nominal functional interface instead. `.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position. The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode — its call mode (CLO-03). Laterita treats nominal and anonymous forms uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is the `@consuming` annotation on the method (BIND-07).
@@ -109,7 +109,7 @@ Declares that a method may mutate its receiver — reassign or mutate-through th
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `MOVE-03`, `MOVE-04`.
 
 ### Mutex<T>
-A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with((@bound @mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
+A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with(@mut @mutating (@mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The action slot is mut-call so the closure may capture state by mutable borrow. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
 
 ### nullable type (also `T?` / `@Nullable T`)
 A type that admits both a value and the special value `null`. Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`). Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable. See `NULL-02`, `LAT-01`.
@@ -127,7 +127,7 @@ General-purpose record in `laterita.lang` carrying two values. The same declarat
 Having the right and obligation to drop (clean up) a value when done. An owned binding can move the value to another binding, pass it to a `@take` parameter, or drop it at scope exit. Only one binding can own a value at a time. See `MOVE-02`.
 
 ### override variance
-The rules governing whether an overriding method's parameters may differ from the base method's parameter modes. `@take` is invariant (must match exactly); `@mut` is contravariant (override may drop `@mut` but not add it). See `MOVE-10`.
+The rules governing whether an overriding method's signature may differ from the base method's. One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse. `@take` on a parameter is invariant; `@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added. The FI-slot call-mode axis inverts surface direction — override may *strengthen* the slot (bare → `@mutating` → `@consuming`) — because the annotation governs closure acceptance, not parameter binding. See `MOVE-10` for the unified table.
 
 ### parameter mode / ownership mode
 How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `MOVE-03`.
@@ -223,7 +223,7 @@ A non-owning reference to a value managed by `Rc<T>` or `Arc<T>`. The weak refer
 |----------|---------|
 | `T`, `U`, etc. | Type variable; represents any type |
 | `T?` | Nullable version of type `T` (`.lat` form; `.java` writes `@Nullable T` per LAT-01) |
-| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R` (`.lat`-only per LAT-05) |
+| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R`; shared-call by default. Prefix with `@mutating` or `@consuming` for mut-call / once-call. Legal as parameter, return, generic bound, or generic type argument per FN-04. (`.lat`-only per LAT-05) |
 | `binding:` or `method:` or `parameter:` | Marks the following code snippet's scope (e.g., method signature, local binding) |
 
 ### Spec Code Prefixes
