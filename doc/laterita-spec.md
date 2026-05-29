@@ -1568,7 +1568,7 @@ Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .la
 
 ### LAT-07 — Operator sugar
 
-In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18); comparison desugars through `java.lang.Comparable`:
+In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18). Comparison desugars through `java.lang.Comparable`:
 
 | Form | Desugars to | Eligibility on the left operand's type |
 |---|---|---|
@@ -1579,11 +1579,11 @@ In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison o
 | `-a` | `a.negate()` | `@Operator(NEGATE)`, no parameters |
 | `a < b` (and `<=`, `>`, `>=`) | `a.compareTo(b) < 0` (resp. `<= > >=`) | implements `Comparable<S>`, `b` assignable to `S` |
 
-The method names shown are illustrative: `@Operator` names the operator, so the method may carry any name with matching arity — `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method, or where the arity does not match its operator. An operator parameter should be a plain borrow (`@take` / `@mut` are discouraged). Comparison needs no annotation — implementing `Comparable` is the opt-in — and `==` / `!=` are unaffected.
+The method name is unconstrained. `@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method or where arity does not match. An operator parameter should be a plain borrow (`@take` / `@mut` discouraged). Comparison needs no annotation because implementing `Comparable` is the opt-in. The operators `==` / `!=` are unaffected.
 
-`a OP b` is resolved by the static type of the left operand (for unary `-a`, by `a`): if that type supplies the operator applicable to the right operand, the form is the corresponding call; otherwise, if both operands are primitive-numeric — including EXT-01 newtypes widened to their base — the built-in operator applies; otherwise it is a type error. Resolution never dispatches on the right operand and never inserts an implicit conversion.
+Resolve `a OP b` by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including EXT-01 newtypes widened to their base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
-Desugaring preserves Java operator precedence, so `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`; the desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only. `%`, `[]`, and compound assignment are not eligible.
+Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only. `%`, `[]`, and compound assignment are not eligible.
 
 ### Structural extensions
 
@@ -1595,8 +1595,8 @@ In `.lat`, `String` is not `final` and classes may extend it: `class Email exten
 
 ### EXT-01 — Newtype extension of value classes
 
-A `.lat` class may extend any value class (MUT-03), including the `final` platform types `javac` forbids extending — `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01 it has no `.java` form. The subclass inherits the parent's method surface by subtyping and its value-class restrictions (MUT-05): no `@mutating` method may be introduced, and ownership behaviour is the parent's.
+A `.lat` class may extend any value class (MUT-03). This includes the `final` platform types `javac` forbids extending: `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01, it has no `.java` form. The subclass inherits the parent's method surface by subtyping. It also inherits value-class restrictions (MUT-05): no new `@mutating` methods and the parent's ownership behaviour.
 
-A subclass that **declares no instance field** is a *newtype*: it has the parent's representation (COMP-01 erases the wrapper) and is a distinct nominal type that converts to its parent only by the ordinary widening upcast. A subclass that declares a field is an ordinary value subclass with its own layout. The distinction is structural — the presence of a declared field — so no annotation marks a newtype.
+A subclass that **declares no instance field** is a *newtype*. It has the parent's representation (COMP-01 erases the wrapper). It is a distinct nominal type that converts to its parent only by ordinary widening upcast. A subclass that declares a field is an ordinary value subclass with its own layout. The distinction is structural (based on declared fields). No annotation marks a newtype.
 
-Arithmetic and comparison on a numeric newtype follow LAT-07: absent an `@Operator` method it widens to its primitive base (the expression has the base type); declaring `@Operator` methods keeps arithmetic closed over the newtype (`Meters + Meters → Meters`).
+Arithmetic and comparison on a numeric newtype follow LAT-07. Without an `@Operator` method it widens to its primitive base. With `@Operator` methods it stays closed over the newtype (`Meters + Meters → Meters`).
