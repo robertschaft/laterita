@@ -1481,6 +1481,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 | `@Operator(op)` | `METHOD` | instance method; arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method provides the arithmetic operator `op` (`.lat` sugar) | LAT-07 |
+| `@Delegate` | `PARAMETER` | sole component of a `record` | Generates forwarding methods from the component's type onto the record; makes the record a newtype | NT-01 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
@@ -1515,7 +1516,7 @@ Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surfa
 
 Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
 
-A `.lat` source may additionally use the structural extensions listed at the end of this section (STR-01 and the general newtype rule EXT-01) — rules whose meaning the core spec already defines but whose surface `javac` cannot parse or compile and which therefore cannot appear in `.java`. Such extensions are explicitly enumerated; the default assumption for new `.lat` forms remains "pure sugar".
+A `.lat` source may additionally use the structural extension listed at the end of this section (STR-01) — a rule whose meaning the core spec already defines but whose surface `javac` cannot parse or compile and which therefore cannot appear in `.java`. Such extensions are explicitly enumerated; the default assumption for new `.lat` forms remains "pure sugar".
 
 The sugar forms are listed below with their `.java`-surface desugarings.
 
@@ -1583,7 +1584,7 @@ Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18). 
 
 The method name is unconstrained. `@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method or where arity does not match. An operator parameter should be a plain borrow (`@take` / `@mut` discouraged). Comparison needs no annotation because implementing `Comparable` is the opt-in.
 
-`a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including EXT-01 newtypes widened to their base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
+`a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including NT-01 newtypes whose delegate widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
 Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
 
@@ -1593,12 +1594,14 @@ Rules below appear in `.lat` because `javac` cannot parse or compile their sourc
 
 ### STR-01 — `String` is a normal class
 
-In `.lat`, `String` is not `final` and classes may extend it: `class Email extends String`. The platform's `java.lang.String` is declared `final`, so `javac` rejects this construct and it cannot appear in `.java`. Subclasses participate in the per-binding owned-vs-borrowed tracking (STR-02), inherit the value-class restrictions of STR-07 (no `@mutating` methods can be introduced), and are constrained by all other rules in §12. STR-01 is the `String` instance of the general newtype rule EXT-01.
+In `.lat`, `String` is not `final` and classes may extend it: `class Email extends String`. The platform's `java.lang.String` is declared `final`, so `javac` rejects this construct and it cannot appear in `.java`. Subclasses participate in the per-binding owned-vs-borrowed tracking (STR-02), inherit the value-class restrictions of STR-07 (no `@mutating` methods can be introduced), and are constrained by all other rules in §12.
 
-### EXT-01 — Newtype extension of value classes
+### NT-01 — Newtype records
 
-A `.lat` class may extend any value class (MUT-03). This includes the `final` platform types `javac` forbids extending: `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01, it has no `.java` form. The subclass inherits the parent's method surface by subtyping. It also inherits value-class restrictions (MUT-05): no new `@mutating` methods and the parent's ownership behaviour.
+A *newtype* is a `record` with exactly one component annotated `@Delegate`. The compiler erases the wrapper at the ABI level (COMP-01): the record has the same size and alignment as its single component. The newtype is a distinct nominal type; it is not a subtype of the component's type and does not widen to it implicitly.
 
-A subclass that **declares no instance field** is a *newtype*. It has the parent's representation (COMP-01 erases the wrapper). It is a distinct nominal type that converts to its parent only by ordinary widening upcast. A subclass that declares a field is an ordinary value subclass with its own layout. The distinction is structural (based on declared fields). No annotation marks a newtype.
+`@Delegate` on a record component causes the compiler to generate, for every `public` instance method of the component's declared type, a forwarding method on the record that invokes the same method on the component. Generated methods return the component's type (they decay: `email.substring(1)` returns `String`). A method explicitly declared on the record shadows the generated delegate for that signature, so closed operations such as `Amount / int → Amount` are added by declaring an `@Operator`-annotated method that returns the record's own type.
 
-Arithmetic and comparison on a numeric newtype follow LAT-07. Without an `@Operator` method it widens to its primitive base. With `@Operator` methods it stays closed over the newtype (`Meters + Meters → Meters`).
+Arithmetic and comparison on a numeric newtype follow LAT-07. Without an `@Operator` method a numeric expression widens to the component's primitive base via the delegate. With `@Operator` methods it stays closed over the newtype (`Meters + Meters → Meters`).
+
+A `@Delegate` annotation is rejected on any component that is not the sole component of the record. Records with more than one component, or zero components, are ordinary records and receive no delegation.
