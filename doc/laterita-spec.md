@@ -1480,7 +1480,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
-| `@Operator` | `METHOD` | name and arity per LAT-07 | Method is the desugaring target for an arithmetic operator (`.lat` sugar) | LAT-07 |
+| `@Operator(op)` | `METHOD` | instance method; arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method is the desugaring target for arithmetic operator `op`; the method name is free (`.lat` sugar) | LAT-07 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
@@ -1566,33 +1566,50 @@ Pair<String, Int> p = new Pair("hello".clone(), 42);     // .lat: diamond implic
 Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .lat
 ```
 
-### LAT-07 — Arithmetic operator sugar
+### LAT-07 — Operator sugar
 
-In `.lat`, the binary operators `+ - * /` and unary `-` may be written between or before operands whose type provides the matching operator method. Each form is sugar for that method call:
+In `.lat`, the arithmetic operators `+ - * /` and unary `-`, and the comparison operators `< <= > >=`, may be written on operands whose type provides the corresponding method. Each form is sugar for that call.
 
-| Form | Desugars to | Method | Arity |
-|---|---|---|---|
-| `a + b` | `a.add(b)` | `add` | 1 param |
-| `a - b` | `a.subtract(b)` | `subtract` | 1 param |
-| `a * b` | `a.multiply(b)` | `multiply` | 1 param |
-| `a / b` | `a.divide(b)` | `divide` | 1 param |
-| `-a` | `a.negate()` | `negate` | 0 params |
+**Arithmetic.** A binary arithmetic operator desugars to an instance method annotated `@Operator(op)` (§18), where `op` names the operator; unary `-` desugars to an `@Operator(NEGATE)` method:
 
-The method names are `BigInteger` / `BigDecimal`'s arithmetic vocabulary, so those types and any type modelled on them are operator-eligible without renaming.
+| Form | Method annotation | Method shape |
+|---|---|---|
+| `a + b` | `@Operator(PLUS)` | 1 parameter |
+| `a - b` | `@Operator(MINUS)` | 1 parameter |
+| `a * b` | `@Operator(TIMES)` | 1 parameter |
+| `a / b` | `@Operator(DIVIDE)` | 1 parameter |
+| `-a` | `@Operator(NEGATE)` | 0 parameters |
 
-A method is a desugaring target only when annotated `@Operator` (§18) — naming a method `add` is not enough, so the many existing non-arithmetic `add` methods (`Collection.add` and the like) never give their receiver a `+` meaning. `@Operator` is permitted only on a method whose name and arity match a row above; elsewhere it is rejected. The annotated parameter should be a plain borrow: `@take` or `@mut` on an operator parameter is permitted but discouraged, since `a + b` reads as neither consuming nor mutating its operands.
+The method name is unconstrained — the annotation, not the name, identifies the operator — so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` are each eligible under their existing names. `@Operator` is permitted only on an instance method whose arity matches the declared operator (one parameter for the binary kinds, zero for `NEGATE`); elsewhere it is rejected. Eligibility is opt-in: an unannotated `add` or `plus` never acquires an operator meaning, so the many non-arithmetic methods of those names (`Collection.add`, the `java.time` `plusDays`-style helpers) are unaffected. The annotated parameter should be a plain borrow — `@take` or `@mut` on it is permitted but discouraged, since `a + b` reads as neither consuming nor mutating its operands.
 
 `a OP b` is resolved by the static type of the left operand `a` (for unary `-a`, by `a`):
 
-1. If `a`'s type has an accessible `@Operator` method for OP applicable to `b`, the form means that call.
+1. If `a`'s type has an accessible method annotated `@Operator(OP)` applicable to `b`, the form means that call.
 2. Otherwise, if the built-in numeric operator applies to `a` and `b` — primitives, their wrapper types, and EXT-01 newtypes widened to their primitive base — the built-in operator applies, with its ordinary primitive result type.
 3. Otherwise the expression is a type error.
 
 There is no reflected form (no right-operand dispatch) and no implicit conversion of an operand to make a method applicable. `value + literal` and `literal + value` thus agree only through step 2; value-typed arithmetic with no built-in fallback (`BigInteger`, a `Vec3` value class) requires both operands to share the operator-eligible type, or an explicit conversion.
 
-Desugaring preserves Java's arithmetic precedence and associativity: unary `-` binds tightest, then `* /`, then `+ -`, each binary operator left-associative. `a + b * c` desugars to `a.add(b.multiply(c))`; `-a * b` to `a.negate().multiply(b)`. The desugared calls are ordinary method calls under all §1–18 rules — the compiler is expected to inline them, but their observable typing, ownership, and borrow behaviour is exactly that of the written-out call, which is also the form a `.java` mirror carries (`javac` rejects `+` on these types, so the operator spelling is `.lat`-only).
+**Comparison.** `< <= > >=` desugar through `java.lang.Comparable.compareTo` — with no `@Operator` annotation, since implementing `Comparable` is itself the opt-in:
 
-`%`, `[]`, the comparison operators, and the compound-assignment operators are not operator-eligible: `%` is integer-only and rarely wanted on value types, and `[]` would imply the constant-time indexing a general operator method cannot promise.
+| Form | Desugars to |
+|---|---|
+| `a < b` | `a.compareTo(b) < 0` |
+| `a <= b` | `a.compareTo(b) <= 0` |
+| `a > b` | `a.compareTo(b) > 0` |
+| `a >= b` | `a.compareTo(b) >= 0` |
+
+`a OP b` for a comparison operator is resolved by `a`:
+
+1. If `a` and `b` are built-in comparable (primitive numerics), the built-in comparison applies.
+2. Otherwise, if `a`'s static type implements `java.lang.Comparable<S>` with `b` assignable to `S`, the form means `a.compareTo(b) OP 0`.
+3. Otherwise the expression is a type error.
+
+`==` and `!=` are not part of this rule; they keep their Java meaning.
+
+**Precedence.** Desugaring preserves Java's operator precedence and associativity: unary `-` binds tightest, then `* /`, then `+ -`, then the comparison operators, each binary operator left-associative. `a + b * c` desugars to `a.add(b.multiply(c))`; `a + b < c` to `a.add(b).compareTo(c) < 0`. The desugared calls are ordinary method calls under all §1–18 rules — the compiler is expected to inline them, but their observable typing, ownership, and borrow behaviour is exactly that of the written-out call, which is also the form a `.java` mirror carries (`javac` rejects these operators on the types, so the operator spelling is `.lat`-only).
+
+`%`, `[]`, and the compound-assignment operators are not operator-eligible: `%` is integer-only and rarely wanted on value types, and `[]` would imply the constant-time indexing a general method cannot promise.
 
 ### Structural extensions
 
