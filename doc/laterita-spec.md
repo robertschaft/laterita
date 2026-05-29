@@ -1568,48 +1568,22 @@ Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .la
 
 ### LAT-07 — Operator sugar
 
-In `.lat`, the arithmetic operators `+ - * /` and unary `-`, and the comparison operators `< <= > >=`, may be written on operands whose type provides the corresponding method. Each form is sugar for that call.
+In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18); comparison desugars through `java.lang.Comparable`:
 
-**Arithmetic.** A binary arithmetic operator desugars to an instance method annotated `@Operator(op)` (§18), where `op` names the operator; unary `-` desugars to an `@Operator(NEGATE)` method:
-
-| Form | Method annotation | Method shape |
+| Form | Desugars to | Eligibility on the left operand's type |
 |---|---|---|
-| `a + b` | `@Operator(PLUS)` | 1 parameter |
-| `a - b` | `@Operator(MINUS)` | 1 parameter |
-| `a * b` | `@Operator(TIMES)` | 1 parameter |
-| `a / b` | `@Operator(DIVIDE)` | 1 parameter |
-| `-a` | `@Operator(NEGATE)` | 0 parameters |
+| `a + b` | `a.add(b)` | `@Operator(PLUS)`, one parameter |
+| `a - b` | `a.subtract(b)` | `@Operator(MINUS)`, one parameter |
+| `a * b` | `a.multiply(b)` | `@Operator(TIMES)`, one parameter |
+| `a / b` | `a.divide(b)` | `@Operator(DIVIDE)`, one parameter |
+| `-a` | `a.negate()` | `@Operator(NEGATE)`, no parameters |
+| `a < b` (and `<=`, `>`, `>=`) | `a.compareTo(b) < 0` (resp. `<= > >=`) | implements `Comparable<S>`, `b` assignable to `S` |
 
-The method name is unconstrained — the annotation, not the name, identifies the operator — so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` are each eligible under their existing names. `@Operator` is permitted only on an instance method whose arity matches the declared operator (one parameter for the binary kinds, zero for `NEGATE`); elsewhere it is rejected. Eligibility is opt-in: an unannotated `add` or `plus` never acquires an operator meaning, so the many non-arithmetic methods of those names (`Collection.add`, the `java.time` `plusDays`-style helpers) are unaffected. The annotated parameter should be a plain borrow — `@take` or `@mut` on it is permitted but discouraged, since `a + b` reads as neither consuming nor mutating its operands.
+The method names shown are illustrative: `@Operator` names the operator, so the method may carry any name with matching arity — `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method, or where the arity does not match its operator. An operator parameter should be a plain borrow (`@take` / `@mut` are discouraged). Comparison needs no annotation — implementing `Comparable` is the opt-in — and `==` / `!=` are unaffected.
 
-`a OP b` is resolved by the static type of the left operand `a` (for unary `-a`, by `a`):
+`a OP b` is resolved by the static type of the left operand (for unary `-a`, by `a`): if that type supplies the operator applicable to the right operand, the form is the corresponding call; otherwise, if both operands are primitive-numeric — including EXT-01 newtypes widened to their base — the built-in operator applies; otherwise it is a type error. Resolution never dispatches on the right operand and never inserts an implicit conversion.
 
-1. If `a`'s type has an accessible method annotated `@Operator(OP)` applicable to `b`, the form means that call.
-2. Otherwise, if the built-in numeric operator applies to `a` and `b` — primitives, their wrapper types, and EXT-01 newtypes widened to their primitive base — the built-in operator applies, with its ordinary primitive result type.
-3. Otherwise the expression is a type error.
-
-There is no reflected form (no right-operand dispatch) and no implicit conversion of an operand to make a method applicable. `value + literal` and `literal + value` thus agree only through step 2; value-typed arithmetic with no built-in fallback (`BigInteger`, a `Vec3` value class) requires both operands to share the operator-eligible type, or an explicit conversion.
-
-**Comparison.** `< <= > >=` desugar through `java.lang.Comparable.compareTo` — with no `@Operator` annotation, since implementing `Comparable` is itself the opt-in:
-
-| Form | Desugars to |
-|---|---|
-| `a < b` | `a.compareTo(b) < 0` |
-| `a <= b` | `a.compareTo(b) <= 0` |
-| `a > b` | `a.compareTo(b) > 0` |
-| `a >= b` | `a.compareTo(b) >= 0` |
-
-`a OP b` for a comparison operator is resolved by `a`:
-
-1. If `a` and `b` are built-in comparable (primitive numerics), the built-in comparison applies.
-2. Otherwise, if `a`'s static type implements `java.lang.Comparable<S>` with `b` assignable to `S`, the form means `a.compareTo(b) OP 0`.
-3. Otherwise the expression is a type error.
-
-`==` and `!=` are not part of this rule; they keep their Java meaning.
-
-**Precedence.** Desugaring preserves Java's operator precedence and associativity: unary `-` binds tightest, then `* /`, then `+ -`, then the comparison operators, each binary operator left-associative. `a + b * c` desugars to `a.add(b.multiply(c))`; `a + b < c` to `a.add(b).compareTo(c) < 0`. The desugared calls are ordinary method calls under all §1–18 rules — the compiler is expected to inline them, but their observable typing, ownership, and borrow behaviour is exactly that of the written-out call, which is also the form a `.java` mirror carries (`javac` rejects these operators on the types, so the operator spelling is `.lat`-only).
-
-`%`, `[]`, and the compound-assignment operators are not operator-eligible: `%` is integer-only and rarely wanted on value types, and `[]` would imply the constant-time indexing a general method cannot promise.
+Desugaring preserves Java operator precedence, so `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`; the desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only. `%`, `[]`, and compound assignment are not eligible.
 
 ### Structural extensions
 
@@ -1621,10 +1595,8 @@ In `.lat`, `String` is not `final` and classes may extend it: `class Email exten
 
 ### EXT-01 — Newtype extension of value classes
 
-A `.lat` class may extend any value class (MUT-03), including the `final` platform types that `javac` forbids extending: `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01 this has no `.java` desugaring; the laterita compiler accepts it only in `.lat` units. Extension inherits the parent's entire method surface by ordinary subtyping — no delegate methods are generated — and carries the parent's value-class restrictions (MUT-05): no `@mutating` method may be introduced, and the subclass's ownership behavior is the parent's.
+A `.lat` class may extend any value class (MUT-03), including the `final` platform types `javac` forbids extending — `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01 it has no `.java` form. The subclass inherits the parent's method surface by subtyping and its value-class restrictions (MUT-05): no `@mutating` method may be introduced, and ownership behaviour is the parent's.
 
-A subclass that **declares no instance field** is a *newtype*. It has the same representation as its parent — no object header and no added storage; COMP-01 erases the wrapper at the ABI level with no dependence on JVM value classes — and is a distinct nominal type that does not interconvert with its parent or its siblings except by the ordinary widening upcast to the parent. The newtype guarantee is the zero-overhead nominal distinction Java records cannot give without allocating.
+A subclass that **declares no instance field** is a *newtype*: it has the parent's representation (COMP-01 erases the wrapper) and is a distinct nominal type that converts to its parent only by the ordinary widening upcast. A subclass that declares a field is an ordinary value subclass with its own layout. The distinction is structural — the presence of a declared field — so no annotation marks a newtype.
 
-A subclass that declares one or more instance fields is an ordinary value subclass with its own layout; the zero-cost guarantee does not apply. The newtype/ordinary distinction is structural — the presence of a declared field — so no annotation marks a newtype.
-
-The built-in arithmetic operators reach a numeric newtype through its primitive base: a newtype extending a wrapper type widens to that wrapper's primitive under `+ - * /`, so an expression in which neither operand carries an `@Operator` method has the primitive result type and re-wrapping to the newtype is explicit (LAT-07, step 2). To keep arithmetic closed over the newtype — `Meters + Meters → Meters` — the newtype declares `@Operator`-annotated methods (`add`, `multiply`, …), which take precedence over the built-in widening (LAT-07, step 1). A newtype's core guarantee is nominal distinctness at declaration boundaries (parameters, fields, returns); closed value-typed arithmetic is the opt-in layered on top.
+Arithmetic and comparison on a numeric newtype follow LAT-07: absent an `@Operator` method it widens to its primitive base (the expression has the base type); declaring `@Operator` methods keeps arithmetic closed over the newtype (`Meters + Meters → Meters`).
