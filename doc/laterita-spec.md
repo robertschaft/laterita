@@ -1485,7 +1485,13 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 | `@Operator(op)` | `METHOD` | instance method; arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method provides the arithmetic operator `op` (`.lat` sugar) | LAT-07 |
-| `@Delegate` | `FIELD` | sole component of a `record` | Generates forwarding methods from the component's type onto the record | GEN-01 |
+| `@Delegate` | `FIELD` | non-`@Nullable` field or record component | Generates forwarding methods from the field's type onto the enclosing class or record | GEN-01 |
+| `@Getter` | `TYPE`, `FIELD` | - | Generates getter methods for annotated fields or all fields of the class | GEN-02 |
+| `@Setter` | `FIELD` | only in a `@mut` class | Generates a `@mutating` setter for the field | GEN-03 |
+| `@With` | `FIELD` | only on a value class | Generates a copy-with method for the field | GEN-04 |
+| `@Builder` | `TYPE` | - | Generates a nested fluent `Builder` class | GEN-05 |
+| `@ToString` | `TYPE` | - | Generates `toString()` | GEN-06 |
+| `@EqualsAndHashCode` | `TYPE` | - | Generates `equals(Object)` and `hashCode()` | GEN-07 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
@@ -1606,17 +1612,17 @@ Laterita provides compiler-driven code-generation annotations modeled on [Projec
 
 ### GEN-01 — `@Delegate`
 
-`@Delegate` on the sole component of a `record` causes the compiler to generate, for every `public` instance method of the component's declared type, a forwarding method on the record that invokes the same method on the component. `@Delegate` on a component that is not the sole record component is a compile error.
+`@Delegate` on a field or record component causes the compiler to generate, for every `public` instance method of the field's declared type, a forwarding method on the enclosing class or record. `@Delegate` on a `@Nullable` field is a compile error: delegation through a nullable value requires null-handling the spec does not prescribe. If two `@Delegate` fields on the same class produce a forwarding method with the same name and erased parameter types, it is a compile error; resolve by explicitly declaring the method (which shadows both generated delegates).
 
-Generated method return types are the component method's own return types (*decay*): `email.substring(1)` returns `String`, not `Email`. Ownership annotations are propagated: a `@consuming` source generates a `@consuming` forwarder; a `@mutating` source generates a `@mutating` forwarder. The record component's accessor (e.g., `raw()` for `record Email(@Delegate String raw)`) is the only path back to the wrapped value; no implicit widening to the component's type exists.
+Generated method return types are the field method's own return types (*decay*). Ownership annotations are propagated: a `@consuming` source generates a `@consuming` forwarder; a `@mutating` source generates a `@mutating` forwarder.
 
 ### GEN-02 — `@Getter`
 
-`@Getter` on a field of a class generates a `public` getter method named after the field (`fieldName()`) returning the field's declared type. The method is bare (non-`@mutating`). On an owned field the return is owned; on a `@bound` field the return is `@bound`. `@Getter` on a record component is redundant: records already generate canonical accessors.
+`@Getter` on a field generates two `public` methods. `getFieldName()` is a bare (non-`@mutating`) method returning `@bound T` — a borrow of the field's value. `fieldName()` is a `@consuming` method returning owned `T` — it consumes the object and moves the field's value out; this form is only generated for owned (non-`@bound`) fields. `@Getter` on a record component is redundant: records already generate canonical accessors.
 
 ### GEN-03 — `@Setter`
 
-`@Setter` on a field of a `@mut` class generates a `public @mutating` setter method named `setFieldName(T value)` where `T` is the field's declared type. The parameter receives the value by the same mode as the field would be assigned. `@Setter` on a field of a value class (non-`@mut`) is a compile error: value classes have no `@mut` fields (MUT-04).
+`@Setter` on a field of a `@mut` class generates a `public @mutating void setFieldName(P value)` where `P` mirrors the field's declared type: `@take T` for an owned field of type `T`; `@mut T` for a field declared `@mut T`. `@Setter` on a field of a value class is a compile error: value classes have no `@mut` fields (MUT-04).
 
 ### GEN-04 — `@With`
 
