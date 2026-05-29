@@ -494,21 +494,7 @@ A closure that borrows `name` cannot outlive `name`. This is the same lifetime-b
 
 ---
 
-## Strings (STR-01 through STR-08)
-
-### Why `String` is no longer final (STR-01)
-
-The `final String` decision in Java 1.0 was driven by 2000-era constraints: string interning for `==`, immutability guarantees in a GC'd world, hash caching, JIT optimization assumptions. Modern JVMs handle all of these without `final`. Modern AOT compilers handle them with monomorphization.
-
-What `final` *costs* is type safety in domain modeling. Modern Java APIs are full of `String` arguments where the compiler can't help — `createUser(String email, String name, String address)` — and the community has worked around this with Lombok's `@Value`, microtype libraries, and records wrapping single strings. Letting `String` be extended, and providing the newtype record pattern (NT-01) for all value classes, fixes this directly:
-
-```laterita
-record Email(@Delegate @take String raw) {}
-record Name(@Delegate @take String raw) {}
-public User createUser(Email email, Name name, Address address) { ... }
-```
-
-The compiler now catches argument-order bugs that today are silent runtime errors. `javac` cannot parse `class X extends String` because `java.lang.String` is `final`, so STR-01 lives in §19 alongside the other `.lat`-only forms — it is the one structural extension among them rather than pure sugar.
+## Strings (STR-02 through STR-08)
 
 ### Why newtypes are `@Delegate` records, and why operators are bounded sugar (NT-01, LAT-07)
 
@@ -556,7 +542,7 @@ A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02),
 
 ### Why default receiver mode is borrow (STR-08)
 
-The same Java-feel argument that motivates non-final classes (STR-01) and per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case — methods that consume `this` (rare; terminal conversions) — carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
+The same Java-feel argument that motivates per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case — methods that consume `this` (rare; terminal conversions) — carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
 
 ### Why `String` needs no splitting machinery
 
