@@ -1568,7 +1568,9 @@ Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .la
 
 ### LAT-07 — Operator sugar
 
-In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18). Comparison desugars through `java.lang.Comparable`:
+In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Other operators are currently not supported in this way for various reasons.
+
+Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18). Comparison desugars through `java.lang.Comparable`:
 
 | Form | Desugars to | Eligibility on the left operand's type |
 |---|---|---|
