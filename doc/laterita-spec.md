@@ -1609,7 +1609,7 @@ Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multip
 
 ### NABI-01 — Single-field aggregate layout and calling convention
 
-A value class (MUT-03) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register(s) as a bare value of the field's type. A class with two or more fields, or any `@mut` class, is excluded.
+A value class (MUT-03) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register(s) as a bare value of the field's type.
 
 ---
 
@@ -1617,7 +1617,7 @@ A value class (MUT-03) or record with exactly one field or component has the sam
 
 Laterita supports the stable [Project Lombok](https://projectlombok.org/) annotations natively. A `.java` or `.lat` source using them compiles unchanged and produces the same observable result a Lombok build produces on the JVM. The compiler generates the members at compile time, and generated members are visible to the type checker and overload resolution.
 
-A generator also supplies the laterita annotation a generated member implies. The clearest case is a class-level `@Setter`: its setters mutate, so the class becomes `@mut` (MUT-03), which is how a Java mutable bean keeps its meaning without a source edit. Generated members carry the ownership annotations (`@take`, `@bound`, `@consuming`) the rules below specify.
+A generator supplies the laterita annotation a generated member implies (e.g. `setX(@take X x)` when x is owned). It also deduces the laterita class-level annotations: a class annotated with `@Setter` or `@Data` is automatically also `@mut` (MUT-03).
 
 An explicitly declared member with the same name and erased parameter types shadows the generated one, so a generator never conflicts with hand-written code. Annotations and attributes not listed in this section pass through to downstream annotation processors unchanged. Several generators duplicate what a `record` or value class already provides. They stay supported for source compatibility even where the idiomatic laterita form is a `record`.
 
@@ -1637,21 +1637,28 @@ A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 g
 
 `@Getter` on a field, or on the class for all fields, generates a `public` bean accessor: `getFieldName()` (`isFieldName()` for a `boolean`) returning `@bound T` (LIFE-02), a borrow of the field. `@Getter(lazy = true)` on a final field generates a memoized accessor that computes the value once on first call.
 
-`@Setter` on a class makes the class `@mut` (MUT-03) and generates a setter for each field. `@Setter` on a single field requires an already-`@mut` class and is a compile error otherwise, because a lone mutable field cannot exist in a value class (MUT-04). Each setter is a `public @mutating void setFieldName(P value)` whose parameter mirrors the field: `@take T` for an owned field, `@bound T` for a `@bound` field, `@mut T` for a field declared `@mut T`.
+`@Setter` on a class makes the class `@mut` (MUT-03) and generates a setter for each non-`final` non-`static` field. `@Setter` on a field requires an already-`@mut` class. The setter annotation depends on the field binding:
+
+```laterita
+@Setter T owned;
+public @mutating void setOwned(@take @mut T value);
+@Setter @bound S borrowed;
+public @mutating void setBorrowed(@mut S value);
+```
 
 ### GEN-03 — Constructor generators
 
-`@AllArgsConstructor` generates a constructor taking every field, `@RequiredArgsConstructor` one taking the final and `@NonNull` fields in declaration order, and `@NoArgsConstructor` one taking no arguments. An owned field is taken `@take`, a `@bound` field is taken `@bound`. Because laterita initializes no field to null implicitly (NULL-01), `@NoArgsConstructor` requires every field to be primitive, `@Nullable`, or carry an initializer. A non-nullable field with no initializer makes it a compile error, since the definite-assignment rule (§1) is then unsatisfiable.
+`@AllArgsConstructor` generates a constructor containing every field; `@NoArgsConstructor` generates one with no parameters. `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that is `final` or non-`@mut` and carries no initializer. In all three, an owned field's parameter is marked `@take`; a `@bound` field's parameter is unmarked (bare = borrow per BIND-01). To follow the intent of the Lombok annotations for less boilerplate, `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, working around NULL-01. `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
 
 ```laterita
 @AllArgsConstructor class Shipment {
     String trackingId;        // owned field
     @bound Carrier carrier;   // borrowed field
 }
-// generated: Shipment(@take String trackingId, @bound Carrier carrier)
+// generated: Shipment(@take String trackingId, Carrier carrier)
 ```
 
-The owned field holds storage the `Shipment` drops at end of life (BIND-03), so the constructor takes it `@take`. The `@bound` field only borrows, so it is taken `@bound` and a `Shipment` is itself a `@bound` value that cannot outlive the `Carrier` it borrows (LIFE-03). This is the non-generic form of the `EntryView` borrow-view (BIND-03).
+`Shipment` drops at end of life the owned `trackingId` (BIND-03), so the constructor marks it `@take`. The `@bound` field only borrows, so the field is marked `@bound` and its constructor parameter is unmarked (bare = borrow). The lifetime of a `Shipment` instance is itself bound to the `Carrier` it borrows (LIFE-03).
 
 ### GEN-04 — `@ToString`
 
@@ -1671,11 +1678,17 @@ The owned field holds storage the `Shipment` drops at end of life (BIND-03), so 
 
 ### GEN-08 — `@With`
 
-`@With` generates, for each field, a `public withFieldName(P value)` returning a new instance with that field set to `value` and the other fields `clone()`d from `this` (OBJ-02). It clones rather than moves because the receiver is only borrowed. The method is bare, and `P` is `@take T` for an owned field. `@With` needs a constructor covering all fields, as in Lombok.
+`@With` generates, for each field, a `public [@bound] X withFieldName([@take|@bound] [@mut] T value)` returning a new instance with that field set to `value`. The `@bound` return annotation is generated when any other field of `X` is `@bound` — the result's lifetime is bound to `this`. The parameter annotations are generated conditionally:
+
+- `@take` when the field is owned;
+- bare (no annotation) when the field is `@bound` — the result's lifetime is also bound to `value`;
+- `@mut` when the field is `@mut`.
+
+Internally, other owned fields are `clone()`d from `this` (OBJ-02), because the receiver is borrowed not consumed. `@With` needs a constructor covering all fields, as in Lombok.
 
 ### GEN-09 — `@NonNull`
 
-`@NonNull` on a parameter or field asserts non-null. Non-nullability is already the default (NULL-01), so the annotation is accepted and adds nothing, because the type system rejects null statically rather than at runtime. `@NonNull` on a `@Nullable`-typed declaration is a compile error (a contradiction).
+`@NonNull` on a parameter or field asserts non-null. Non-nullability is already the default (NULL-01), so the annotation is accepted but adds nothing. `@NonNull` combined with `@Nullable` is a compile error (a contradiction).
 
 ### GEN-10 — `@SneakyThrows`
 
@@ -1687,7 +1700,7 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 
 ### GEN-12 — `@Cleanup`
 
-`@Cleanup` runs a cleanup method (default `close()`) at the end of the local's block. An owned binding is already dropped at scope exit (DROP-01), so when `onDrop()` performs the release the annotation is redundant and accepted. `@Cleanup("method")` selects a different method, which the compiler calls at scope exit.
+`@Cleanup` runs a cleanup method (default `close()`) at the end of the local's block. `@Cleanup("method")` selects a different method, which the compiler calls at scope exit.
 
 ### GEN-13 — `@Log` family
 
@@ -1695,7 +1708,7 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 
 ### GEN-14 — `val` and `var`
 
-Lombok's `val` is an immutable inferred local, identical to laterita `var` (immutable by default, §18). Lombok's `var` is a mutable inferred local, identical to laterita `@mut var`. Both are accepted.
+`val` is unsupported in laterita, while `var` has a slightly different meaning. Lombok's `val` is an immutable inferred local, identical to laterita `var` (immutable by default, §18). Lombok's `var` is a mutable inferred local, identical to laterita `@mut var`. See OQ-31.
 
 ### GEN-15 — `@StandardException`
 
