@@ -1617,7 +1617,7 @@ A value class (MUT-03) or record with exactly one field or component has the sam
 
 Laterita supports the stable [Project Lombok](https://projectlombok.org/) annotations natively. A `.java` or `.lat` source using them compiles unchanged and produces the same observable result a Lombok build produces on the JVM. The compiler generates the members at compile time, and generated members are visible to the type checker and overload resolution.
 
-A generator also supplies the laterita annotation a generated member implies. The clearest case is `@Setter`: a setter mutates its field, so the field becomes `@mut` and its class becomes `@mut` (MUT-03), which is how a Java mutable bean keeps its meaning without a source edit. Generated members carry the ownership annotations (`@take`, `@bound`, `@consuming`) the rules below specify.
+A generator also supplies the laterita annotation a generated member implies. The clearest case is a class-level `@Setter`: its setters mutate, so the class becomes `@mut` (MUT-03), which is how a Java mutable bean keeps its meaning without a source edit. Generated members carry the ownership annotations (`@take`, `@bound`, `@consuming`) the rules below specify.
 
 An explicitly declared member with the same name and erased parameter types shadows the generated one, so a generator never conflicts with hand-written code. Annotations and attributes not listed in this section pass through to downstream annotation processors unchanged. Several generators duplicate what a `record` or value class already provides. They stay supported for source compatibility even where the idiomatic laterita form is a `record`.
 
@@ -1641,7 +1641,7 @@ A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 g
 
 ### GEN-03 — Constructor generators
 
-`@AllArgsConstructor` generates a constructor taking every field, `@RequiredArgsConstructor` one taking the final and `@NonNull` fields in declaration order, and `@NoArgsConstructor` one taking no arguments. An owned field is taken `@take`, a `@bound` field is taken `@bound`.
+`@AllArgsConstructor` generates a constructor taking every field, `@RequiredArgsConstructor` one taking the final and `@NonNull` fields in declaration order, and `@NoArgsConstructor` one taking no arguments. An owned field is taken `@take`, a `@bound` field is taken `@bound`. Because laterita initializes no field to null implicitly (NULL-01), `@NoArgsConstructor` requires every field to be primitive, `@Nullable`, or carry an initializer. A non-nullable field with no initializer makes it a compile error, since the definite-assignment rule (§1) is then unsatisfiable.
 
 ```laterita
 @AllArgsConstructor class Shipment {
@@ -1667,7 +1667,7 @@ The owned field holds storage the `Shipment` drops at end of life (BIND-03), so 
 
 ### GEN-07 — `@Builder`
 
-`@Builder` on a class, constructor, or static method generates a nested `@mut class Builder` with a fluent setter per field returning the builder, and a `build()` that invokes the target. Owned fields are taken `@take` through the builder.
+`@Builder` on a class, constructor, or static method generates a nested `@mut class Builder`, a static `builder()` returning a fresh `Builder`, a fluent method per field named after the field that sets it and returns the builder, and a `build()` that invokes the target. Owned fields are taken `@take` through the builder.
 
 ### GEN-08 — `@With`
 
@@ -1687,7 +1687,7 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 
 ### GEN-12 — `@Cleanup`
 
-`@Cleanup` on an owned local guarantees deterministic cleanup at the end of its block. An owned binding is already dropped at scope exit (DROP-01), so when the resource releases through `onDrop()` the annotation is redundant and accepted. `@Cleanup("method")` names an explicit cleanup method, which the compiler calls at scope exit.
+`@Cleanup` runs a cleanup method (default `close()`) at the end of the local's block. An owned binding is already dropped at scope exit (DROP-01), so when `onDrop()` performs the release the annotation is redundant and accepted. `@Cleanup("method")` selects a different method, which the compiler calls at scope exit.
 
 ### GEN-13 — `@Log` family
 
