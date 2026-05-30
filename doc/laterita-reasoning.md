@@ -546,7 +546,7 @@ A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02),
 
 ### Why default receiver mode is borrow (STR-08)
 
-The same Java-feel argument that motivates per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case — methods that consume `this` (rare; terminal conversions) — carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
+The same Java-feel argument that motivates per-binding tracking (STR-02) applies at the receiver position: `s.toUpperCase().trim()` should not consume `s`, and `int n = s.length()` should not move it. Borrow-by-default also matches how literals enter the type system (STR-06), so the receiver-side default lines up with the value-side default. The surprising case, a method that consumes `this` (rare, terminal conversions), carries an explicit marker, so it's visible at the call site rather than buried in documentation. Mut receivers don't appear at all per STR-07.
 
 ### Why `String` needs no splitting machinery
 
