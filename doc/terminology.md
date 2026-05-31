@@ -15,13 +15,20 @@ An atomic reference-counted smart pointer for shared ownership across thread bou
 A local variable, field, or parameter that holds a value. In Laterita, every binding declares whether it owns the value (can move it, can drop it) or borrows it (reads only, or reads with mutation rights). Bindings are the primary unit of lifetime tracking.
 
 ### borrow / borrowed binding
-A binding that holds a reference to a value owned elsewhere, rather than owning it itself. A borrowed binding cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`. There are two kinds: shared (immutable) and mutable. See `MOVE-04` for the rules.
+A binding that holds a reference to a value owned elsewhere, rather than owning it itself. A borrowed binding cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`. There are two kinds: shared (immutable) and mutable. See `OWN-03` for the rules.
 
-### @bound (annotation on return types and parameters)
-An annotation marking that a returned value is a borrow, not an owned value. Placed on the return type (e.g., `@bound String substring(...)`) or on a parameter type (e.g., `@bound String s`). Tells the compiler that the return value's lifetime is limited to the lifetime of the marked source. See `LIFE-02`.
+### @borrow (annotation on fields and record components)
+Declares that a field (or record component) is a borrow slot rather than an owned slot. An instance of a class containing any `@borrow` field can only be produced as a `@bound` value, with lifetime intersecting each field's source (LIFE-03). Distinct from `@bound`, which marks a borrowed *value* at parameters, returns, and generic type arguments. See `OWN-08`, `LIFE-03`.
+
+### @bound (annotation on returns, parameters, and type arguments)
+Marks that a binding holds a borrowed value, and at parameters/returns expresses the source relationship. On a parameter, declares that the function's return is bound to that parameter (`OWN-18`). On a return type, declares that the return is bound to `this` (`OWN-19`). In a generic type argument, declares that the substituted type is borrowed and forces the enclosing instance to be `@bound` (`TARG-01`). On a local or field binding it appears as the produced state of a value flowing out of a `@borrow`-containing instance or a `@bound`-substituted generic. Distinct from `@borrow`, which declares a field as a borrow slot.
 
 ### binding modifiers
-`@bound`, `@mut`, and `@take`. Legal at binding positions: parameters, return types, locals, fields, FI parameter/return slots. Inside generic type argument brackets `<...>` their admissibility differs — `@bound` is always allowed, `@mut` only when the enclosing generic type is `@mut`, and `@take` is rejected. See `BIND-08`, `BIND-09`, `BIND-10`.
+`@bound`, `@mut`, `@take`, and `@borrow`. Legal positions:
+- `@bound` — parameter, return, generic type argument (always allowed in type arguments, `TARG-01`)
+- `@borrow` — field, record component (`OWN-08`)
+- `@mut` — local, field, parameter, return; in a type argument only when the enclosing generic is `@mut` (`TARG-03`)
+- `@take` — parameter only; rejected on fields, locals, and generic type arguments (`OWN-09`, `TARG-02`).
 
 
 ### buffer splitting
@@ -43,10 +50,10 @@ An anonymous function (lambda) that may capture variables from an enclosing scop
 To transfer ownership of a value from one binding to another, or to invoke a method that consumes its receiver. Once consumed, the original binding is no longer usable. Marked at the call site with `give(x)`, a static method on `laterita.lang.Intrinsics` normally statically imported as `give`. In Rust, this is a "move"; Laterita uses the verb `give` in Java's vocabulary.
 
 ### @consuming (annotation)
-Declares that a method consumes its receiver — the body owns `this`, and after the call returns the binding that held the receiver is consumed and subsequent uses are rejected. A modifier-position annotation on the method, parallel to `@mutating` (BIND-05); the two compose. See `BIND-07`.
+Declares that a method consumes its receiver — the body owns `this`, and after the call returns the binding that held the receiver is consumed and subsequent uses are rejected. A modifier-position annotation on the method, parallel to `@mutating` (MUT-08); the two compose. See `OWN-14`.
 
 ### contravariantly
-An overriding method may **require less** of its parameters than the base method. For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow—the override is less strict, so any caller satisfying the base contract satisfies the override. See `MOVE-10`.
+An overriding method may **require less** of its parameters than the base method. For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow—the override is less strict, so any caller satisfying the base contract satisfies the override. See `HIER-05`.
 
 ### copy constructor
 A constructor that takes a single parameter of the same type as the class being constructed (e.g., `new User(User source)`). Used to duplicate an object. Laterita auto-generates one per `OBJ-01` if not provided.
@@ -61,16 +68,16 @@ To clean up a value when its owning binding leaves scope. The compiler automatic
 Compiler bookkeeping tracking whether each field of a partially-moved value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
 
 ### exclusive / exclusivity (also "mutual exclusion")
-Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `MOVE-04`.
+Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
 
 ### field (in a struct/class)
-A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `BIND-03`.
+A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like bindings. See `OWN-08`.
 
 ### functional interface (also "function type")
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`. The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04); fields and declared local types use a nominal functional interface instead. `.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position. The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode — its call mode (CLO-03). Laterita treats nominal and anonymous forms uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
 
 ### give (static method on `laterita.lang.Intrinsics`)
-The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (MOVE-02). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (MOVE-08). Method-level receiver consumption is *not* spelled `give`; it is the `@consuming` annotation on the method (BIND-07).
+The move-expression carrier. At a call site: `give(x)` consumes the binding `x` and yields its value (OWN-04). As a bare statement: `give(x);` discards the result and runs `x`'s `onDrop()` immediately (OWN-06). Method-level receiver consumption is *not* spelled `give`; it is the `@consuming` annotation on the method (OWN-14).
 
 ### Heap<T>
 A raw heap-allocation primitive. Provides direct allocation and deallocation. All operations require `@unsafe` context per `UNS-02`. Rarely used by application code; typically wrapped by smart pointers like `Rc<T>` or `Arc<T>`.
@@ -79,13 +86,13 @@ A raw heap-allocation primitive. Provides direct allocation and deallocation. Al
 An annotation marking that a method may only be called by compiler-emitted code, never by user code. Used exclusively for `onDrop()`. See `DROP-06`.
 
 ### interior mutability
-The ability to mutate an object's contents through a non-`@mut` (immutable) binding. Breaks the default rule that mutation requires `@mut` at every level. Implemented only through `Cell<T>` in safe code. See `MUT-02`.
+The ability to mutate an object's contents through a non-`@mut` (immutable) binding. Breaks the default rule that mutation requires `@mut` at every level. Implemented only through `Cell<T>` in safe code. See `MUT-11`.
 
 ### invariantly
-An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `MOVE-10`. (Contrast with contravariance.)
+An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `HIER-05`. (Contrast with contravariance.)
 
 ### .lat / .java (source file extensions)
-The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in §19 (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
+The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in §21 (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
 
 ### latc (laterita compiler)
 The reference laterita compiler. Accepts `.lat` and `.java` in a single compilation unit, dispatches by extension per `COMP-06`, and emits artifacts per `COMP-01`–`COMP-04`. See `COMP-07`.
@@ -100,13 +107,13 @@ Declared on a class to express its relationship to threads. `@local` (or `@local
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
 
 ### @mut (annotation)
-The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), parameters (`@mut T param`), and class declarations (`@mut class C`, `MUT-03`). Conveys "this can change." A `@mut` class has a mutable surface; a class without the marker is a value class. A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `BIND-02`, `BIND-05`, `MUT-03`.
+The unified marker for binding mutability. Appears on: bindings (`@mut var x = ...`), fields (`@mut int count`), parameters (`@mut T param`), and class declarations (`@mut class C`, `MUT-05`). Conveys "this can change." A `@mut` class has a mutable surface; a class without the marker is a value class. A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `MUT-01`, `MUT-08`, `MUT-05`.
 
 ### @mutating (annotation)
-Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like binding mutability. By `BIND-06` a `@mutating` method is callable only on a `@mut` receiver. See `BIND-05`.
+Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like binding mutability. By `MUT-10` a `@mutating` method is callable only on a `@mut` receiver. See `MUT-08`.
 
 ### mutable borrow / mut borrow
-A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `MOVE-03`, `MOVE-04`.
+A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source binding to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `OWN-12`, `OWN-03`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with(@mut @mutating (@mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The action slot is mut-call so the closure may capture state by mutable borrow. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.
@@ -130,19 +137,19 @@ A method the compiler invokes to clean up a value. Only a `final` class may impl
 "Open Question." A numbered entry in the open-questions document listing unresolved language-design decisions. Example: OQ-20 (pattern matching and destructuring under ownership). Not part of the normative spec.
 
 ### Pair<L, R>
-General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases — driven by what is substituted for `L` and `R` per BIND-08. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves; accessors participate in partial-move tracking, MOVE-07) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves). See `ARR-04`.
+General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases — driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves; accessors participate in partial-move tracking, OWN-05) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves). See `ARR-04`.
 
 ### ownership
-Having the right and obligation to drop (clean up) a value when done. An owned binding can move the value to another binding, pass it to a `@take` parameter, or drop it at scope exit. Only one binding can own a value at a time. See `MOVE-02`.
+Having the right and obligation to drop (clean up) a value when done. An owned binding can move the value to another binding, pass it to a `@take` parameter, or drop it at scope exit. Only one binding can own a value at a time. See `OWN-04`.
 
 ### override variance
-The rules governing whether an overriding method's signature may differ from the base method's. One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse. `@take` on a parameter is invariant; `@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added. The FI-slot call-mode axis inverts surface direction — override may *strengthen* the slot (bare → `@mutating` → `@consuming`) — because the annotation governs closure acceptance, not parameter binding. See `MOVE-10` for the unified table.
+The rules governing whether an overriding method's signature may differ from the base method's. One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse. `@take` on a parameter is invariant; `@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added. The FI-slot call-mode axis inverts surface direction — override may *strengthen* the slot (bare → `@mutating` → `@consuming`) — because the annotation governs closure acceptance, not parameter binding. See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
-How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `MOVE-03`.
+How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `OWN-12`.
 
 ### partial move
-Moving a value out of a field while other fields of the same object remain owned. The compiler tracks which fields are moved and which remain, emitting `onDrop()` only on the unmoved fields. See `MOVE-07`.
+Moving a value out of a field while other fields of the same object remain owned. The compiler tracks which fields are moved and which remain, emitting `onDrop()` only on the unmoved fields. See `OWN-05`.
 
 ### poisoned (Mutex)
 A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
@@ -160,7 +167,7 @@ A value witnessing that the calling thread holds a `ReentrantLock`. Returned by 
 A condition variable bound to a `ReentrantLock`, created by `lock.newCondition()`. `await` atomically releases the bound lock and blocks; on signal, re-acquires. `signal` / `signalAll` wake waiters. Names and shapes match `java.util.concurrent.locks.Condition`. The "caller must hold the bound lock" precondition is a runtime check — laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime. See `STD-12`.
 
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, BIND-05), or consuming (declared by `@consuming` on the method, BIND-07). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method).
+How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, MUT-08), or consuming (declared by `@consuming` on the method, OWN-14). The receiver's binding mode must support the receiver mode (e.g., a bare binding cannot call a `@mutating` method).
 
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler. **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.). The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`. See `UNS-01`.
@@ -169,10 +176,10 @@ How a method accesses its receiver (`this`): bare (read-only), mutating (declare
 The one abstract method of a functional interface. In a lambda or method reference targeting a functional interface, the body must implement the SAM. Parameter and return modes of the SAM are declared as part of the interface. An anonymous functional interface's SAM is named `apply`, and a value `f` is invoked as `f.apply(...)`. See `FN-01`.
 
 ### shared borrow / immutable borrow
-A borrow that grants read-only access to a borrowed value. Any number of shared borrows may coexist. A shared borrow does not require the source binding to be `mut`. See `MOVE-01`, `MOVE-04`.
+A borrow that grants read-only access to a borrowed value. Any number of shared borrows may coexist. A shared borrow does not require the source binding to be `mut`. See `OWN-02`, `OWN-03`.
 
 ### slice (of a String or array)
-A borrowed view into a contiguous region of a String or array. Methods like `substring`, `trim` (on String) and `slice` (on arrays) return a borrowed view (marked `@bound`), not a new copy. The borrow is bounded by the original's lifetime. See `STR-03`, `MOVE-06`.
+A borrowed view into a contiguous region of a String or array. Methods like `substring`, `trim` (on String) and `slice` (on arrays) return a borrowed view (marked `@bound`), not a new copy. The borrow is bounded by the original's lifetime. See `STR-03`, `OWN-16`.
 
 ### static borrow
 A borrow with a static lifetime — one that is guaranteed to live for the entire program execution. String literals in Laterita are static borrows: they reside in read-only program memory and can be safely borrowed by any binding without lifetime restrictions. See `STR-06`.
@@ -190,22 +197,22 @@ A wrapper type that manages a value's lifetime. Examples: `Rc<T>` (reference-cou
 Compile-time reasoning about program behavior without running the code. Laterita's compiler performs static analysis of ownership, borrows, lifetime, mutability, and reachability to catch errors before runtime.
 
 ### static field
-A field declared `static` — class- or module-level storage with one instance per program. Immutable per `BIND-11` and initialized from a const expression; `@mut static` is rejected. The declared type must be non-`@local` (`BIND-12`). Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
+A field declared `static` — class- or module-level storage with one instance per program. Immutable per `STAT-01` and initialized from a const expression; `@mut static` is rejected. The declared type must be non-`@local` (`STAT-03`). Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
 
 ### target typing
 Inferring a lambda's type from the context where it appears. If a lambda is assigned to a variable or parameter with a known functional-interface type, the type is used as a hint to type-check the lambda body. See `CLO-04`.
 
 ### @take (annotation)
-Declares that a parameter receives ownership of its argument (consumed upon call). At the call site, a bare binding passed to a `@take` parameter is implicitly consumed (equivalent to `give(binding)`); or explicitly written as `give(binding)`. See `MOVE-03`. (Receiver consumption is the separate `@consuming` annotation on the method — BIND-07.)
+Declares that a parameter receives ownership of its argument (consumed upon call). At the call site, a bare binding passed to a `@take` parameter is implicitly consumed (equivalent to `give(binding)`); or explicitly written as `give(binding)`. See `OWN-12`. (Receiver consumption is the separate `@consuming` annotation on the method — OWN-14.)
 
 ### thread-affine (also "thread-local")
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
 
 ### transitivity (of mutability)
-Immutability propagates through a binding. A bare (immutable) binding cannot call `@mutating` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `BIND-06`, `MUT-01`.
+Immutability propagates through a binding. A bare (immutable) binding cannot call `@mutating` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `MUT-10`, `MUT-09`.
 
 ### type-inferred binding
-A binding whose type is inferred from the RHS expression rather than written explicitly. Forms: `var name = expr` (immutable, inferred), `@mut var name = expr` (mutable, inferred). In laterita mode `var` is immutable by default; the `@mut` annotation opts in to mutability. See `BIND-01`.
+A binding whose type is inferred from the RHS expression rather than written explicitly. Forms: `var name = expr` (immutable, inferred), `@mut var name = expr` (mutable, inferred). In laterita mode `var` is immutable by default; the `@mut` annotation opts in to mutability. See `MUT-02`.
 
 ### type narrowing / smart cast
 Refining a binding's type along a conditional path. Most common with nullable types: after `if (x != null) { ... }`, the binding `x` is narrowed from `T?` to `T` within the block, and methods on `T` are callable without further checks. See `NULL-06`.
@@ -214,10 +221,10 @@ Refining a binding's type along a conditional path. Most common with nullable ty
 The process of propagating an exception up the call stack, running cleanup (`onDrop()` and `finally` blocks) at each frame before the exception reaches the next handler. See `EXC-02`, `EXC-03`.
 
 ### use-after-move
-An error where a binding is used after its value has been moved elsewhere. The compiler rejects such code statically. See `MOVE-02`.
+An error where a binding is used after its value has been moved elsewhere. The compiler rejects such code statically. See `OWN-04`.
 
 ### value class
-A class not declared `@mut`. A value class declares no `@mut` fields and exposes no callable `@mutating` method, so its instances cannot be mutated through any binding. It may inherit `@mut` members from a `@mut` ancestor — they are present but not callable on it (`MUT-06`) — and may still hold `Cell<T>` interior-mutable state. The value class is the default; `@mut` is the opt-in. `String`, `Number`, and every `record` are value classes. See `MUT-03`, `MUT-05`.
+A class not declared `@mut`. A value class declares no `@mut` fields and exposes no callable `@mutating` method, so its instances cannot be mutated through any binding. It may inherit `@mut` members from a `@mut` ancestor — they are present but not callable on it (`MUT-10`) — and may still hold `Cell<T>` interior-mutable state. The value class is the default; `@mut` is the opt-in. `String`, `Number`, and every `record` are value classes. See `MUT-05`, `HIER-01`.
 
 ### WeakReference<T>
 A non-owning reference to a value managed by `Rc<T>` or `Arc<T>`. The weak reference is not counted toward the refcount and does not prevent the value from being freed. Calling `get()` returns an `Rc<T>?` or `Arc<T>?` (a strong reference if the value still lives). See `STD-03`.
@@ -241,11 +248,13 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 
 | Prefix | Area |
 |--------|------|
-| `BIND` | Local and field bindings, method mutation and consumption |
+| `OWN` | Ownership: owned vs. borrowed bindings, move and borrow rules, `@take` / `@borrow` / `@bound`, `@consuming` |
+| `LIFE` | Lifetime intersection across multiple borrow sources |
+| `MUT` | Mutability rules — `@mut` marker, `@mutating` methods, transitivity, interior mutability |
+| `HIER` | Class hierarchy: `@mut` / value-class inheritance, value subclass freeze, no-widening, override variance |
+| `TARG` | Annotations admitted inside generic type arguments |
+| `STAT` | Static field rules |
 | `NULL` | Nullable types, null safety |
-| `MOVE` | Ownership transfer (moving), borrowing |
-| `MUT` | Mutability rules (transitivity, interior mutability, class-level `@mut`) |
-| `LIFE` | Lifetime inference and borrow boundaries |
 | `DROP` | Scope-exit cleanup, `onDrop()` |
 | `OBJ` | Copying, clone semantics |
 | `UNR` | Unreachable paths (`broken()`) |
@@ -259,8 +268,10 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `THR` | Threading, interrupts, `Thread.onDrop()`, lock poisoning |
 | `COMP` | Compilation model (monomorphization, reflection, etc.) |
 | `LAT` | `.lat` surface forms (syntactic sugar over the Java-compatible surface) |
+| `NABI` | Native ABI guarantees |
+| `GEN` | Code generation annotations (Lombok-compatible surface) |
 
-Example: `MOVE-01` is the first rule in the "Move and Borrow" section.
+Example: `OWN-02` is the rule "a local follows its RHS" in the Ownership section.
 
 ---
 
@@ -288,6 +299,6 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 
 ## Further Reading
 
-Readers new to ownership and borrowing should start with §1–§3 of `laterita-spec.md` (Bindings, Optionality, Move and Borrow) and then read the corresponding sections of `laterita-reasoning.md` to understand the design trade-offs.
+Readers new to ownership and borrowing should start with §1–§3 of `laterita-spec.md` (Ownership, Lifetimes, Mutability) and then read the corresponding sections of `laterita-reasoning.md` to understand the design trade-offs.
 
-For specific term definitions, cross-reference the spec code (e.g., `MOVE-01`, `BIND-02`) listed in the spec document itself.
+For specific term definitions, cross-reference the spec code (e.g., `OWN-02`, `MUT-01`) listed in the spec document itself.

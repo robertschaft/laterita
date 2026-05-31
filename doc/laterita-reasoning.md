@@ -18,7 +18,7 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 ---
 
-## Surface Syntax — annotations and static methods (§18)
+## Surface Syntax — annotations and static methods (§20)
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
@@ -28,9 +28,9 @@ The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf 
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`, with the default-immutable rule (MUT-01) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
+Type inference reuses Java's `var`, with the default-immutable rule (MUT-09) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable bindings.
 
-### Two source surfaces: `.lat` and `.java` (COMP-06, §19)
+### Two source surfaces: `.lat` and `.java` (COMP-06, §21)
 
 Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.
 
@@ -38,9 +38,9 @@ The source surface is therefore split in two rather than dropping either group. 
 
 ### Why the `.lat` surface is pure syntactic sugar (LAT-00)
 
-The five `.lat` forms are confined to §19, and §19 carries a hard constraint: every form in it is sugar with an exact desugaring to the §1–18 surface, and none introduces semantics of its own (LAT-00). This keeps the two surfaces from drifting into two languages. A `.lat` source and its desugared `.java` form are the same program; migration tooling rewrites one into the other mechanically in either direction.
+The five `.lat` forms are confined to §21, and §21 carries a hard constraint: every form in it is sugar with an exact desugaring to the §1–20 surface, and none introduces semantics of its own (LAT-00). This keeps the two surfaces from drifting into two languages. A `.lat` source and its desugared `.java` form are the same program; migration tooling rewrites one into the other mechanically in either direction.
 
-The constraint also resolves where a future feature belongs. A proposed addition that is genuinely just notation — a shorter spelling for something the annotation-and-intrinsic surface (§18) already expresses — goes in §19. A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar; it belongs in §1–18, expressed through annotations or intrinsics so that the `.java` surface carries it too. Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise — that the surfaces are interchangeable — would quietly fail.
+The constraint also resolves where a future feature belongs. A proposed addition that is genuinely just notation — a shorter spelling for something the annotation-and-intrinsic surface (§20) already expresses — goes in §21. A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar; it belongs in §1–20, expressed through annotations or intrinsics so that the `.java` surface carries it too. Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise — that the surfaces are interchangeable — would quietly fail.
 
 ### Why `.lat` drops the diamond on constructor calls (LAT-06)
 
@@ -50,69 +50,69 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 ---
 
-## Bindings (BIND-01 through BIND-07)
+## Ownership (OWN-01 through OWN-21)
 
-### Why `@mut` is the *single* mutability marker (BIND-02)
+### Why `@mut` is the *single* mutability marker (MUT-01)
 
-`@mut` denotes mutability uniformly across bindings, fields, and parameters, and the companion `@mutating` (BIND-05) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+`@mut` denotes mutability uniformly across bindings, fields, and parameters, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
 
-### Why `final` composes with `@mut` (BIND-01)
+### Why `final` composes with `@mut` (MUT-02)
 
 `@mut` grants two capabilities at once — rebinding the name and mutating the value through it — but the most common Java pattern wants only the second: a `final` field holding a mutable object, `private final List<Item> items`. Rather than add a third annotation for "mutable but not reassignable," Laterita reuses Java's `final`, which already means precisely "this binding is not reassignable." `@mut final` is then the exact spelling of that pattern — mutation-through kept, reassignment locked — and `final` on an already-immutable binding is simply redundant, so nothing needs to reject it.
 
-### Why fields default to immutable (BIND-03)
+### Why fields default to immutable (OWN-08)
 
 Rust's transitivity insight: immutability is only meaningful if it propagates. If a `var` binding could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee. Making fields immutable by default forces an explicit choice for mutation, exactly where Effective Java has been recommending we make that choice for years (favor immutability, favor records over JavaBeans).
 
-### Why methods declare mutation in the signature (BIND-05)
+### Why methods declare mutation in the signature (MUT-08)
 
-A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. By BIND-06 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. By MUT-10 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
 
-### Why methods declare consumption of `this` with `@consuming` (BIND-07)
+### Why methods declare consumption of `this` with `@consuming` (OWN-14)
 
 Receiver mutation and receiver consumption are the two non-bare receiver modes. Both are declared the same way: a modifier-position annotation on the method, reading like `public` or `final`. The two compose (`@mutating @consuming` for a method that does both), and either alone narrows the visible API surface to receivers whose binding mode supports it.
 
-### Why mutability is transitive (BIND-06)
+### Why mutability is transitive (MUT-10)
 
 If a `var` binding could call `@mutating` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` reference to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
-### Why static fields are immutable (BIND-11, BIND-12)
+### Why static fields are immutable (STAT-01, STAT-03)
 
 A static slot is reachable from every thread for the program's lifetime; no binding-level borrow check can hand out exclusive access to it. Allowing `@mut static` would either bake in undefined behavior — Rust's `static mut` posture, which the language now actively discourages — or demand a runtime synchronization mechanism the safe surface does not have. Forbidding it outright costs nothing: the cases that genuinely need shared mutable program-wide state already have a clean expression as a `Mutex<T>`, `Arc<T>`, or atomic primitive held in an immutable static, where the synchronization sits inside the wrapper and the static slot itself never changes.
 
-Const-only initialization keeps the AOT story honest. There is no classloader (COMP-01), so no per-class init lock to serialize arbitrary initializers, no observable initialization order to specify across compilation units, and no static-init-order fiasco to inherit from C++. Initializers that genuinely require runtime work go through a once-init wrapper held in the static slot, which serializes its first-access work behind its own internal synchronization. The non-`@local` restriction (BIND-12) plugs the only remaining cross-thread leak: a thread-affine handle in a process-global slot would, by definition, reach every thread.
+Const-only initialization keeps the AOT story honest. There is no classloader (COMP-01), so no per-class init lock to serialize arbitrary initializers, no observable initialization order to specify across compilation units, and no static-init-order fiasco to inherit from C++. Initializers that genuinely require runtime work go through a once-init wrapper held in the static slot, which serializes its first-access work behind its own internal synchronization. The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread leak: a thread-affine handle in a process-global slot would, by definition, reach every thread.
 
 ---
 
-## Mutability (MUT-01 through MUT-07)
+## Mutability (MUT-01 through MUT-11)
 
-### Why `Cell<T>` is the only escape hatch (MUT-02)
+### Why `Cell<T>` is the only escape hatch (MUT-11)
 
 There are real cases where a class is logically immutable but has internal caching (lazy initialization, memoization, mutex-protected state). Rust's answer is `UnsafeCell<T>`, the one type the compiler treats specially as a hole in the rules. Laterita adopts the same model: a single primitive marks the spot, every other interior-mutability mechanism is built on top of it. Concentrating the unsafe assumption in one place is what makes the rest of the language safely checkable.
 
-### Why classes are marked `@mut` (MUT-03 through MUT-07)
+### Why classes are marked `@mut` (MUT-05 through HIER-04)
 
-Binding-level `@mut` (BIND-02) answers "can *this reference* change the object?" It does not answer "can the object change *at all*?" A class with a `@mut` field gives no signal at its declaration that it carries mutable state — a reader has to scan its members. Marking the class supplies that signal: `@mut class` declares a mutable surface; an unmarked class is a *value class* whose instances carry no callable `@mutating` method.
+Binding-level `@mut` (MUT-01) answers "can *this reference* change the object?" It does not answer "can the object change *at all*?" A class with a `@mut` field gives no signal at its declaration that it carries mutable state — a reader has to scan its members. Marking the class supplies that signal: `@mut class` declares a mutable surface; an unmarked class is a *value class* whose instances carry no callable `@mutating` method.
 
 This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in. Laterita's experience runs the other way: most application types — domain values, DTOs, records, configuration — are immutable, and the mutable ones (builders, collections, counters, streams) are the minority. Making the value class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone.
 
-The inheritance rule (MUT-05) keeps the property legible: a `@mut` class extends only `@mut` classes, so every hierarchy is a run of `@mut` classes from `Object` down to a frontier, then value classes below it — the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-06), so `class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration — something Java expresses only with a runtime-throwing wrapper.
+The inheritance rule (HIER-01) keeps the property legible: a `@mut` class extends only `@mut` classes, so every hierarchy is a run of `@mut` classes from `Object` down to a frontier, then value classes below it — the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration — something Java expresses only with a runtime-throwing wrapper.
 
-MUT-07 is what keeps MUT-06's check static. If a value-class instance could be widened into a `@mut` binding of a `@mut` superclass, a `@mutating` method called through that binding would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` binding refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the binding mode, with no runtime tag.
+HIER-04 is what keeps MUT-10's check static. If a value-class instance could be widened into a `@mut` binding of a `@mut` superclass, a `@mutating` method called through that binding would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` binding refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the binding mode, with no runtime tag.
 
-`Cell<T>` stays the interior-mutability escape hatch (MUT-02): a value class may hold a `Cell` field and mutate through it. The reference-counted handles depend on this — `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
+`Cell<T>` stays the interior-mutability escape hatch (MUT-11): a value class may hold a `Cell` field and mutate through it. The reference-counted handles depend on this — `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
 
-Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The restriction "only `@mut` interfaces may declare `@mutating` methods" lets MUT-06's static check use one uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner MUT-05 opens for class inheritance.
+Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The restriction "only `@mut` interfaces may declare `@mutating` methods" lets MUT-10's static check use one uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner HIER-01 opens for class inheritance.
 
 ---
 
-## Move and Borrow (MOVE-01 through MOVE-10)
+## Class Hierarchy and Override (HIER-01 through HIER-05)
 
-### Why default assignment is a borrow (MOVE-01)
+### Why default assignment is a borrow (OWN-02)
 
 Looking at real Java code, the overwhelming common case is "I want to read this, I don't want to take it away from where it lives." Defaulting to a borrow matches that intuition. The user writes ordinary Java-looking code; the compiler infers a borrow; both bindings remain usable. Making move the default would have been the Rust approach, but it would have meant `give(x)` (or some move marker) on essentially every assignment — friction with no payoff.
 
-### Why `give(...)` and `@take` instead of one shared marker (MOVE-02, MOVE-03)
+### Why `give(...)` and `@take` instead of one shared marker (OWN-04, OWN-12)
 
 Giving up ownership and taking ownership are different actions, even though they are two ends of the same transfer. A single sigil (`^`) in both positions — on the theory that "ownership crosses this boundary" is a unifying meaning — stretches that meaning too far: the sigil would read as "out of this binding" at a use site and as "into this slot" at a parameter, which are inverse roles.
 
@@ -120,35 +120,35 @@ Two English verbs make the asymmetry first-class. `@take T name` on a parameter 
 
 Keeping ownership entirely at the call site (silent signatures) is rejected. The function knows whether it needs ownership; that need is part of its public contract. A signature `void store(@take String s, ...)` says "s is consumed" without forcing the caller to read the body. The signature is the API.
 
-The two markers support different inference at different positions. Where a method signature is in play — both at call sites (parameter `@take`) and at return statements (owned return type) — the signature is canonical, so `give(...)` is optional: `store(name, list)` is unambiguous when `store`'s parameter is `@take String s`, and `return result;` is unambiguous when the return type is owned. Local-to-local moves have no signature to lean on, so `var b = give(a);` keeps `give(...)` as the explicit marker — the only way to express a move from a borrowing default (MOVE-01).
+The two markers support different inference at different positions. Where a method signature is in play — both at call sites (parameter `@take`) and at return statements (owned return type) — the signature is canonical, so `give(...)` is optional: `store(name, list)` is unambiguous when `store`'s parameter is `@take String s`, and `return result;` is unambiguous when the return type is owned. Local-to-local moves have no signature to lean on, so `var b = give(a);` keeps `give(...)` as the explicit marker — the only way to express a move from a borrowing default (OWN-02).
 
 Allowing `@take` on local binding declarations as a documentary assertion — `@take String b = give(a);` alongside `var b = give(a);` — is rejected. The annotation adds nothing operational (ownership of `b` is determined by the RHS), and writing it on every owned local would dominate the surface with marks the compiler already knows. `@take` therefore lives on parameters and fields, where it is a published contract; locals get their mode from the producer.
 
-This division — `give(...)` and `@take` only at signature boundaries; locals quiet — leans on the same producer/consumer asymmetry as the rest of the language: bindings default to borrow on the consumer side (MOVE-01), expressions default to owned on the producer side (return values, constructors, computed expressions). Ownership marks appear at genuine API boundaries; the inside of a function reads like Java.
+This division — `give(...)` and `@take` only at signature boundaries; locals quiet — leans on the same producer/consumer asymmetry as the rest of the language: bindings default to borrow on the consumer side (OWN-02), expressions default to owned on the producer side (return values, constructors, computed expressions). Ownership marks appear at genuine API boundaries; the inside of a function reads like Java.
 
-### Why borrow exclusivity (MOVE-04)
+### Why borrow exclusivity (OWN-03)
 
 This is the rule that actually buys safety. It rules out data races at compile time, iterator invalidation at compile time, and all the family of bugs that come from "two pieces of code each thought they had exclusive access to this." It is the load-bearing wall of the entire ownership system.
 
-### Why disjoint field borrows (MOVE-05)
+### Why disjoint field borrows (OWN-15)
 
 A red-black tree node needs to access `left` and `right` independently while the tree is mutably borrowed. The naïve borrow check rejects this even though it's trivially sound — the two fields don't alias. Without disjoint field borrows, large parts of the standard library become unwriteable in safe code (TreeMap, doubly-linked structures, swap-based algorithms). Rust solved this; Laterita inherits the solution.
 
-### Why disjoint slice borrows with `splitAt` for hard cases (MOVE-06)
+### Why disjoint slice borrows with `splitAt` for hard cases (OWN-16)
 
-Same principle as MOVE-05, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness MOVE-06 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
+Same principle as OWN-15, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness OWN-16 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
-### Why partial-move tracking (MOVE-07)
+### Why partial-move tracking (OWN-05)
 
 Once you have moves out of fields, you need to know which fields are still alive at every point in the function. This is bookkeeping the compiler does silently, and it pays off both in normal control flow (use-after-move detection on partially-moved values) and during exception unwind (DROP-04, EXC-03). Skipping it would mean making `give(...)` on a field illegal, which would make ownership transfer in real code far more painful.
 
-### Why ownership annotations are not part of overload identity (MOVE-03)
+### Why ownership annotations are not part of overload identity (OWN-12)
 
 Two same-name methods that differ only in laterita-introduced annotations (`@take`, `@mut`, `@bound` on a parameter; `@mutating`, `@consuming` on the method) are a duplicate declaration. Three reasons reinforce one answer.
 
-*The Java surface forbids it.* COMP-06 requires §1–18 to parse as annotated `.java` under `javac`, and `javac` ignores annotations when computing the overload signature. A rule that admitted "differs only in `@take`" overloads would be unimplementable in the surface it lives in: `javac` would reject the pair as duplicate methods before any laterita pass saw them.
+*The Java surface forbids it.* COMP-06 requires §1–20 to parse as annotated `.java` under `javac`, and `javac` ignores annotations when computing the overload signature. A rule that admitted "differs only in `@take`" overloads would be unimplementable in the surface it lives in: `javac` would reject the pair as duplicate methods before any laterita pass saw them.
 
-*There is no caller-side disambiguator.* For `@mut` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates — the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate. `give(...)` exists for `@take` on parameters, but lifting it into overload resolution makes resolution depend on a call-site marker whose primary job (MOVE-02) is to mark a move — overloading the marker overloads the rule.
+*There is no caller-side disambiguator.* For `@mut` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates — the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate. `give(...)` exists for `@take` on parameters, but lifting it into overload resolution makes resolution depend on a call-site marker whose primary job (OWN-04) is to mark a move — overloading the marker overloads the rule.
 
 *Same-name multi-shape is not the load-bearing case.* The shapes that genuinely need to coexist — borrow vs. consume on the same operation, shared-receiver vs. consuming-receiver — are better served by distinct names, because the names then read at the call site. `splitAt` (borrow) and `splitOff` (consume) on arrays (ARR-01) is the canonical pattern; `BytesMut::split_off` in Rust is the same idiom. Rust's `HashMap::insert(k: K, v: V)` consumes both arguments and lets callers `.clone()` if they want to keep them; that is the idiom Laterita inherits, just without Rust's "type signature is the only signature" constraint, since a Java surface that admitted ownership overloads would still need distinct names where the consuming and borrowing variants are both wanted in the same class.
 
@@ -158,19 +158,19 @@ When a method's body needs `@mut` access to a parameter or needs to consume it, 
 
 This is non-normative — methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`. The default mental model is the goal: *the cost the caller can read from the signature is the cost the caller bears*.
 
-### Why override variance follows one principle across every annotation (MOVE-10)
+### Why override variance follows one principle across every annotation (HIER-05)
 
-One principle drives every row of MOVE-10's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse — the same shape as Java's `throws` relaxation applied uniformly across every Laterita annotation.
+One principle drives every row of HIER-05's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse — the same shape as Java's `throws` relaxation applied uniformly across every Laterita annotation.
 
-On the demand side (parameters, receiver), an override may drop `@mut` on a parameter (override needs only shared access; callers holding `@mut` still qualify), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), drop `@mutating` (override no longer needs a `@mut` receiver), or weaken `@consuming` to `@mutating` or bare (override no longer needs ownership of the receiver). Adding any of these tightens the call-site demand — callers with the weaker form the base contract promised to accept would be rejected. `@take` on a parameter is the one exception: it is identity, not strength, and either dropping or adding it breaks callers using the inherited type. Class `@mut` (MUT-05) is the same shape at the class level — a value subclass of a `@mut` parent drops the receiver demand for inherited `@mutating` methods.
+On the demand side (parameters, receiver), an override may drop `@mut` on a parameter (override needs only shared access; callers holding `@mut` still qualify), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), drop `@mutating` (override no longer needs a `@mut` receiver), or weaken `@consuming` to `@mutating` or bare (override no longer needs ownership of the receiver). Adding any of these tightens the call-site demand — callers with the weaker form the base contract promised to accept would be rejected. `@take` on a parameter is the one exception: it is identity, not strength, and either dropping or adding it breaks callers using the inherited type. Class `@mut` (HIER-01) is the same shape at the class level — a value subclass of a `@mut` parent drops the receiver demand for inherited `@mutating` methods.
 
-On the guarantee side, `@bound` on the return is covariant in strength: an override may return owned where the base promised a value bound to `this` (the per-LIFE-02 meaning of `@bound` on a return). Owned is a stronger guarantee — a value the caller may freely move or hold past the receiver's lifetime. Callers using the inherited type continue treating the result as receiver-bound and remain sound. The reverse — returning a receiver-bound value where the base promised owned — would silently constrain a value the caller intended to move or store. The FI-slot call-mode row inverts the surface direction for the same underlying principle: strengthening the slot (bare → `@mutating` → `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted — the annotation governs closure acceptance, not parameter binding.
+On the guarantee side, `@bound` on the return is covariant in strength: an override may return owned where the base promised a value bound to `this` (the per-OWN-19 meaning of `@bound` on a return). Owned is a stronger guarantee — a value the caller may freely move or hold past the receiver's lifetime. Callers using the inherited type continue treating the result as receiver-bound and remain sound. The reverse — returning a receiver-bound value where the base promised owned — would silently constrain a value the caller intended to move or store. The FI-slot call-mode row inverts the surface direction for the same underlying principle: strengthening the slot (bare → `@mutating` → `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted — the annotation governs closure acceptance, not parameter binding.
 
 ---
 
-## Lifetimes (LIFE-01 through LIFE-06)
+## Lifetimes (LIFE-01 through LIFE-03)
 
-### Why mark-borrow on returns (LIFE-02)
+### Why mark-borrow on returns (OWN-17, OWN-18, OWN-19)
 
 A bare return type means owned; borrowed returns are explicitly declared with `@bound`. The inverse — owned-marked, borrowed-default — would mark the common case: constructors, factories, computed values, query results all return owned values, so marking owned adds visual noise to most signatures. `@bound` carves out the case where production is actually a view into an input.
 
@@ -182,11 +182,11 @@ Rust's `'a` notation looks like a syntax error to newcomers and introduces an en
 
 The known cost is overlap with Java's "upper bound / lower bound" generics terminology; the syntactic positions don't overlap and a reader is unlikely to confuse them after the first encounter.
 
-### Why intersection on multiple bounds (LIFE-03)
+### Why intersection on multiple bounds (LIFE-02)
 
 When a returned borrow is bound to several sources, its lifetime is the shortest of them. The intuition is the same as Rust's lifetime intersection: the borrow can only be valid while *all* of its sources are valid. The compiler enforces this; the user doesn't reason about it explicitly unless they want a tighter bound, in which case they remove a `@bound` marker.
 
-### Why unmarked sources are an error (LIFE-04)
+### Why unmarked sources are an error (OWN-20)
 
 Treating the receiver as a default contributor — an instance method returning a borrow implicitly tied to `this` — would make signatures silent in a way that hides information from the caller. The rule is therefore stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from. The fix is always local to the signature, and the caller-visible contract is always complete.
 
@@ -259,7 +259,7 @@ A rule of thumb still holds: `onDrop()` should be best-effort cleanup. Fallible 
 
 ### Why `onDrop()` cannot observe moved-out fields (DROP-08)
 
-Partial moves (MOVE-07) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup. There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so if that body reads `left` it would be reading a vacated slot on the partial-move path. Three ways out:
+Partial moves (OWN-05) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup. There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so if that body reads `left` it would be reading a vacated slot on the partial-move path. Three ways out:
 
 1. **Forbid the partial move when `onDrop()` reads the field.** What DROP-08 picks.
 2. **Skip `onDrop()` entirely on a partial-move path, dropping only the survivors.** Rejected: partially moving one field would silently disable the whole object's destructor — a quiet correctness hole exactly where resource handling matters most.
@@ -267,7 +267,7 @@ Partial moves (MOVE-07) and a universal `onDrop()` (DROP-01) collide: after `giv
 
 Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). DROP-08 is the finer-grained version: Rust's prohibition attaches at the *type* level — a `Drop` type has all its fields locked, even those the drop never touches — whereas DROP-08 attaches at the *field* level, locking only fields the `onDrop()` body actually reads. A class without an `onDrop()` declaration (every record, every plain data carrier) reads nothing and stays fully splittable; a class that reads only some of its fields pins only those. The common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
 
-This also explains why `StringBuilder.build()` (BIND-07) — `return this.contents;` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and the implicit move of `this.contents` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
+This also explains why `StringBuilder.build()` (OWN-14) — `return this.contents;` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and the implicit move of `this.contents` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
 
 ### Why `onDrop()` is confined to `final` classes (DROP-09)
 
@@ -325,7 +325,7 @@ C++ uses `= delete` as a definition syntax (`Foo() = delete;`). An equivalent at
 
 Ownership rules force the question: when a function needs an owned value but the caller has a borrow, *something* has to produce a duplicate. Without a defined story, every type author would invent their own — `User.copy()`, `Cart.duplicate()`, `Order.snapshot()` — with subtly different contracts. The clean answer is two layered mechanisms:
 
-- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where immutable fields can be initialized (BIND-04), so duplication composes with the rest of the language without special pleading.
+- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where immutable fields can be initialized (OWN-10), so duplication composes with the rest of the language without special pleading.
 - **`clone()` method (OBJ-02).** A public wrapper that calls the copy constructor. This is the API generic and polymorphic code uses. `element.clone()` virtually dispatches to the actual class's `clone()`, which calls that class's copy constructor.
 
 ### Why the synthesized copy constructor calls `field.clone()`, not `new FieldType(source.field)`
@@ -338,7 +338,7 @@ This also makes opt-out clean: a class that can't be copied overrides `clone()` 
 
 The two-layer design is what remains after ruling out three alternatives.
 
-**Universal `Object.clone()`.** Java's model. The clone method lives on Object; classes opt in via `Cloneable`. The API is famously broken — bit-copy semantics, post-construction mutation, `CloneNotSupportedException`. Reimplementing it in Laterita reproduced most of the same complications, since `super.clone()` chaining doesn't fit BIND-04. Rejected.
+**Universal `Object.clone()`.** Java's model. The clone method lives on Object; classes opt in via `Cloneable`. The API is famously broken — bit-copy semantics, post-construction mutation, `CloneNotSupportedException`. Reimplementing it in Laterita reproduced most of the same complications, since `super.clone()` chaining doesn't fit OWN-10. Rejected.
 
 **Opt-in `Cloneable<T>` interface.** Rust's approach. Generic functions constrain `T extends Cloneable<T>` and types implement the interface. Type-safe but noisy: the bound has to appear on every generic that touches potentially-cloneable values, and makes the dominant case (yes, this is copyable) explicit when it should be implicit. Rejected.
 
@@ -429,7 +429,7 @@ This dissolves the question: there are no closure-interface names to fix because
 
 ### Why anonymous functional interfaces are restricted to positions read at a call site (FN-04)
 
-A type with no name is ergonomic where it is read in the same place it is written. The allowed positions — parameter, return, generic bound, generic type argument — all sit inside a signature or call expression the reader is already looking at: a `(P) -> R` parameter against the signature the caller has open; a return against the producing function (LIFE-02 partial application); a generic bound like `<F extends @mutating (T) -> R>` against the method declaration that requires it; a generic type argument like `Stream<(T) -> R>` against the construction or signature instantiating it. Forbidding the generic-bound case would force every `map` / `filter` / `reduce`-shaped method to declare a nominal `Mapper` / `Predicate` / `Reducer` interface purely for the bound, defeating the purpose of the structural form in the API surface where it matters most; BIND-08 already carries lifetime information through generic type arguments, and the FI case is the same mechanism applied to a function-shaped type.
+A type with no name is ergonomic where it is read in the same place it is written. The allowed positions — parameter, return, generic bound, generic type argument — all sit inside a signature or call expression the reader is already looking at: a `(P) -> R` parameter against the signature the caller has open; a return against the producing function (OWN-18 / OWN-19 partial application); a generic bound like `<F extends @mutating (T) -> R>` against the method declaration that requires it; a generic type argument like `Stream<(T) -> R>` against the construction or signature instantiating it. Forbidding the generic-bound case would force every `map` / `filter` / `reduce`-shaped method to declare a nominal `Mapper` / `Predicate` / `Reducer` interface purely for the bound, defeating the purpose of the structural form in the API surface where it matters most; TARG-01 already carries lifetime information through generic type arguments, and the FI case is the same mechanism applied to a function-shaped type.
 
 Field and declared-local positions are excluded for the inverse reason. A field of anonymous-FI type puts an unnameable type on a class's published surface, with no name to anchor documentation or IDE navigation. A declared-local annotation duplicates work `var` inference already does — the RHS produced the FI value, and the local needs only to hold it. The "function-shaped contract that outlives a single call" cases carry richer obligations — a name, documentation, related methods — that a nominal FI exists to hold (FN-03). The restriction governs the written type expression, not value flow: a `var` local may hold an anonymous-FI value by inference where no type is spelled.
 
@@ -437,14 +437,14 @@ Field and declared-local positions are excluded for the inverse reason. A field 
 
 The SAM of an anonymous FI must carry the same three receiver modes that nominal SAMs do (CLO-03: shared-call / mut-call / once-call), or the anonymous form is restricted to shared-call and every mut-call or once-call callback forces the caller back to a nominal interface — reintroducing the interface-name pressure FN-01 exists to remove. The question is only *how* to spell the mode on a nameless type.
 
-A prefix on the type expression — `@mutating (P) -> R`, `@consuming (P) -> R` — wins over the alternatives. The annotations are not new vocabulary: `@mutating` (BIND-05) and `@consuming` (BIND-07) already declare exactly these receiver modes on regular methods. The anonymous form simply attaches them to the SAM that the type expression denotes, and the desugaring (LAT-05) places them on the synthesized SAM declaration unchanged. No new annotation, no new keyword, and the `.java` mirror — a nominal interface with the same annotation on its SAM — reads identically.
+A prefix on the type expression — `@mutating (P) -> R`, `@consuming (P) -> R` — wins over the alternatives. The annotations are not new vocabulary: `@mutating` (MUT-08) and `@consuming` (OWN-14) already declare exactly these receiver modes on regular methods. The anonymous form simply attaches them to the SAM that the type expression denotes, and the desugaring (LAT-05) places them on the synthesized SAM declaration unchanged. No new annotation, no new keyword, and the `.java` mirror — a nominal interface with the same annotation on its SAM — reads identically.
 
 The Rust correspondence is direct: bare `(P) -> R` is `Fn`, `@mutating (P) -> R` is `FnMut`, `@consuming (P) -> R` is `FnOnce`, and CLO-04's containment carries the `Fn ⊆ FnMut ⊆ FnOnce` ordering across both surfaces. Java developers reading the form learn one rule — "the prefix is the SAM's receiver mode" — and the rest follows from receiver-mode rules they already know.
 
 Alternatives evaluated and rejected:
 
 - **A trailing marker on the arrow** (`(P) -mut> R`, `(P) -once> R`). Introduces new arrow forms with no precedent in either Java or Rust; obscures the connection to `@mutating` / `@consuming` on regular methods; doubles the grammar surface for the FI arrow.
-- **Encoding mode in the binding annotations** (treat `@mut (P) -> R` as mut-call). Conflates the binding's mutability with the SAM's receiver mode — two genuinely separate axes (CLO-03). The conflation makes owned, multi-call FI bindings inexpressible, and forces an inversion of MOVE-10's contravariance for the FI slot's `@mut` — an inversion that is an artifact of treating one annotation as two.
+- **Encoding mode in the binding annotations** (treat `@mut (P) -> R` as mut-call). Conflates the binding's mutability with the SAM's receiver mode — two genuinely separate axes (CLO-03). The conflation makes owned, multi-call FI bindings inexpressible, and forces an inversion of HIER-05's contravariance for the FI slot's `@mut` — an inversion that is an artifact of treating one annotation as two.
 - **Inverting the default to once-call** so that `(P) -> R` accepts any closure and stricter modes are opt-in. The inversion sounds appealing for the "I forgot to annotate" worst case, but it pessimizes the dominant case (read callbacks invocable many times), forces an annotation on every `forEach`-shaped API in the language, and breaks the example shape `<A, B, R> @bound (B) -> R partial(...)` in CLO-03 — which borrows a captured closure and calls it repeatedly, only sound when the closure is shared-call. Defaulting to shared-call matches Java's prior expectation and Rust's `Fn` semantics.
 - **Restricting the anonymous form to shared-call permanently**, leaving mut-call and once-call to nominal interfaces. This leaves ARR-01's chunk callback (mutate-mode by design) and `Mutex.with`'s critical-section closure (typically mutate-mode) requiring nominal interfaces purely because they cannot be shared-call — reintroducing the interface-name pressure FN-01 exists to remove, just for the call-mode axis.
 
@@ -456,7 +456,7 @@ Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory
 
 ### Why functional-interface values are invoked through the SAM (FN-01)
 
-Java has no call-on-binding syntax: a functional-interface value is an object, invoked through its single abstract method (`f.apply(x)`, `r.run()`, `c.accept(x)`). Laterita keeps this. A `fn(args)` form that calls a binding directly would be a sixth non-Java syntactic surface — §18 lists five — bought for no semantic gain, since it desugars to the SAM call anyway, and it works against the "looks and feels like Java" goal. The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
+Java has no call-on-binding syntax: a functional-interface value is an object, invoked through its single abstract method (`f.apply(x)`, `r.run()`, `c.accept(x)`). Laterita keeps this. A `fn(args)` form that calls a binding directly would be a sixth non-Java syntactic surface — §20 lists five — bought for no semantic gain, since it desugars to the SAM call anyway, and it works against the "looks and feels like Java" goal. The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
 
 The SAM of an anonymous functional interface is named `apply`, giving the nameless type one fixed, predictable method name, matching `java.util.function.Function`. A fixed name is not optional: LAT-05 desugars the anonymous spelling to a nominal interface, and the `.java` mirror must call a method that exists — without a canonical name there is nothing for either surface to invoke.
 
@@ -468,9 +468,9 @@ Laterita keeps Rust's three capture categories (read / mutate / consume = `Fn` /
 
 ### Why call mode and binding mode are separate (CLO-03)
 
-A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held? The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (BIND-05) and `@consuming` (BIND-07) with no new vocabulary. The second is the *binding mode* — ordinary ownership and `@mut`, identical to every other binding.
+A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held? The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (MUT-08) and `@consuming` (OWN-14) with no new vocabulary. The second is the *binding mode* — ordinary ownership and `@mut`, identical to every other binding.
 
-Fusing the two into a single three-valued slot mode on the binding was rejected: it made one everyday shape inexpressible — an object that *owns* a callback and invokes it many times. Ownership and the bound on a repeatedly-invocable closure were forced onto the same `@take` / `@mut` token, so "owned, multi-call" had no spelling. Separating the axes dissolves the problem: the call-mode bound lives on the interface type, the way a Rust `where F: FnMut` bound does, while ownership stays the field's ordinary default. Invocation then falls straight out of BIND-06 / BIND-07 receiver transitivity with the functional-interface value as the receiver, and no new mechanism is introduced.
+Fusing the two into a single three-valued slot mode on the binding was rejected: it made one everyday shape inexpressible — an object that *owns* a callback and invokes it many times. Ownership and the bound on a repeatedly-invocable closure were forced onto the same `@take` / `@mut` token, so "owned, multi-call" had no spelling. Separating the axes dissolves the problem: the call-mode bound lives on the interface type, the way a Rust `where F: FnMut` bound does, while ownership stays the field's ordinary default. Invocation then falls straight out of MUT-10 / OWN-14 receiver transitivity with the functional-interface value as the receiver, and no new mechanism is introduced.
 
 ### Why lambdas inhabit functional interfaces (CLO-04)
 
@@ -480,17 +480,17 @@ Making lambdas the *only* construction (collapsing FN and CLO into one section) 
 
 ### Why call-mode override variance is covariant in strength (CLO-05)
 
-MOVE-10 makes `@mut` contravariant for ordinary parameters: an override may *drop* `@mut` because the override demands less of the caller. CLO-05 carries the same principle to the call-mode axis of an FI slot, but in the *opposite syntactic direction*: an override may *strengthen* the call mode (bare → `@mutating` → `@consuming`), never weaken it. Both rules are the same principle — *an override must continue to accept every value the inherited declaration accepted* — applied to two different axes.
+HIER-05 makes `@mut` contravariant for ordinary parameters: an override may *drop* `@mut` because the override demands less of the caller. CLO-05 carries the same principle to the call-mode axis of an FI slot, but in the *opposite syntactic direction*: an override may *strengthen* the call mode (bare → `@mutating` → `@consuming`), never weaken it. Both rules are the same principle — *an override must continue to accept every value the inherited declaration accepted* — applied to two different axes.
 
 For an ordinary parameter `@mut Buf b`, `@mut` names a capability the function reserves over the caller's value. Dropping it reduces what the function will do; callers continue to work because a mutable borrow degrades to immutable on demand. Contravariance is sound.
 
 For an FI slot, the call-mode prefix on the type determines which closures fit (CLO-04). A shared-call slot accepts read closures only; a mut-call slot adds mutate; a once-call slot adds consume. *Strengthening* the slot's call mode broadens the admissible-closure set; weakening it would reject closures the inherited contract said it would accept. So overrides may strengthen the call mode, never weaken it.
 
-The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries acceptance-set semantics, and the binding-mode annotations on the parameter (`@mut`, `@take`, `@bound`) carry MOVE-10 semantics — `@mut` contravariant, `@take` invariant. Acceptance-set widening lives where it belongs (on the type expression that determines acceptance), MOVE-10's direction lives where it belongs (on the parameter annotation), and each axis follows the rule appropriate to its meaning with no inversion to memorize.
+The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries acceptance-set semantics, and the binding-mode annotations on the parameter (`@mut`, `@take`, `@bound`) carry HIER-05 semantics — `@mut` contravariant, `@take` invariant. Acceptance-set widening lives where it belongs (on the type expression that determines acceptance), HIER-05's direction lives where it belongs (on the parameter annotation), and each axis follows the rule appropriate to its meaning with no inversion to memorize.
 
 ### Why closures carry capture lifetimes (CLO-06)
 
-A closure that borrows `name` cannot outlive `name`. This is the same lifetime-bounded-by-input principle from LIFE-02, applied to closures. Without it, you could create a closure, the captured variable would die, and calling the closure would deref freed memory. The standard ownership rules force this, but it's worth calling out as a separate requirement because closures are where it bites people.
+A closure that borrows `name` cannot outlive `name`. This is the same lifetime-bounded-by-input principle from OWN-18, applied to closures. Without it, you could create a closure, the captured variable would die, and calling the closure would deref freed memory. The standard ownership rules force this, but it's worth calling out as a separate requirement because closures are where it bites people.
 
 ---
 
@@ -504,7 +504,7 @@ Resolution is left-operand-directed with unboxing as the primitive fallback and 
 
 ---
 
-## Code Generation Annotations (§21)
+## Code Generation Annotations (§23)
 
 ### Why adopt the whole stable Lombok surface natively (GEN-*)
 
@@ -528,7 +528,7 @@ Real Java pretends `String` is one thing. It isn't — sometimes it's an indepen
 
 They are kept as one type at the source level, with the compiler tracking per-binding whether the string is owned or borrowed. This preserves Java's "everything is just a reference" feel — the user writes `String name` either way. The complexity moves into the compiler. The cost is internal complexity; the gain is that Java's surface syntax is preserved.
 
-The signature-level markers introduced for lifetimes (`@bound` per LIFE-02) and parameters (`@take` per MOVE-03) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
+The signature-level markers introduced for lifetimes (`@bound` per OWN-18 / OWN-19) and parameters (`@take` per OWN-12) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site. What the compiler tracks silently is *intra-method* flow — within a function body the per-binding owned/borrowed state is internal bookkeeping, not part of any public surface.
 
 The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`). In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body reaches `broken()`, and it always returns an owned value. The diagnostic for any owned/borrowed mismatch is therefore uniform — *"this position needs an owned String; binding is borrowed — try `.clone()`"* — and the fix is one method call. With `clone()` as the universal escape valve, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
 
@@ -536,13 +536,13 @@ The dominant ergonomic concern with the one-type choice is "I have a borrow here
 
 A literal lives in the program's read-only static segment, not on the heap. Treating it as owned would either lie about ownership (no allocation took place) or force every literal expression to allocate a heap copy — both unacceptable. Borrowing is the honest description: the literal owns itself, every binding onto it is a view. The static lifetime is universal, so a literal flows freely into any borrow context, and the few sites that need owned storage call `.clone()` (STR-02).
 
-This makes the spec's earlier example `String greeting = "hello"` a borrowed binding, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in MOVE-01 and STR-02 like any other borrow.
+This makes the spec's earlier example `String greeting = "hello"` a borrowed binding, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in OWN-02 and STR-02 like any other borrow.
 
 ### Why `String` is a value class (STR-07)
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
-A binding may still be *declared* `@mut String` — `@mut` is general (BIND-02), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mutating` method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
+A binding may still be *declared* `@mut String` — `@mut` is general (MUT-01), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mutating` method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
 
 ### Why default receiver mode is borrow (STR-08)
 
@@ -550,7 +550,7 @@ The same Java-feel argument that motivates per-binding tracking (STR-02) applies
 
 ### Why `String` needs no splitting machinery
 
-A `bound String` is read-only — STR-07 leaves `String` with no `@mutating` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under MOVE-04. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
+A `bound String` is read-only — STR-07 leaves `String` with no `@mutating` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under OWN-03. No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
 Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need. The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01.
 
@@ -560,7 +560,7 @@ Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tra
 
 ### Why a dedicated section for arrays
 
-Parallel to `String` (§12): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across MOVE-06 and stdlib commentary.
+Parallel to `String` (§14): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across OWN-16 and stdlib commentary.
 
 A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving. Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering — exactly the `@unsafe` propagation Laterita is avoiding.
 
@@ -576,7 +576,7 @@ spawnWorker(give(s.left));
 processLocally(give(s.right));
 ```
 
-vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-03 already implicit in the lifetime rules.
+vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-02 already implicit in the lifetime rules.
 
 For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
 
@@ -584,19 +584,19 @@ A dedicated `reduceChunks` was considered and rejected. Every in-place reduce ex
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 
-`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape MOVE-10 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
+`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
-### Why type arguments admit `@bound` and `@mut` but not `@take` (BIND-08, BIND-09, BIND-10)
+### Why type arguments admit `@bound` and `@mut` but not `@take` (TARG-01, TARG-02, TARG-03)
 
 A type argument may carry `@bound` and `@mut`, but not `@take`.
 
-`@take` is a parameter mode — it describes a transfer of ownership *into a slot* at a call site — not a property a value carries. As a type argument it would have no referent: `Pair<@take K, @take V>` cannot say anything, because there is no call and no slot. Ownership of a generic structure's contents is carried by the structure's own binding (owned vs. `@bound`), so `@take` in argument position is rejected (BIND-09).
+`@take` is a parameter mode — it describes a transfer of ownership *into a slot* at a call site — not a property a value carries. As a type argument it would have no referent: `Pair<@take K, @take V>` cannot say anything, because there is no call and no slot. Ownership of a generic structure's contents is carried by the structure's own binding (owned vs. `@bound`), so `@take` in argument position is rejected (TARG-02).
 
-`@bound` composes cleanly (BIND-08): an instance whose type arguments include a `@bound` source can only be produced as a `@bound` value, with lifetime per LIFE-03/LIFE-06. The `@bound` binding on the instance carries the lifetime; no struct-level lifetime parameters are needed.
+`@bound` composes cleanly (TARG-01): an instance whose type arguments include a `@bound` source can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04. The `@bound` binding on the instance carries the lifetime; no struct-level lifetime parameters are needed.
 
 `@mut` in a type argument — `List<@mut Foo>` — is the hard case. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), and the hazard is aliasing: an element accessor `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`, and two coexisting shared borrows of a `List<@mut Foo>` would each call `get(0)` and receive a `@mut Foo` to the same slot. Banning `@mut` from type arguments outright would push the case onto `Cell<T>`, but that is heavier than the hazard requires.
 
-The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (MOVE-04): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (BIND-10): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
+The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (OWN-03): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (TARG-03): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ### Why `T[]` is the canonical contiguous-mut backing
 
@@ -606,13 +606,13 @@ Java array slots write through any reference, so `@bound @mut T[]` permits in-pl
 
 A single owned array must be divisible so the halves are independently usable by different threads, and a parallel iteration surface is needed for the data-parallel case. Two distinct usage shapes need different primitives, and trying to cover both with one API underweights whichever shape isn't its native fit.
 
-**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `Pair<T[], T[]>` (ARR-04) so partial-move (MOVE-07) lets the caller extract each half via the accessor and `give` it to a thread independently.
+**Long-lived ownership transfer.** A worker takes a half and keeps it for an arbitrary, possibly unbounded duration. Borrows are insufficient: `@bound @mut T[]` cannot outlive the receiver's source, and the source can't be a stack binding the spawning thread waits on. The half must *own* its segment. `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops. The result is wrapped in `Pair<T[], T[]>` (ARR-04) so partial-move (OWN-05) lets the caller extract each half via the accessor and `give` it to a thread independently.
 
-**Data-parallel iteration.** Rather than carry a bespoke `parallelForEachChunk` on `T[]`, the parallel path goes through `Arrays.stream(@bound T[])` returning a bare `Stream<T>` — the JDK type, bound to the source by the parameter-source form of LIFE-02 (static methods have no receiver, so `@bound` belongs on the parameter, not the return). `.parallel().forEach(...)` already exists on every Java developer's mental model, and the underlying `Spliterator` splits work the same way a hand-rolled chunk fan-out would. Callers who need a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. The cost is one extra abstraction layer (the stream) and a real limitation — the stream produces transformed/aggregated values but does not write back into the source — so the in-place parallel mutation case stays on the `splitOff` path. The win is no new language-level executor concept (no rayon-style `pool.install(...)` shim) and one fewer load-bearing primitive on `T[]`; for read-only parallel reductions (map / filter / reduce / sum / collect), the standard `Consumer<T>` / `Function<T,R>` / `Predicate<T>` interfaces from `java.util.function` accept `@bound T` parameters by default, so no parallel SAM hierarchy is required.
+**Data-parallel iteration.** Rather than carry a bespoke `parallelForEachChunk` on `T[]`, the parallel path goes through `Arrays.stream(@bound T[])` returning a bare `Stream<T>` — the JDK type, bound to the source by the parameter-source form of OWN-18 (static methods have no receiver, so `@bound` belongs on the parameter, not the return). `.parallel().forEach(...)` already exists on every Java developer's mental model, and the underlying `Spliterator` splits work the same way a hand-rolled chunk fan-out would. Callers who need a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. The cost is one extra abstraction layer (the stream) and a real limitation — the stream produces transformed/aggregated values but does not write back into the source — so the in-place parallel mutation case stays on the `splitOff` path. The win is no new language-level executor concept (no rayon-style `pool.install(...)` shim) and one fewer load-bearing primitive on `T[]`; for read-only parallel reductions (map / filter / reduce / sum / collect), the standard `Consumer<T>` / `Function<T,R>` / `Predicate<T>` interfaces from `java.util.function` accept `@bound T` parameters by default, so no parallel SAM hierarchy is required.
 
-Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mutating` borrow vs `@consuming`), and those annotations are not part of the overload signature (MOVE-03) — two same-name methods that differed only in receiver mode would be a duplicate declaration. Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust precedent (`BytesMut::split_off`) and the only spelling that reads unambiguously at every call site.
+Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mutating` borrow vs `@consuming`), and those annotations are not part of the overload signature (OWN-12) — two same-name methods that differed only in receiver mode would be a duplicate declaration. Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust precedent (`BytesMut::split_off`) and the only spelling that reads unambiguously at every call site.
 
-The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per BIND-08 — `Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@bound @mut T[], @bound @mut T[]>` for the in-thread borrowed return — so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
+The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 — `Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@bound @mut T[], @bound @mut T[]>` for the in-thread borrowed return — so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
@@ -666,7 +666,7 @@ A naïve `WeakReference::get` that reads the strong count and then increments ha
 
 ### Why `Cell<T>` and `Heap<T>` are unsafe primitives (STD-05, STD-06)
 
-These are the irreducible escape hatches. `Cell<T>` is the documented hole in MUT-01. `Heap<T>` is the only way to allocate without compiler-tracked ownership. Everything else in the standard library — `Rc`, `Arc`, `Mutex`, lazy initializers, growable collections — is built on top of them in `private unsafe` methods. The unsafe surface is small, concentrated, and auditable.
+These are the irreducible escape hatches. `Cell<T>` is the documented hole in MUT-09. `Heap<T>` is the only way to allocate without compiler-tracked ownership. Everything else in the standard library — `Rc`, `Arc`, `Mutex`, lazy initializers, growable collections — is built on top of them in `private unsafe` methods. The unsafe surface is small, concentrated, and auditable.
 
 ### Why `@local`, not `Send` (STD-07)
 
@@ -682,7 +682,7 @@ A central design choice is whether to introduce a new `Cursor<T>` type or reuse 
 
 The single signature deviation — `Iterator.remove()` and `ListIterator.remove()` returning an owned `T` rather than `void` — is forced by the ownership model. Java's void return reflects an assumption Laterita can't carry: that the caller "still has" the element from the prior `next()` call as a reference into the collection. In Laterita, `next()` returns a `@bound T` borrow tied to the iterator's position, and any mutating call on the iterator invalidates that borrow at the type level. Returning the removed element by ownership transfer is what restores the user's access to the value after the borrow is gone, and it incidentally folds Rust's separate `drain`/`extract_if` API into a one-liner over `remove()`. Statement-form `it.remove();` (ignoring the return) still compiles — the result drops via `onDrop`, matching Java's observable behavior.
 
-`ConcurrentModificationException` doesn't carry over. Its job — detecting "you mutated the collection while iterating" — is exactly what MOVE-04 enforces statically. The runtime category exists in Java because the language can't express the constraint at compile time. Laterita can, so the runtime exception becomes a compile error, and the `modCount` field can leave the standard library entirely.
+`ConcurrentModificationException` doesn't carry over. Its job — detecting "you mutated the collection while iterating" — is exactly what OWN-03 enforces statically. The runtime category exists in Java because the language can't express the constraint at compile time. Laterita can, so the runtime exception becomes a compile error, and the `modCount` field can leave the standard library entirely.
 
 Keeping a separate `Cursor<T>` type for the cursor case anyway — on the theory that "iterator" connotes read-only iteration in many readers' heads — is also rejected: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it. Two iterator types in Java's vocabulary, two iterator types in Laterita's — same names, sharper guarantees.
 
