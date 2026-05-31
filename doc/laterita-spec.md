@@ -81,7 +81,7 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be
 
 ### OWN-10 — Constructor initializes every field exactly once
 
-Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked. Fields without `@mut` (and `@mut final` fields, MUT-05) can be assigned only in constructors; `@mut` non-`final` fields can also be reassigned in `@mutating` methods (MUT-08).
+Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked. Fields without `@mut` (and `@mut final` fields, MUT-03) can be assigned only in constructors; `@mut` non-`final` fields can also be reassigned in `@mutating` methods (MUT-08).
 
 ### OWN-11 — Record components follow field rules
 
@@ -89,7 +89,7 @@ A record component is a field for the purposes of OWN-07..-09: owned by default,
 
 ### OWN-12 — Parameter ownership modes
 
-A parameter declares whether it receives a borrow or takes ownership. Mutability adds further modes in MUT-07.
+A parameter declares whether it receives a borrow or takes ownership. Mutability adds further modes in MUT-04.
 
 | Form | Meaning |
 |---|---|
