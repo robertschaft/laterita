@@ -570,7 +570,7 @@ The `.java` and `.lat` surfaces differ on two features the array API depends on:
 
 For the two-way split, three shapes were considered — continuation-passing, record return, multi-return language feature. The record form reads as ordinary Java:
 
-```laterita
+```java
 var s = arr.splitAt(mid);
 spawnWorker(give(s.left));
 processLocally(give(s.right));

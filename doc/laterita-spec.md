@@ -57,7 +57,7 @@ A local binding's owned/borrowed state is determined by the right-hand side of i
 - A **producer expression** (call, constructor, literal, `give(x)`) yields an owned binding.
 - A **bare binding RHS** (naming another binding) yields a shared borrow of that source.
 
-```laterita
+```java
 String a = makeString();    // owned: RHS is a producer
 String b = a;               // borrow: RHS is a bare binding
 print(a);                   // OK
@@ -79,7 +79,7 @@ The compiler must reject programs that violate this.
 After the call `x` is no longer usable.
 Unqualified calls to this static method are recognized specially by the compiler as the move expression.
 
-```laterita
+```java
 var a = makeString();
 var b = give(a);            // a is consumed
 // print(a);                // ERROR: use after move
@@ -98,7 +98,7 @@ A field that the enclosing value's `onDrop()` reads cannot be moved out (DROP-08
 `give(x);` as a statement (its result discarded) consumes `x` and invokes its `onDrop()` immediately.
 After the statement, `x` is no longer usable.
 
-```laterita
+```java
 var worker = Thread.ofVirtual().start(() -> task());
 if (changedMyMind()) { give(worker); }   // run Thread.onDrop() now; worker consumed
 ```
@@ -117,7 +117,7 @@ This includes the case where the `@borrow` arises via a `@bound`-substituted gen
 The borrow's source is fixed by the producer.
 See OWN-18 and OWN-19 for returns, and LIFE-02 for intersection across multiple sources.
 
-```laterita
+```java
 record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be @bound
 ```
 
@@ -149,7 +149,7 @@ Mutability adds further modes in MUT-04.
 | `T name` | parameter receives a shared borrow |
 | `@take T name` | parameter receives ownership (moved in) |
 
-```laterita
+```java
 void inspect(String s);          // borrows s
 void store(@take String s);      // takes ownership of s
 ```
@@ -166,7 +166,7 @@ Illegal cases:
 - `give(arg)` to a bare parameter. The caller asks to transfer, but the function will not accept ownership.
 - A bare argument holding only a borrow to a `@take` parameter. There is no ownership to give.
 
-```laterita
+```java
 var name = makeName();
 inspect(name);              // OK: borrow
 inspect(makeName());        // OK: borrow of a temporary
@@ -194,7 +194,7 @@ A method that both mutates and consumes carries both.
 Calling `@consuming` requires the receiver binding to own its value.
 The call site needs no `give(...)` wrapper.
 
-```laterita
+```java
 class Connection {
     Heap<DbConn> conn;
     public @consuming void close() {
@@ -213,7 +213,7 @@ Two simultaneous borrows of statically distinct fields of the same value are non
 They must be permitted, including when both are mutable.
 The compiler performs this disjointness analysis.
 
-```laterita
+```java
 @mut class Pair { @mut int left; @mut int right; }
 @mut Pair p = new Pair();
 @mut int l = p.left;
@@ -227,7 +227,7 @@ The compiler proves disjointness for constant ranges and for ranges related by s
 For arbitrary computed ranges, ARR-01 supplies the disjointness witness.
 That reduces to ordinary slice expressions this rule covers.
 
-```laterita
+```java
 int[] data = new int[100];
 @mut int[] left  = data.slice(0, 50);
 @mut int[] right = data.slice(50, 100);  // OK: provably disjoint
@@ -239,7 +239,7 @@ A bare return type means the function returns an owned value.
 `return x;` of an owned binding moves it.
 `return give(x);` is accepted as the explicit form.
 
-```laterita
+```java
 String upperCase(String s);     // owned return
 ```
 
@@ -248,7 +248,7 @@ String upperCase(String s);     // owned return
 `@bound` on a parameter declares that the function returns a borrow whose source is that parameter.
 Valid only on a non-`void` return.
 
-```laterita
+```java
 String firstWord(@bound String s) {              // returned borrow bound to s
     return s.substring(0, s.indexOf(' '));
 }
@@ -259,7 +259,7 @@ String firstWord(@bound String s) {              // returned borrow bound to s
 `@bound` on a return declares that the function returns a borrow whose source is `this`.
 Valid only on instance methods (not `static`).
 
-```laterita
+```java
 class Cache {
     Map<String, Entry> entries;
     @bound Entry get(String key) {               // returned borrow bound to this
@@ -273,7 +273,7 @@ class Cache {
 A body that returns a borrow tied to a source not marked `@bound` is a compile error.
 The diagnostic identifies the source and suggests adding `@bound`.
 
-```laterita
+```java
 String prefixOf(@bound String text, String pattern) {
     return text.substring(0, pattern.length());  // bound to text only, pattern unmarked
 }
@@ -301,7 +301,7 @@ The compiler must reject any program in which a borrow is used after the binding
 When more than one source is marked `@bound` (any combination of parameters and the receiver), the returned borrow's lifetime is the intersection.
 It is bounded by the shortest-lived marked source.
 
-```laterita
+```java
 @bound String chooseLabel(@bound String fallback) {
     return prefer ? this.label : fallback;       // bound to min(this, fallback)
 }
@@ -312,7 +312,7 @@ It is bounded by the shortest-lived marked source.
 A `@bound` instance produced from `@borrow` fields takes each field's source into LIFE-02's intersection.
 The instance is usable only while every field's source remains live.
 
-```laterita
+```java
 record EntryView<K, V>(@borrow K key, @borrow V value) {}
 
 @bound EntryView<String, Integer> view = new EntryView<>(name, count);
@@ -344,7 +344,7 @@ It does not change mutability.
 `var x = expr` is immutable.
 `@mut var x = expr` is mutable.
 
-```laterita
+```java
 String greeting = "hello";
 var count = items.size();
 @mut var sb = new StringBuilder();
@@ -357,7 +357,7 @@ Java's `final` locks reassignment.
 On an immutable binding it is redundant.
 On a `@mut` binding it produces a third state: the value may still be mutated through the binding, but the binding cannot be reassigned.
 
-```laterita
+```java
 @mut final Properties config = loadConfig();
 config.setProperty("verbose", "true");   // OK: mutate through
 config = loadConfig();                   // ERROR: final locks reassignment
@@ -413,7 +413,7 @@ A `@mut` field whose type is a value class is permitted and grants reassignment 
 A field without `@mut` cannot be reassigned and cannot be mutated through.
 `@mut final` permits mutation-through but not reassignment.
 
-```laterita
+```java
 @mut class User {
     String name;           // immutable, owned field
     @mut int loginCount;   // mutable, owned field
@@ -432,7 +432,7 @@ A method that both mutates and consumes carries both.
 `@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
 Override variance is HIER-05.
 
-```laterita
+```java
 @mut class Counter {
     @mut int n;
     public int read()                    { return n; }
@@ -460,7 +460,7 @@ Within a constructor, `@mutating` methods may be called on `this` and inherited 
 This is the initialization phase.
 The value-class freeze takes effect when the constructor returns.
 
-```laterita
+```java
 var counter = new Counter();
 counter.inc();              // ERROR: counter is not @mut
 @mut var c2 = new Counter();
@@ -495,7 +495,7 @@ The value class is a frozen view of the inherited surface.
 This is the mechanism for deriving an immutable variant of a mutable class.
 Examples include a collection, a configuration holder, or a builder, derived without re-declaring its API.
 
-```laterita
+```java
 @mut class Counter {
     @mut int n;
     Counter(int start) { this.n = start; }
@@ -524,7 +524,7 @@ That is what makes MUT-10's static check sound.
 `@mut` access originates only at construction of a `@mut` class.
 It propagates only through `@mut` bindings, parameters, returns, and fields.
 
-```laterita
+```java
 Counter view   = new FrozenCounter(5);    // OK: widens to bare Counter
 @mut Counter m = new FrozenCounter(5);    // ERROR (HIER-04)
 FrozenCounter fc = new FrozenCounter(5);
@@ -553,7 +553,7 @@ The FI call-mode row inverts surface direction because what is being relaxed is 
 A stronger call mode (bare to `@mutating` to `@consuming`) accepts strictly more closures.
 Every closure the base accepted remains accepted.
 
-```laterita
+```java
 interface Visitor {
     void visit(@mut Node n);
     @bound String describe(@bound Node n);
@@ -586,7 +586,7 @@ Its lifetime follows LIFE-02, with TARG-04 idempotence when `@bound` stacks.
 No struct-level lifetime parameters are introduced.
 The `@bound` binding on the instance carries the lifetime.
 
-```laterita
+```java
 record Pair<L, R>(L left, R right) {}
 
 Pair<String, Integer>                       p1 = new Pair<>("hello".clone(), 42);
@@ -607,7 +607,7 @@ Ownership of a generic structure's contents is carried by the structure's own bi
 `@mut` may appear inside a generic type argument only when the enclosing generic type is itself `@mut` at that occurrence.
 That is, the type of a `@mut` binding, `@mut` parameter, `@mut` field, or `@mut`/owned return.
 
-```laterita
+```java
 @mut List<@mut Foo> a = ...;     // OK
 @mut List<Foo>      b = ...;     // OK
 List<Foo>           c = ...;     // OK
@@ -633,7 +633,7 @@ When `@bound` appears in stacked position, typically through generic substitutio
 For example, `@bound E` returned from a method on `Container<@bound T>` substitutes to `@bound @bound T`, which is one `@bound T`.
 Each `@bound` position contributes its source to LIFE-02's intersection.
 
-```laterita
+```java
 class ArrayList<E> {
     @bound E get(int index);                         // outer @bound: bound to `this`
 }
@@ -665,7 +665,7 @@ The set of const-eligible operations is defined by the compiler and standard lib
 At minimum it covers primitive arithmetic, string literals, and the const-eligible constructors of the synchronizing stdlib types (`Mutex<T>` per STD-09, `Arc<T>` per STD-02, and the atomic primitives).
 Initializers that require runtime computation go through a once-init wrapper held in the static slot and forced at first access.
 
-```laterita
+```java
 static Mutex<Map<String, Session>> SESSIONS = new Mutex<>(new HashMap<>());
 static Arc<Config>                 BUILTIN  = new Arc<>(Config.DEFAULT);
 ```
@@ -686,7 +686,7 @@ Use `static Arc<T>`.
 
 Every binding triggers the drop of its value when the binding leaves scope; the drop sequence is specified by DROP-05. The cleanup hook is `onDrop()`, an `@internal` method (DROP-06) a `final` class may implement (DROP-09). A class with no implementation contributes no body to its drop sequence. No syntactic opt-in is required at the call site.
 
-```laterita
+```java
 {
     Rc<File> f = openFile();
     f.read();
@@ -716,7 +716,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 
 Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-08) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
 
-```laterita
+```java
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
     Rc<Metrics> metrics;
     long startNanos;
@@ -750,7 +750,7 @@ A field that may be moved out (OWN-05) on any path to a drop site may not be rea
 
 The restriction is per field — an `onDrop()` reading only some fields pins only those, and partial cleanup of the rest follows DROP-04. A class whose `onDrop()` reads no field — every record, every plain data carrier, every class without an `onDrop()` implementation — imposes no restriction at all.
 
-```laterita
+```java
 record Pair(Resource left, Resource right) {}        // no onDrop implementation
 
 var p = new Pair(openA(), openB());
@@ -772,7 +772,7 @@ A class may implement `onDrop()` only if it is declared `final`. An `onDrop()` i
 
 A class that needs cleanup beyond what its fields' own `onDrop()`s provide must be `final`. Extensible types compose `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose `onDrop()`s perform the release during the owner's drop sequence (DROP-05, step 2).
 
-```laterita
+```java
 final class Connection { … }              // OK: final, may implement onDrop
 
 class Service {                           // OK: no onDrop implementation; ordinary extensible class
@@ -798,7 +798,7 @@ Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the cal
 
 The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
 
-```laterita
+```java
 class File {
     Heap<FileHandle> handle;
     @Override File clone() {
@@ -822,7 +822,7 @@ Diagnostics must identify the reachable path that leads to `broken()` and report
 
 A conditional form is expressible as an `if` guarding `broken()`; the compiler's standard dead-code analysis determines whether the path is reachable:
 
-```laterita
+```java
 if (n < 0) broken("n must be non-negative");
 ```
 
@@ -836,7 +836,7 @@ Every class has a `protected ClassName(ClassName source)` copy constructor. The 
 
 If a field's `clone()` reaches `broken()` (UNR-01), the enclosing class's auto-generated copy constructor reaches `broken()` transitively and is rejected at compile time.
 
-```laterita
+```java
 class User {
     String name;
     int age;
@@ -873,7 +873,7 @@ class SecretKey {
 
 Every class has a public `Self clone()` method, synthesized as `return new Self(this);` when not provided by the user. `clone()` is the standard duplication API for code that does not statically know the concrete class — generic code over a type parameter, and polymorphic code holding a value at a supertype or interface — because the call dispatches virtually to the actual class's `clone()`.
 
-```laterita
+```java
 <T> List<T> deepCopy(List<T> source) {
     var result = new List<T>();
     for (T item : source) {
@@ -898,7 +898,7 @@ Nullability is a property of types in both source surfaces. The `.lat` spelling 
 
 A bare type `T` excludes the null state. A binding of type `T` always holds a valid value after initialization, and methods on `T` may be invoked without a null check.
 
-```laterita
+```java
 String name = "Alice";
 print(name.length());       // always safe
 ```
@@ -909,7 +909,7 @@ A nullable type admits either a value of `T` or the special value `null`. Its ca
 
 `T` must be a reference type. Nullable primitive types are rejected at compile time; code that requires null-bearing integer or boolean semantics must use the boxed reference type (`@Nullable Integer`, `@Nullable Boolean`, …). The compiler does not auto-box at the type level.
 
-```laterita
+```java
 String? maybeName = lookup(id);   // .lat spelling of @Nullable String
 print(maybeName.length());        // ERROR: requires null check
 ```
@@ -924,7 +924,7 @@ The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is 
 
 After a control-flow narrowing (e.g., `if (x != null) { ... }`, `if (x == null) return;`), the binding's type within the proven-non-null region is `T`, not `T?`. Calls that require `T` are permitted without further annotation.
 
-```laterita
+```java
 if (maybeName != null) {
     print(maybeName.length());   // OK: narrowed to String
 }
@@ -934,7 +934,7 @@ if (maybeName != null) {
 
 Fields obey NULL-01: a field declared `T` is non-nullable, and OWN-10's "assigned exactly once in every constructor" requirement guarantees no observable `null`. A nullable field is declared `T?`.
 
-```laterita
+```java
 class User {
     String name;            // non-nullable
     String? nickname;       // nullable
@@ -993,7 +993,7 @@ where each `Pi` follows OWN-12 / MUT-04 parameter form (bare `T`, `@mut T`, `@ta
 
 Examples — each comment describes what a lambda assigned to that parameter type may do:
 
-```laterita
+```java
 void fold(int seed, (int, int) -> int reducer) { … }
 // shared-call: invocable any number of times, concurrently; lambda may only read captures
 
@@ -1018,7 +1018,7 @@ Two anonymous FI types are *identical* — the same compile-time type — only w
 
 For most code, identity is the wrong question: anonymous types can't be reflected on or compared at runtime. What matters is *assignability* — when a value of FI type `A` may flow into a slot of FI type `B`. This is HIER-05's override variance applied to the SAM: read the slot `B` as the base declaration and the value `A` as the override. `A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s — its call mode is `≤` `B`'s (CLO-04 containment), a `@mut` or `@bound` parameter may be dropped, `@take` is invariant, a `@bound` return may be strengthened to owned, and the underlying parameter and return types agree.
 
-```laterita
+```java
 (@mut Record) -> String           // type α — slot
 (Record)      -> String           // type β — value
 (Record)      -> @bound String    // type γ — slot
@@ -1036,13 +1036,13 @@ Each value-construction of an anonymous functional interface yields a synthesize
 
 Minimal — `(int) -> int` synthesizes:
 
-```laterita
+```java
 interface $Anon { int apply(int p0); }
 ```
 
 Maximal — `@consuming (@take String, @mut List<T>) -> @bound String` synthesizes:
 
-```laterita
+```java
 @mut interface $Anon<T> {
     @consuming @bound String apply(@take String p0, @mut List<T> p1);
 }
@@ -1096,7 +1096,7 @@ A functional-interface value has two independent properties.
 | `@mutating` | **mut-call** | through a `@mut` binding; repeatedly but sequentially |
 | `@consuming` | **once-call** | once; the call consumes the value |
 
-```laterita
+```java
 interface MissResolver<T> { T resolve(String key); }                // shared-call
 @mut interface HitListener  { @mutating void onHit(String key); }   // mut-call
 interface Finalizer         { @consuming void run(); }              // once-call
@@ -1106,7 +1106,7 @@ interface Finalizer         { @consuming void run(); }              // once-call
 
 Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-14): invoking a mut-call SAM requires the binding to be `@mut`; invoking a once-call SAM requires the binding to own the value, and the call consumes it (a partial move per OWN-05 when the binding is a field). Storing, moving, or borrowing a functional-interface value is governed by the binding mode alone, independently of the call mode — a value may be held in a binding from which its SAM cannot be invoked.
 
-```laterita
+```java
 class C {
     MissResolver<Foo> resolve;   // owned field, shared-call — invocable through a bare receiver
     @mut HitListener  onHit;     // owned field, mut-call — invocable only in a @mutating method
@@ -1121,7 +1121,7 @@ A functional-interface type used as a parameter or return combines modifiers fro
 | The SAM's receiver — the type's call mode | bare / `@mutating` / `@consuming` | this rule |
 | The binding holding the value | `@mut`, `@take`, `@bound`, ownership | MUT-02, MUT-04, MUT-07, OWN-12, OWN-18, OWN-19 |
 
-```laterita
+```java
 @mut interface F<T, R> { @mutating R apply(@take T); }   // call mode mut-call; SAM parameter @take T
 
 void process(@mut F<Job, Done> fn) { /* … */ }      // @mut: binding mode of the parameter
@@ -1129,7 +1129,7 @@ void process(@mut F<Job, Done> fn) { /* … */ }      // @mut: binding mode of t
 
 FI return-type binding annotations follow MUT-01 / OWN-19 unchanged. A once-call FI value cannot be a `@bound` source — the call that would produce the return consumes it.
 
-```laterita
+```java
 // The returned closure borrows `fn` and `first`,
 // so its lifetime is the intersection of both (LIFE-02).
 <A, B, R> @bound (B) -> R partial(@bound (A, B) -> R fn, @bound A first) {
@@ -1170,7 +1170,7 @@ Inverted — what each slot guarantees to the function holding the closure:
 
 Assignability concerns the value only. Whether the binding that receives the value can invoke its SAM is the separate question settled by CLO-03 (binding mode versus call mode).
 
-```laterita
+```java
 @mut interface Doubler { @mutating int apply(int x); }   // mut-call
 
 @mut int calls = 0;
@@ -1189,7 +1189,7 @@ The call-mode axis is the row in HIER-05 whose surface direction inverts: an ove
 
 The binding-mode annotations on the FI parameter — `@take`, `@mut`, `@bound` — follow HIER-05 directly: they govern how the override's binding holds the FI value, not which closures fit the slot.
 
-```laterita
+```java
 interface Source<T> {
     void forEach((T) -> void fn);                                 // base: shared-call slot
 }
@@ -1229,7 +1229,7 @@ A `String` binding is either an owned heap allocation or a borrowed view into an
 
 Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) declare the borrow with `@bound` on the return type per OWN-19.
 
-```laterita
+```java
 class String {
     @bound String substring(int start, int end);
     @bound String trim();
@@ -1244,7 +1244,7 @@ Methods that produce new storage (e.g., `toUpperCase`, `concat`) return an owned
 
 A string literal expression has type `@bound String` with a static lifetime. A binding initialized from a literal is borrowed; to obtain owned storage, call `.clone()` (OBJ-02).
 
-```laterita
+```java
 String greeting = "hello";              // borrowed, static lifetime
 String owned = "hello".clone();         // owned heap allocation
 var s = give(greeting);                 // ERROR: greeting is borrowed
@@ -1266,7 +1266,7 @@ Methods declared on `String` borrow the receiver unless the signature marks othe
 
 The laterita compiler treats `T[]` as a class with the following methods (`.lat`-only; the `.java` mirror on `laterita.lang.Arrays` is ARR-02). Both surfaces compile to the same operations; the `.lat` surface here uses the inline functional-interface spelling of LAT-05, and is sugar over the `.java` mirror per LAT-00.
 
-```laterita
+```java
 @mut class T[] {
     @mutating @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(int mid);
 
@@ -1286,7 +1286,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 **Example — long-lived workers.** Each half is pre-extracted by partial move (OWN-05) before spawning, so each thread captures and consumes its own owning binding.
 
-```laterita
+```java
 var arr   = readInput();
 var split = arr.splitOff(arr.length / 2);
 var left  = split.left();
@@ -1366,7 +1366,7 @@ The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are 
 
 Unsafe operations are permitted only inside methods declared `private @unsafe`. There is no `@unsafe` annotation on classes and no `unsafe { }` block form. Public APIs are always safe; safety contracts are upheld inside private `@unsafe` methods.
 
-```laterita
+```java
 public class Rc<T> {
     Heap<ControlBlock<T>> ctrl;
 
@@ -1537,7 +1537,7 @@ A `Thread`'s lifetime is bound to the owner of its reference: when the owning bi
 
 Threads are created using the standard Java `Thread` constructor and `start()` method, or via the fluent factory methods on `Thread.ofVirtual()` and `Thread.ofPlatform()`. No new keyword is introduced.
 
-```laterita
+```java
 @mut var worker = new Thread(() -> body);
 worker.start();
 
@@ -1746,7 +1746,7 @@ The sugar forms are listed below with their `.java`-surface desugarings.
 
 Desugars to `expr == null ? null : expr.method(args)`, with NULL-06 narrowing applied to the non-null branch.
 
-```laterita
+```java
 String? upper = maybeName?.toUpperCase();
 ```
 
@@ -1756,7 +1756,7 @@ String? upper = maybeName?.toUpperCase();
 
 Desugars to `a != null ? a : b`, with NULL-06 narrowing on `a`.
 
-```laterita
+```java
 String shown = maybeName ?: "anonymous";
 ```
 
@@ -1776,7 +1776,7 @@ In `.lat` sources the diamond `<>` may be omitted from a parameterized construct
 
 The `.java` mirror writes the diamond explicitly: a diamond-less `new Pair("hello", 42)` in `.java` is the raw-type constructor and is not equivalent to the diamond-bearing form. Migration tooling rewriting `.lat` to `.java` inserts `<>` on every parameterized-class constructor call that omits it.
 
-```laterita
+```java
 record Pair<L, R>(L left, R right) {}
 
 Pair<String, Int> p = new Pair("hello".clone(), 42);     // .lat: diamond implicit
@@ -1840,7 +1840,7 @@ A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 g
 
 `@Setter` on a class makes the class `@mut` (MUT-05) and generates a setter for each non-`final` non-`static` field. `@Setter` on a field requires an already-`@mut` class. The setter annotation depends on the field binding:
 
-```laterita
+```java
 @Setter T owned;
 public @mutating void setOwned(@take @mut T value);
 @Setter @borrow S borrowed;
@@ -1851,7 +1851,7 @@ public @mutating void setBorrowed(@mut S value);
 
 `@AllArgsConstructor` generates a constructor containing every field; `@NoArgsConstructor` generates one with no parameters. `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that is `final` or non-`@mut` and carries no initializer. In all three, an owned field's parameter is marked `@take`; a `@borrow` field's parameter is unmarked (bare = borrow per MUT-02). To follow the intent of the Lombok annotations for less boilerplate, `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, working around NULL-01. `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
 
-```laterita
+```java
 @AllArgsConstructor class Shipment {
     String trackingId;        // owned field
     @borrow Carrier carrier;  // borrowed field
