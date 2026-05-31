@@ -73,7 +73,33 @@ At any point during a binding's lifetime, either:
 
 The compiler must reject programs that violate this.
 
-### OWN-04 - `give(x)` consumes at the use site
+### OWN-04 - Disjoint field borrows are permitted
+
+Two simultaneous borrows of statically distinct fields of the same value are non-aliasing.
+They must be permitted, including when both are mutable.
+The compiler performs this disjointness analysis.
+
+```java
+@mut class Pair { @mut int left; @mut int right; }
+@mut Pair p = new Pair();
+@mut int l = p.left;
+@mut int r = p.right;       // OK: disjoint fields
+```
+
+### OWN-05 - Disjoint slice borrows are permitted
+
+Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted.
+The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic.
+For arbitrary computed ranges, ARR-01 supplies the disjointness witness.
+That reduces to ordinary slice expressions this rule covers.
+
+```java
+int[] data = new int[100];
+@mut int[] left  = data.slice(0, 50);
+@mut int[] right = data.slice(50, 100);  // OK: provably disjoint
+```
+
+### OWN-06 - `give(x)` consumes at the use site
 
 `Intrinsics.give(x)` (declared in `laterita.lang.Intrinsics`, normally statically imported as `give`) consumes the binding `x` and yields its owned value at the call site.
 After the call `x` is no longer usable.
@@ -86,14 +112,14 @@ var b = give(a);            // a is consumed
 print(b);                   // OK
 ```
 
-### OWN-05 - Partial moves are tracked per field
+### OWN-07 - Partial moves are tracked per field
 
 Moving out of a field of a value leaves that field in the moved-out state while sibling fields remain valid.
 The compiler tracks per-field move state.
 It uses this state for both use-after-move checking and cleanup emission (DROP-04).
 A field that the enclosing value's `onDrop()` reads cannot be moved out (DROP-08).
 
-### OWN-06 - `give(x);` as a statement drops immediately
+### OWN-08 - `give(x);` as a statement drops immediately
 
 `give(x);` as a statement (its result discarded) consumes `x` and invokes its `onDrop()` immediately.
 After the statement, `x` is no longer usable.
@@ -103,12 +129,12 @@ var worker = Thread.ofVirtual().start(() -> task());
 if (changedMyMind()) { give(worker); }   // run Thread.onDrop() now; worker consumed
 ```
 
-### OWN-07 - Fields are owned by default
+### OWN-09 - Fields are owned by default
 
 A bare field declaration `T x;` declares storage that owns its value.
 The field is dropped with the enclosing instance (DROP-05).
 
-### OWN-08 - `@borrow` field declares a borrow slot, instance must be `@bound`
+### OWN-10 - `@borrow` field declares a borrow slot, instance must be `@bound`
 
 `@borrow` on a field or record component declares that the field holds a borrow rather than an owned value.
 An instance of a class with any `@borrow` field can only be produced as a `@bound` value.
@@ -121,25 +147,25 @@ See OWN-18 and OWN-19 for returns, and LIFE-02 for intersection across multiple 
 record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be @bound
 ```
 
-### OWN-09 - `@take` is rejected on fields and locals
+### OWN-11 - `@take` is rejected on fields and locals
 
 `@take` describes a transfer of ownership into a parameter slot at a call site.
 It has no meaning on a field, a record component, or a local declaration.
-A field always owns or borrows its value (OWN-07, OWN-08).
+A field always owns or borrows its value (OWN-09, OWN-10).
 A local's mode follows its RHS (OWN-02).
 
-### OWN-10 - Constructor initializes every field exactly once
+### OWN-12 - Constructor initializes every field exactly once
 
 Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked.
 Fields without `@mut`, and `@mut final` fields (MUT-03), can be assigned only in constructors.
 `@mut` non-`final` fields can also be reassigned in `@mutating` methods (MUT-08).
 
-### OWN-11 - Record components follow field rules
+### OWN-13 - Record components follow field rules
 
-A record component is a field for the purposes of OWN-07 through OWN-09.
+A record component is a field for the purposes of OWN-09 through OWN-11.
 It is owned by default, optionally `@borrow`, never `@take`.
 
-### OWN-12 - Parameter ownership modes
+### OWN-14 - Parameter ownership modes
 
 A parameter declares whether it receives a borrow or takes ownership.
 Mutability adds further modes in MUT-04.
@@ -154,7 +180,7 @@ void inspect(String s);          // borrows s
 void store(@take String s);      // takes ownership of s
 ```
 
-### OWN-13 - Call-site argument forms
+### OWN-15 - Call-site argument forms
 
 A **bare argument** that is a binding fills a bare parameter with a shared borrow for the duration of the call.
 It fills a `@take` parameter with an implicit ownership transfer.
@@ -179,11 +205,11 @@ Laterita annotations are not part of the Java overload signature.
 Two same-name methods differing only in `@take`, `@mut`, `@bound`, `@borrow`, `@mutating`, or `@consuming` are a duplicate declaration.
 APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` and `splitOff`, ARR-01).
 
-### OWN-14 - `@consuming` consumes the receiver
+### OWN-16 - `@consuming` consumes the receiver
 
 A method annotated `@consuming` consumes its receiver.
 The body owns `this`.
-It may move out of `this`'s fields (OWN-05).
+It may move out of `this`'s fields (OWN-07).
 It may hand `this` to a `@take` parameter or to another `@consuming` method.
 After the call returns, the receiver binding is consumed.
 Subsequent uses are rejected.
@@ -205,32 +231,6 @@ class Connection {
 var c = openConnection();
 c.close();                  // OK: c owned, consumed by close()
 c.use();                    // ERROR: c consumed
-```
-
-### OWN-15 - Disjoint field borrows are permitted
-
-Two simultaneous borrows of statically distinct fields of the same value are non-aliasing.
-They must be permitted, including when both are mutable.
-The compiler performs this disjointness analysis.
-
-```java
-@mut class Pair { @mut int left; @mut int right; }
-@mut Pair p = new Pair();
-@mut int l = p.left;
-@mut int r = p.right;       // OK: disjoint fields
-```
-
-### OWN-16 - Disjoint slice borrows are permitted
-
-Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted.
-The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic.
-For arbitrary computed ranges, ARR-01 supplies the disjointness witness.
-That reduces to ordinary slice expressions this rule covers.
-
-```java
-int[] data = new int[100];
-@mut int[] left  = data.slice(0, 50);
-@mut int[] right = data.slice(50, 100);  // OK: provably disjoint
 ```
 
 ### OWN-17 - A bare return is owned
@@ -365,7 +365,7 @@ config = loadConfig();                   // ERROR: final locks reassignment
 
 ### MUT-04 - Parameter mutability modes
 
-Extending OWN-12:
+Extending OWN-14:
 
 | Form | Meaning |
 |---|---|
@@ -426,7 +426,7 @@ A method annotated `@mutating` may mutate `this`.
 It may reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`.
 A method without it cannot.
 `@mutating` sits in modifier position.
-It is orthogonal to `@consuming` (OWN-14).
+It is orthogonal to `@consuming` (OWN-16).
 A method that both mutates and consumes carries both.
 
 `@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
@@ -703,7 +703,7 @@ Within a scope, bindings are dropped in the reverse of their declaration order.
 
 ### DROP-04 — Drop flags for partial moves
 
-When OWN-05 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. The enclosing value's own `onDrop()` may not observe the moved-out parts (DROP-08).
+When OWN-07 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. The enclosing value's own `onDrop()` may not observe the moved-out parts (DROP-08).
 
 ### DROP-05 — Drop sequence
 
@@ -714,7 +714,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 3. Step 2 repeated for `B`, then for each superclass up to `Object`.
 4. If the instance is heap-allocated, its storage is released.
 
-Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-08) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
+Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-10) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
 
 ```java
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
@@ -746,7 +746,7 @@ If multiple invocations along a drop path throw — sibling bindings (DROP-02), 
 
 ### DROP-08 — `onDrop()` may not observe moved-out fields
 
-A field that may be moved out (OWN-05) on any path to a drop site may not be read by that class's `onDrop()` body, nor by any method it transitively invokes on `this`. The compiler diagnoses the violation at the move: a `give` of a field is rejected when the containing class has an `onDrop()` that reads it. The diagnostic identifies the field, the move, and the read.
+A field that may be moved out (OWN-07) on any path to a drop site may not be read by that class's `onDrop()` body, nor by any method it transitively invokes on `this`. The compiler diagnoses the violation at the move: a `give` of a field is rejected when the containing class has an `onDrop()` that reads it. The diagnostic identifies the field, the move, and the read.
 
 The restriction is per field — an `onDrop()` reading only some fields pins only those, and partial cleanup of the rest follows DROP-04. A class whose `onDrop()` reads no field — every record, every plain data carrier, every class without an `onDrop()` implementation — imposes no restriction at all.
 
@@ -932,7 +932,7 @@ if (maybeName != null) {
 
 ### NULL-08 — Field default is non-nullable
 
-Fields obey NULL-01: a field declared `T` is non-nullable, and OWN-10's "assigned exactly once in every constructor" requirement guarantees no observable `null`. A nullable field is declared `T?`.
+Fields obey NULL-01: a field declared `T` is non-nullable, and OWN-12's "assigned exactly once in every constructor" requirement guarantees no observable `null`. A nullable field is declared `T?`.
 
 ```java
 class User {
@@ -989,7 +989,7 @@ An anonymous functional interface is written
 [ @mutating | @consuming ] (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` follows OWN-12 / MUT-04 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per OWN-18 or OWN-19), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03): bare → shared-call, `@mutating` → mut-call, `@consuming` → once-call. The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface. The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)` — there is no call-on-binding syntax.
+where each `Pi` follows OWN-14 / MUT-04 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per OWN-18 or OWN-19), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03): bare → shared-call, `@mutating` → mut-call, `@consuming` → once-call. The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface. The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)` — there is no call-on-binding syntax.
 
 Examples — each comment describes what a lambda assigned to that parameter type may do:
 
@@ -1088,7 +1088,7 @@ The compiler infers a closure's capture mode from the body. The user does not de
 
 A functional-interface value has two independent properties.
 
-**Call mode** is a property of the *type*. The single abstract method of a functional interface carries a receiver mode, declared exactly as on any method (MUT-08, OWN-14). That receiver mode is the interface's call mode:
+**Call mode** is a property of the *type*. The single abstract method of a functional interface carries a receiver mode, declared exactly as on any method (MUT-08, OWN-16). That receiver mode is the interface's call mode:
 
 | SAM receiver mode | Call mode | Invocation |
 |---|---|---|
@@ -1102,9 +1102,9 @@ interface MissResolver<T> { T resolve(String key); }                // shared-ca
 interface Finalizer         { @consuming void run(); }              // once-call
 ```
 
-**Binding mode** is a property of the *binding* that holds the value. A functional-interface binding follows the ordinary binding rules with no special case: a field owns its value by default (OWN-07); a parameter receives ownership with `@take` or a borrow otherwise (OWN-12); `@mut` grants mutability (MUT-02); `@borrow` marks a borrowed field (OWN-08); `@bound` marks a borrowed return (OWN-18, OWN-19); a local follows its RHS (OWN-02).
+**Binding mode** is a property of the *binding* that holds the value. A functional-interface binding follows the ordinary binding rules with no special case: a field owns its value by default (OWN-09); a parameter receives ownership with `@take` or a borrow otherwise (OWN-14); `@mut` grants mutability (MUT-02); `@borrow` marks a borrowed field (OWN-10); `@bound` marks a borrowed return (OWN-18, OWN-19); a local follows its RHS (OWN-02).
 
-Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-14): invoking a mut-call SAM requires the binding to be `@mut`; invoking a once-call SAM requires the binding to own the value, and the call consumes it (a partial move per OWN-05 when the binding is a field). Storing, moving, or borrowing a functional-interface value is governed by the binding mode alone, independently of the call mode — a value may be held in a binding from which its SAM cannot be invoked.
+Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-16): invoking a mut-call SAM requires the binding to be `@mut`; invoking a once-call SAM requires the binding to own the value, and the call consumes it (a partial move per OWN-07 when the binding is a field). Storing, moving, or borrowing a functional-interface value is governed by the binding mode alone, independently of the call mode — a value may be held in a binding from which its SAM cannot be invoked.
 
 ```java
 class C {
@@ -1117,9 +1117,9 @@ A functional-interface type used as a parameter or return combines modifiers fro
 
 | Layer | Modifiers | Governed by |
 |---|---|---|
-| Inside the type — the SAM's parameters and return | `@take`, `@mut`, `@bound` | OWN-12, OWN-18, OWN-19 |
+| Inside the type — the SAM's parameters and return | `@take`, `@mut`, `@bound` | OWN-14, OWN-18, OWN-19 |
 | The SAM's receiver — the type's call mode | bare / `@mutating` / `@consuming` | this rule |
-| The binding holding the value | `@mut`, `@take`, `@bound`, ownership | MUT-02, MUT-04, MUT-07, OWN-12, OWN-18, OWN-19 |
+| The binding holding the value | `@mut`, `@take`, `@bound`, ownership | MUT-02, MUT-04, MUT-07, OWN-14, OWN-18, OWN-19 |
 
 ```java
 @mut interface F<T, R> { @mutating R apply(@take T); }   // call mode mut-call; SAM parameter @take T
@@ -1248,7 +1248,7 @@ A string literal expression has type `@bound String` with a static lifetime. A b
 String greeting = "hello";              // borrowed, static lifetime
 String owned = "hello".clone();         // owned heap allocation
 var s = give(greeting);                 // ERROR: greeting is borrowed
-var u = give("hello");                  // ERROR: literal is borrowed (give(...) on a borrow per OWN-04)
+var u = give("hello");                  // ERROR: literal is borrowed (give(...) on a borrow per OWN-06)
 var t = "hello".clone();                // OK: owned
 void inspect(String s);                 // accepts a literal directly (borrow)
 void store(@take String s);             // requires `.clone()` on a literal
@@ -1280,11 +1280,11 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 }
 ```
 
-`splitAt` re-borrows the receiver (MUT-10); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-02). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by OWN-16. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
+`splitAt` re-borrows the receiver (MUT-10); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-02). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by OWN-05. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
 
-`splitOff` consumes the receiver (OWN-14) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows OWN-12 (annotation-only differences are duplicate declarations).
+`splitOff` consumes the receiver (OWN-16) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows OWN-14 (annotation-only differences are duplicate declarations).
 
-**Example — long-lived workers.** Each half is pre-extracted by partial move (OWN-05) before spawning, so each thread captures and consumes its own owning binding.
+**Example — long-lived workers.** Each half is pre-extracted by partial move (OWN-07) before spawning, so each thread captures and consumes its own owning binding.
 
 ```java
 var arr   = readInput();
@@ -1353,7 +1353,7 @@ public record Pair<L, R>(L left, R right) {}
 
 Instantiations encountered in this spec:
 
-- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Accessors `left()` and `right()` participate in partial-move tracking (OWN-05), so both fields may be consumed from the same instance.
+- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Accessors `left()` and `right()` participate in partial-move tracking (OWN-07), so both fields may be consumed from the same instance.
 - `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing binding is `@bound` because the instance contains `@bound`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03); its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
@@ -1459,7 +1459,7 @@ A class with any transitively `@local` field must carry an explicit `@local` ann
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a binding whose type is `@local`.
-- A move (OWN-04) of a `@local` value across a thread boundary outside `@unsafe` (UNS-02 already gates this).
+- A move (OWN-06) of a `@local` value across a thread boundary outside `@unsafe` (UNS-02 already gates this).
 
 ### STD-08 — Borrow-checked mutable iteration
 
@@ -1582,7 +1582,7 @@ Resources whose cleanup needs to block (flush-on-close for buffered IO, drain on
 2. Wait for the worker to terminate. Termination is bounded by the worker reaching its next interruption point and unwinding via `InterruptedException`; the worker's own `onDrop` chain runs frame-by-frame during the unwind (DROP-03).
 3. Reclaim the thread's resources.
 
-To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per OWN-06 (`give(worker);`).
+To trigger `Thread.onDrop()` before natural scope exit, give the binding to the void per OWN-08 (`give(worker);`).
 
 `Thread` is `final`: it implements `onDrop()`, so DROP-09 applies. The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable; pass a `Runnable` or lambda to the constructor instead (THR-01, THR-02), and compose rather than extend when a richer thread wrapper is needed.
 
@@ -1673,13 +1673,13 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` binding | MUT-01 |
 | `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | TARG-03 |
 | `@mutating` | `METHOD` | - | Method mutates its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | MUT-08, FN-01 |
-| `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-14, FN-01 |
-| `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-12 |
-| `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-08, LIFE-03 |
+| `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-16, FN-01 |
+| `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-14 |
+| `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-10, LIFE-03 |
 | `@bound` | `PARAMETER` | - | Return is bound to this parameter | OWN-18 |
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-19 |
 | `@bound` | `TYPE_USE` | in type arguments | Instances substituted for this type argument are borrowed; enclosing instance must be `@bound` | TARG-01 |
-| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `FIELD`, `METHOD` (return) | - | Binding holds a borrowed value (instance-level marker on a `@borrow`-field or `@bound`-substituted-generic instance, OWN-08, TARG-01) | OWN-08 |
+| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `FIELD`, `METHOD` (return) | - | Binding holds a borrowed value (instance-level marker on a `@borrow`-field or `@bound`-substituted-generic instance, OWN-10, TARG-01) | OWN-10 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
@@ -1707,7 +1707,7 @@ The annotations are declared in `laterita.lang.annotation`. Stdlib static method
 
 | Intrinsic | Meaning | Spec rule |
 |---|---|---|
-| `Intrinsics.give(x)` | Explicitly removes ownership from `x` | OWN-04, OWN-06 |
+| `Intrinsics.give(x)` | Explicitly removes ownership from `x` | OWN-06, OWN-08 |
 | `Intrinsics.broken(reason?)` | Compilation fails if an execution path would lead to this statement | UNR-01 |
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
@@ -1859,7 +1859,7 @@ public @mutating void setBorrowed(@mut S value);
 // generated: Shipment(@take String trackingId, Carrier carrier)
 ```
 
-`Shipment` drops at end of life the owned `trackingId` (OWN-07), so the constructor marks it `@take`. The `@borrow` field only borrows, so the field is marked `@borrow` and its constructor parameter is unmarked (bare = borrow). The lifetime of a `Shipment` instance is itself bound to the `Carrier` it borrows (LIFE-03).
+`Shipment` drops at end of life the owned `trackingId` (OWN-09), so the constructor marks it `@take`. The `@borrow` field only borrows, so the field is marked `@borrow` and its constructor parameter is unmarked (bare = borrow). The lifetime of a `Shipment` instance is itself bound to the `Carrier` it borrows (LIFE-03).
 
 ### GEN-04 — `@ToString`
 
