@@ -1449,6 +1449,10 @@ Both extensions denote the same language: the type system, annotation/intrinsic 
 
 The reference laterita compiler is named `latc`. It accepts both `.lat` and `.java` sources in a single compilation unit, dispatches by file extension per COMP-06, and emits the artifacts required by COMP-01 through COMP-04.
 
+### COMP-08 — Inlining permission
+
+The compiler is permitted and encouraged to inline any function whose body is small enough that call overhead dominates. No annotation is required. Generated forwarding methods (§21) and accessor methods on records and value classes are primary candidates. The compiler may apply any semantics-preserving combination of inlining, constant folding, and dead-code elimination.
+
 ---
 
 ## 18. Reserved Names
@@ -1481,6 +1485,20 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
 | `@Operator(op)` | `METHOD` | instance method; arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method provides the arithmetic operator `op` (`.lat` sugar) | LAT-07 |
+| `@Delegate` | `FIELD` | non-`@Nullable` field or record component | Forwards the field type's public methods onto the owner | GEN-01 |
+| `@Getter` `@Setter` | `TYPE`, `FIELD` | field-level `@Setter` needs a `@mut` class | Generate bean accessors (class-level `@Setter` makes the class `@mut`) | GEN-02 |
+| `@NoArgsConstructor` `@RequiredArgsConstructor` `@AllArgsConstructor` | `TYPE` | - | Generate constructors | GEN-03 |
+| `@ToString` | `TYPE`, `FIELD` | - | Generate `toString()` | GEN-04 |
+| `@EqualsAndHashCode` | `TYPE`, `FIELD` | - | Generate `equals` and `hashCode` | GEN-05 |
+| `@Data` `@Value` | `TYPE` | - | Bundle accessors, constructor, `toString`, `equals`/`hashCode` (`@Data` is `@mut`, `@Value` a value class) | GEN-06 |
+| `@Builder` | `TYPE`, `METHOD`, `CONSTRUCTOR` | - | Generate a fluent `Builder` | GEN-07 |
+| `@With` | `TYPE`, `FIELD` | - | Generate copy-with methods | GEN-08 |
+| `@NonNull` | `PARAMETER`, `FIELD` | redundant with the non-null default | Assert non-null | GEN-09 |
+| `@SneakyThrows` | `METHOD`, `CONSTRUCTOR` | - | Body may throw undeclared (no-op under EXC-05) | GEN-10 |
+| `@Synchronized` | `METHOD` | - | Wrap the body in a generated `ReentrantLock` | GEN-11 |
+| `@Cleanup` | `LOCAL_VARIABLE` | - | Deterministic scope-exit cleanup | GEN-12 |
+| `@Log` (and `@Slf4j`, `@Log4j2`, …) | `TYPE` | - | Generate a static logger field | GEN-13 |
+| `@StandardException` | `TYPE` | `Throwable` subclass | Generate the four standard exception constructors | GEN-15 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots. These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05). It needs no separate `TYPE_USE` registration.
 
@@ -1514,8 +1532,6 @@ Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surfa
 - A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §18.
 
 Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
-
-A `.lat` source may additionally use the structural extensions listed at the end of this section (STR-01 and the general newtype rule EXT-01) — rules whose meaning the core spec already defines but whose surface `javac` cannot parse or compile and which therefore cannot appear in `.java`. Such extensions are explicitly enumerated; the default assumption for new `.lat` forms remains "pure sugar".
 
 The sugar forms are listed below with their `.java`-surface desugarings.
 
@@ -1583,22 +1599,117 @@ Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§18). 
 
 The method name is unconstrained. `@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method or where arity does not match. An operator parameter should be a plain borrow (`@take` / `@mut` discouraged). Comparison needs no annotation because implementing `Comparable` is the opt-in.
 
-`a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including EXT-01 newtypes widened to their base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
+`a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including GEN-01 `@Delegate` records whose generated forwarder widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
 Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–18 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
 
-### Structural extensions
+---
 
-Rules below appear in `.lat` because `javac` cannot parse or compile their source form. They have no desugaring to the `.java` surface; the `.java` analog is "this declaration is not expressible". The laterita compiler accepts them only in `.lat` units.
+## 20. Native ABI Guarantees
 
-### STR-01 — `String` is a normal class
+### NABI-01 — Single-field aggregate layout and calling convention
 
-In `.lat`, `String` is not `final` and classes may extend it: `class Email extends String`. The platform's `java.lang.String` is declared `final`, so `javac` rejects this construct and it cannot appear in `.java`. Subclasses participate in the per-binding owned-vs-borrowed tracking (STR-02), inherit the value-class restrictions of STR-07 (no `@mutating` methods can be introduced), and are constrained by all other rules in §12. STR-01 is the `String` instance of the general newtype rule EXT-01.
+A value class (MUT-03) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register(s) as a bare value of the field's type.
 
-### EXT-01 — Newtype extension of value classes
+---
 
-A `.lat` class may extend any value class (MUT-03). This includes the `final` platform types `javac` forbids extending: `String` (STR-01) and the boxed numerics `Integer`, `Long`, `Short`, `Byte`, `Float`, `Double`, `Character`, `Boolean`. Like STR-01, it has no `.java` form. The subclass inherits the parent's method surface by subtyping. It also inherits value-class restrictions (MUT-05): no new `@mutating` methods and the parent's ownership behaviour.
+## 21. Code Generation Annotations
 
-A subclass that **declares no instance field** is a *newtype*. It has the parent's representation (COMP-01 erases the wrapper). It is a distinct nominal type that converts to its parent only by ordinary widening upcast. A subclass that declares a field is an ordinary value subclass with its own layout. The distinction is structural (based on declared fields). No annotation marks a newtype.
+Laterita supports the stable [Project Lombok](https://projectlombok.org/) annotations natively. A `.java` or `.lat` source using them compiles unchanged and produces the same observable result a Lombok build produces on the JVM. The compiler generates the members at compile time, and generated members are visible to the type checker and overload resolution.
 
-Arithmetic and comparison on a numeric newtype follow LAT-07. Without an `@Operator` method it widens to its primitive base. With `@Operator` methods it stays closed over the newtype (`Meters + Meters → Meters`).
+A generator supplies the laterita annotation a generated member implies (e.g. `setX(@take X x)` when x is owned). It also deduces the laterita class-level annotations: a class annotated with `@Setter` or `@Data` is automatically also `@mut` (MUT-03).
+
+An explicitly declared member with the same name and erased parameter types shadows the generated one, so a generator never conflicts with hand-written code. Annotations and attributes not listed in this section pass through to downstream annotation processors unchanged. Several generators duplicate what a `record` or value class already provides. They stay supported for source compatibility even where the idiomatic laterita form is a `record`.
+
+### GEN-01 — `@Delegate`
+
+`@Delegate` on a field or record component generates, for each `public` instance method of the field's declared type, a forwarding method on the owner that calls the same method on the field. `Object` methods (`equals`, `hashCode`, `toString`) and `static` methods are not forwarded. Forwarder return types are the source method's own (they *decay*), and ownership annotations are propagated: a `@consuming` source yields a `@consuming` forwarder, a `@mutating` source yields a `@mutating` forwarder.
+
+Per the shadowing rule, declaring the methods you want to change and letting `@Delegate` fill in the rest is the supported way to adapt a forwarded surface.
+
+`@Delegate` on a `@Nullable` field is a compile error. When two `@Delegate` fields would generate the same signature, that signature is a compile error until an explicit declaration resolves it. Cyclic delegation, where the delegated type transitively forwards back to the owner, is a compile error.
+
+Two optional attributes mirror Lombok: `types` restricts forwarding to the methods of the listed types instead of the field's whole declared surface, and `excludes` removes the methods of the listed types. Because laterita monomorphizes generics (COMP-02), both attributes accept generic types directly and a generic method forwards with its concrete instantiated signature. The generics limitations Lombok documents for `@Delegate` do not apply.
+
+A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 gives it the component's layout and COMP-08 inlines the forwarders, so it is a distinct nominal type that exposes the wrapped interface at zero runtime overhead. The component accessor is the only path back to the wrapped value, and no implicit widening exists.
+
+### GEN-02 — `@Getter` and `@Setter`
+
+`@Getter` on a field, or on the class for all fields, generates a `public` bean accessor: `getFieldName()` (`isFieldName()` for a `boolean`) returning `@bound T` (LIFE-02), a borrow of the field. `@Getter(lazy = true)` on a final field generates a memoized accessor that computes the value once on first call.
+
+`@Setter` on a class makes the class `@mut` (MUT-03) and generates a setter for each non-`final` non-`static` field. `@Setter` on a field requires an already-`@mut` class. The setter annotation depends on the field binding:
+
+```laterita
+@Setter T owned;
+public @mutating void setOwned(@take @mut T value);
+@Setter @bound S borrowed;
+public @mutating void setBorrowed(@mut S value);
+```
+
+### GEN-03 — Constructor generators
+
+`@AllArgsConstructor` generates a constructor containing every field; `@NoArgsConstructor` generates one with no parameters. `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that is `final` or non-`@mut` and carries no initializer. In all three, an owned field's parameter is marked `@take`; a `@bound` field's parameter is unmarked (bare = borrow per BIND-01). To follow the intent of the Lombok annotations for less boilerplate, `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, working around NULL-01. `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
+
+```laterita
+@AllArgsConstructor class Shipment {
+    String trackingId;        // owned field
+    @bound Carrier carrier;   // borrowed field
+}
+// generated: Shipment(@take String trackingId, Carrier carrier)
+```
+
+`Shipment` drops at end of life the owned `trackingId` (BIND-03), so the constructor marks it `@take`. The `@bound` field only borrows, so the field is marked `@bound` and its constructor parameter is unmarked (bare = borrow). The lifetime of a `Shipment` instance is itself bound to the `Carrier` it borrows (LIFE-03).
+
+### GEN-04 — `@ToString`
+
+`@ToString` generates a `public String toString()` returning the class name followed by the field values in declaration order, comma-separated in parentheses. `@ToString.Exclude` omits a field, `@ToString.Include` adds a method result.
+
+### GEN-05 — `@EqualsAndHashCode`
+
+`@EqualsAndHashCode` generates `public boolean equals(Object)` and `public int hashCode()` over all instance fields in declaration order. `@EqualsAndHashCode.Exclude` omits a field.
+
+### GEN-06 — `@Data` and `@Value`
+
+`@Data` bundles `@Getter`, `@Setter`, `@ToString`, `@EqualsAndHashCode`, and `@RequiredArgsConstructor`. Because it includes `@Setter`, a `@Data` class is `@mut`. `@Value` is the immutable bundle: `@Getter`, `@ToString`, `@EqualsAndHashCode`, `@AllArgsConstructor`, with all fields final and the class final. A `@Value` class is a value class (MUT-03), for which a `record` is the idiomatic equivalent.
+
+### GEN-07 — `@Builder`
+
+`@Builder` on a class, constructor, or static method generates a nested `@mut class Builder`, a static `builder()` returning a fresh `Builder`, a fluent method per field named after the field that sets it and returns the builder, and a `build()` that invokes the target. Owned fields are taken `@take` through the builder.
+
+### GEN-08 — `@With`
+
+`@With` generates, for each field, a `public [@bound] X withFieldName([@take|@bound] [@mut] T value)` returning a new instance with that field set to `value`. The `@bound` return annotation is generated when any other field of `X` is `@bound` — the result's lifetime is bound to `this`. The parameter annotations are generated conditionally:
+
+- `@take` when the field is owned;
+- bare (no annotation) when the field is `@bound` — the result's lifetime is also bound to `value`;
+- `@mut` when the field is `@mut`.
+
+Internally, other owned fields are `clone()`d from `this` (OBJ-02), because the receiver is borrowed not consumed. `@With` needs a constructor covering all fields, as in Lombok.
+
+### GEN-09 — `@NonNull`
+
+`@NonNull` on a parameter or field asserts non-null. Non-nullability is already the default (NULL-01), so the annotation is accepted but adds nothing. `@NonNull` combined with `@Nullable` is a compile error (a contradiction).
+
+### GEN-10 — `@SneakyThrows`
+
+Under EXC-05 a body may already throw any exception without a `throws` clause, so `@SneakyThrows` is accepted and has no effect. If OQ-22 restores checked exceptions, it regains its Lombok role of throwing a checked exception across a boundary that does not declare it.
+
+### GEN-11 — `@Synchronized`
+
+`@Synchronized` wraps the method body in a generated `private final ReentrantLock $lock` (or `private static final ReentrantLock $LOCK` for a static method), acquired through a `LockGuard` (STD-11) so the lock releases on scope exit. `@Synchronized("name")` uses the named lock field instead. This reproduces Lombok's per-instance private-lock semantics through the existing concurrency primitives (STD-10) without the `synchronized` keyword, which laterita does not provide.
+
+### GEN-12 — `@Cleanup`
+
+`@Cleanup` runs a cleanup method (default `close()`) at the end of the local's block. `@Cleanup("method")` selects a different method, which the compiler calls at scope exit.
+
+### GEN-13 — `@Log` family
+
+`@Log` and its framework variants (`@Slf4j`, `@Log4j`, `@Log4j2`, `@CommonsLog`, `@JBossLog`, `@Flogger`, `@CustomLog`, `@XSlf4j`) generate the framework's logger as a `private static final` field named `log`, initialized for the annotated type.
+
+### GEN-14 — `val` and `var`
+
+`val` is unsupported in laterita, while `var` has a slightly different meaning. Lombok's `val` is an immutable inferred local, identical to laterita `var` (immutable by default, §18). Lombok's `var` is a mutable inferred local, identical to laterita `@mut var`. See OQ-31.
+
+### GEN-15 — `@StandardException`
+
+`@StandardException` on a `Throwable` subclass generates the four standard exception constructors (no-arg, `(String message)`, `(Throwable cause)`, and `(String message, Throwable cause)`), each chaining to `super`.

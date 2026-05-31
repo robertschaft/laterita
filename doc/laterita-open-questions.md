@@ -97,3 +97,18 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 **Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site. The pattern is universal; the shape of the stdlib carrier is what's open.
 
 **Related codes:** BIND-11, BIND-12, STD-09, THR-10, COMP-01.
+
+---
+
+## OQ-31 — `val` and `var` as first-class aliases
+
+**Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) maps exactly to laterita `var`, and Lombok's `var` (mutable inferred local) maps to laterita `@mut var`. The current spec leaves `val` unsupported.
+
+**The issue.** Laterita could accept `val` and `var` exactly as Lombok defines them — `val` as an alias for `var` (immutable inferred local) and `var` as an alias for `@mut var` (mutable inferred local). This would let Lombok-using sources migrate without even touching the local-variable declarations. The tension is that `var` already exists in Java 10+ with the immutable meaning, and reassigning its meaning to `@mut var` makes laterita's `var` diverge from standard Java `var`. A source that uses Java's `var` immutably and Lombok's `var` mutably in the same file would be ambiguous about intent.
+
+**The question.**
+- Should `val` be accepted as a synonym for `var` (immutable inferred local)?
+- Should `var` be accepted as a synonym for `@mut var` (mutable inferred local), shadowing Java's `var`?
+- Or should `val`/`var` remain unsupported in `.java` files and only permitted in `.lat` files, to avoid the Java-compatibility ambiguity?
+
+**Related codes:** BIND-01, GEN-14, LAT-00.
