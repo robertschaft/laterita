@@ -46,9 +46,14 @@ Deferred — not rejected, not specified:
 
 ## Code group renaming
 
-The `BIND`, `MOVE`, and the four-section §1–§4 structure (Bindings / Mutability / Move and Borrow / Lifetimes) were reorganized into six topics: `OWN` (ownership), `LIFE` (lifetime intersection), `MUT` (mutability), `HIER` (class hierarchy and override), `TARG` (annotations in generic type arguments), and `STAT` (static storage). The reorganization preserves every semantic rule. Old codes are obsolete; cross-references throughout the spec use the new codes.
+The `BIND` and `MOVE` code groups, and the four-section §1–§4 structure (Bindings / Mutability / Move and Borrow / Lifetimes), were reorganized into six topics: `OWN` (ownership), `LIFE` (lifetime intersection), `MUT` (mutability), `HIER` (class hierarchy and override), `TARG` (annotations in generic type arguments), and `STAT` (static storage).
+The reorganization preserves every semantic rule.
+Old codes are obsolete.
+Cross-references throughout the spec use the new codes.
 
-Field and record-component borrow slots are spelled `@borrow` (formerly `@bound` in those positions). `@bound` continues to mark a borrowed value at parameters, returns, and generic type arguments — wherever a source relationship is being declared. Splitting the two tokens makes the structural ("slot is a borrow") and relational ("value is bound to a source") roles legible at their declaration site.
+Field and record-component borrow slots are spelled `@borrow` (formerly `@bound` in those positions).
+`@bound` continues to mark a borrowed value at parameters, returns, and generic type arguments, wherever a source relationship is being declared.
+Splitting the two tokens makes the structural ("slot is a borrow") and relational ("value is bound to a source") roles legible at their declaration site.
 
 ## Resolved open questions
 

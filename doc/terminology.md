@@ -18,17 +18,25 @@ A local variable, field, or parameter that holds a value. In Laterita, every bin
 A binding that holds a reference to a value owned elsewhere, rather than owning it itself. A borrowed binding cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`. There are two kinds: shared (immutable) and mutable. See `OWN-03` for the rules.
 
 ### @borrow (annotation on fields and record components)
-Declares that a field (or record component) is a borrow slot rather than an owned slot. An instance of a class containing any `@borrow` field can only be produced as a `@bound` value, with lifetime intersecting each field's source (LIFE-03). Distinct from `@bound`, which marks a borrowed *value* at parameters, returns, and generic type arguments. See `OWN-08`, `LIFE-03`.
+Declares that a field (or record component) is a borrow slot rather than an owned slot.
+An instance of a class containing any `@borrow` field can only be produced as a `@bound` value, with lifetime intersecting each field's source (LIFE-03).
+Distinct from `@bound`, which marks a borrowed *value* at parameters, returns, and generic type arguments.
+See `OWN-08`, `LIFE-03`.
 
 ### @bound (annotation on returns, parameters, and type arguments)
-Marks that a binding holds a borrowed value, and at parameters/returns expresses the source relationship. On a parameter, declares that the function's return is bound to that parameter (`OWN-18`). On a return type, declares that the return is bound to `this` (`OWN-19`). In a generic type argument, declares that the substituted type is borrowed and forces the enclosing instance to be `@bound` (`TARG-01`). On a local or field binding it appears as the produced state of a value flowing out of a `@borrow`-containing instance or a `@bound`-substituted generic. Distinct from `@borrow`, which declares a field as a borrow slot.
+Marks that a binding holds a borrowed value, and at parameters/returns expresses the source relationship.
+On a parameter, declares that the function's return is bound to that parameter (`OWN-18`).
+On a return type, declares that the return is bound to `this` (`OWN-19`).
+In a generic type argument, declares that the substituted type is borrowed and forces the enclosing instance to be `@bound` (`TARG-01`).
+On a local or field binding it appears as the produced state of a value flowing out of a `@borrow`-containing instance or a `@bound`-substituted generic.
+Distinct from `@borrow`, which declares a field as a borrow slot.
 
 ### binding modifiers
 `@bound`, `@mut`, `@take`, and `@borrow`. Legal positions:
-- `@bound` — parameter, return, generic type argument (always allowed in type arguments, `TARG-01`)
-- `@borrow` — field, record component (`OWN-08`)
-- `@mut` — local, field, parameter, return; in a type argument only when the enclosing generic is `@mut` (`TARG-03`)
-- `@take` — parameter only; rejected on fields, locals, and generic type arguments (`OWN-09`, `TARG-02`).
+- `@bound`. Parameter, return, generic type argument. Always allowed in type arguments (`TARG-01`).
+- `@borrow`. Field, record component (`OWN-08`).
+- `@mut`. Local, field, parameter, return. In a type argument only when the enclosing generic is `@mut` (`TARG-03`).
+- `@take`. Parameter only. Rejected on fields, locals, and generic type arguments (`OWN-09`, `TARG-02`).
 
 
 ### buffer splitting

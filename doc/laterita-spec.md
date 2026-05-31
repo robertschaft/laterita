@@ -1,27 +1,61 @@
-# Laterita — Language Specification
+# Laterita - Language Specification
 
-This document specifies the normative requirements that a Laterita compiler and standard library must satisfy. Each requirement carries a mnemonic code for cross-reference.
+This document specifies the normative requirements that a Laterita compiler and standard library must satisfy.
+Each requirement carries a mnemonic code for cross-reference.
 
-Sections 1 through 20 specify the Java-compatible surface: every rule there is expressible as annotated `.java` source that `javac` parses (COMP-06). Section 21 specifies the `.lat` surface forms — syntactic sugar that desugars to the Java-compatible surface and adds no semantics of its own (LAT-00).
+Sections 1 through 20 specify the Java-compatible surface.
+Every rule there is expressible as annotated `.java` source that `javac` parses (COMP-06).
+Section 21 specifies the `.lat` surface forms.
+Those are syntactic sugar that desugars to the Java-compatible surface and adds no semantics of its own (LAT-00).
 
-Codes are grouped by area: `OWN` (ownership), `LIFE` (lifetimes), `MUT` (mutability), `HIER` (class hierarchy and override), `TARG` (annotations in generic type arguments), `STAT` (static storage), `NULL` (optionality), `DROP` (cleanup), `OBJ` (object copying), `UNR` (unreachability), `STR` (strings), `ARR` (arrays), `FN` (functional interfaces), `CLO` (closures), `EXC` (exceptions), `UNS` (unsafe), `STD` (standard library types), `THR` (threads), `COMP` (compilation model), `LAT` (`.lat` surface forms), `NABI` (native ABI), `GEN` (code generation annotations).
+Codes are grouped by area:
+`OWN` (ownership),
+`LIFE` (lifetimes),
+`MUT` (mutability),
+`HIER` (class hierarchy and override),
+`TARG` (annotations in generic type arguments),
+`STAT` (static storage),
+`NULL` (optionality),
+`DROP` (cleanup),
+`OBJ` (object copying),
+`UNR` (unreachability),
+`STR` (strings),
+`ARR` (arrays),
+`FN` (functional interfaces),
+`CLO` (closures),
+`EXC` (exceptions),
+`UNS` (unsafe),
+`STD` (standard library types),
+`THR` (threads),
+`COMP` (compilation model),
+`LAT` (`.lat` surface forms),
+`NABI` (native ABI),
+`GEN` (code generation annotations).
 
 ---
 
 ## 1. Ownership
 
-This section specifies what a binding holds — owned storage or a borrow — and how ownership transfers across bindings, parameters, returns, and fields. Mutability is orthogonal and specified in §3; lifetime intersection across multiple sources is in §2.
+This section specifies what a binding holds.
+A binding holds owned storage or a borrow.
+It also specifies how ownership transfers across bindings, parameters, returns, and fields.
+Mutability is orthogonal and specified in §3.
+Lifetime intersection across multiple sources is in §2.
 
-### OWN-01 — Owned and borrowed values
+### OWN-01 - Owned and borrowed values
 
-A binding holds a value whose storage is either *owned* or *borrowed*. An owned binding is the sole responsibility holder for its value; when the binding leaves scope, the value's `onDrop()` runs (DROP-01). A borrowed binding references storage owned elsewhere; its lifetime is bounded by the source (LIFE-01).
+A binding holds a value whose storage is either *owned* or *borrowed*.
+An owned binding is the sole responsibility holder for its value.
+When the binding leaves scope, the value's `onDrop()` runs (DROP-01).
+A borrowed binding references storage owned elsewhere.
+Its lifetime is bounded by the source (LIFE-01).
 
-### OWN-02 — A local follows its RHS
+### OWN-02 - A local follows its RHS
 
-A local binding's owned/borrowed state is determined by the right-hand side of its initializer:
+A local binding's owned/borrowed state is determined by the right-hand side of its initializer.
 
-- A **producer expression** — call, constructor, literal, `give(x)` — yields an owned binding.
-- A **bare binding RHS** — naming another binding — yields a shared borrow of that source.
+- A **producer expression** (call, constructor, literal, `give(x)`) yields an owned binding.
+- A **bare binding RHS** (naming another binding) yields a shared borrow of that source.
 
 ```laterita
 String a = makeString();    // owned: RHS is a producer
@@ -30,7 +64,7 @@ print(a);                   // OK
 print(b);                   // OK
 ```
 
-### OWN-03 — Borrow exclusivity
+### OWN-03 - Borrow exclusivity
 
 At any point during a binding's lifetime, either:
 
@@ -39,9 +73,11 @@ At any point during a binding's lifetime, either:
 
 The compiler must reject programs that violate this.
 
-### OWN-04 — `give(x)` consumes at the use site
+### OWN-04 - `give(x)` consumes at the use site
 
-`Intrinsics.give(x)` (declared in `laterita.lang.Intrinsics`, normally statically imported as `give`) consumes the binding `x` and yields its owned value at the call site. After the call `x` is no longer usable. Unqualified calls to this static method are recognized specially by the compiler as the move expression.
+`Intrinsics.give(x)` (declared in `laterita.lang.Intrinsics`, normally statically imported as `give`) consumes the binding `x` and yields its owned value at the call site.
+After the call `x` is no longer usable.
+Unqualified calls to this static method are recognized specially by the compiler as the move expression.
 
 ```laterita
 var a = makeString();
@@ -50,46 +86,63 @@ var b = give(a);            // a is consumed
 print(b);                   // OK
 ```
 
-### OWN-05 — Partial moves are tracked per field
+### OWN-05 - Partial moves are tracked per field
 
-Moving out of a field of a value leaves that field in the moved-out state while sibling fields remain valid. The compiler tracks per-field move state and uses it for both use-after-move checking and cleanup emission (DROP-04). A field that the enclosing value's `onDrop()` reads cannot be moved out (DROP-08).
+Moving out of a field of a value leaves that field in the moved-out state while sibling fields remain valid.
+The compiler tracks per-field move state.
+It uses this state for both use-after-move checking and cleanup emission (DROP-04).
+A field that the enclosing value's `onDrop()` reads cannot be moved out (DROP-08).
 
-### OWN-06 — `give(x);` as a statement drops immediately
+### OWN-06 - `give(x);` as a statement drops immediately
 
-`give(x);` (its result discarded) consumes `x` and invokes its `onDrop()` immediately. After the statement, `x` is no longer usable.
+`give(x);` as a statement (its result discarded) consumes `x` and invokes its `onDrop()` immediately.
+After the statement, `x` is no longer usable.
 
 ```laterita
 var worker = Thread.ofVirtual().start(() -> task());
 if (changedMyMind()) { give(worker); }   // run Thread.onDrop() now; worker consumed
 ```
 
-### OWN-07 — Fields are owned by default
+### OWN-07 - Fields are owned by default
 
-A bare field declaration `T x;` declares storage that owns its value. The field is dropped with the enclosing instance (DROP-05).
+A bare field declaration `T x;` declares storage that owns its value.
+The field is dropped with the enclosing instance (DROP-05).
 
-### OWN-08 — `@borrow` field declares a borrow slot; instance must be `@bound`
+### OWN-08 - `@borrow` field declares a borrow slot, instance must be `@bound`
 
-`@borrow` on a field (or record component) declares that the field holds a borrow rather than an owned value. An instance of a class with any `@borrow` field — including via `@bound`-substituted generic arguments (TARG-01) — can only be produced as a `@bound` value. `@bound` on a binding marks that the binding holds a borrowed value; the borrow's source is fixed by the producer (see OWN-18, OWN-19 for returns; LIFE-02 for intersection across multiple sources).
+`@borrow` on a field or record component declares that the field holds a borrow rather than an owned value.
+An instance of a class with any `@borrow` field can only be produced as a `@bound` value.
+This includes the case where the `@borrow` arises via a `@bound`-substituted generic argument (TARG-01).
+`@bound` on a binding marks that the binding holds a borrowed value.
+The borrow's source is fixed by the producer.
+See OWN-18 and OWN-19 for returns, and LIFE-02 for intersection across multiple sources.
 
 ```laterita
 record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be @bound
 ```
 
-### OWN-09 — `@take` is rejected on fields and locals
+### OWN-09 - `@take` is rejected on fields and locals
 
-`@take` describes a transfer of ownership into a parameter slot at a call site; it has no meaning on a field, a record component, or a local declaration. A field always owns or borrows its value (OWN-07, OWN-08); a local's mode follows its RHS (OWN-02).
+`@take` describes a transfer of ownership into a parameter slot at a call site.
+It has no meaning on a field, a record component, or a local declaration.
+A field always owns or borrows its value (OWN-07, OWN-08).
+A local's mode follows its RHS (OWN-02).
 
-### OWN-10 — Constructor initializes every field exactly once
+### OWN-10 - Constructor initializes every field exactly once
 
-Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked. Fields without `@mut` (and `@mut final` fields, MUT-03) can be assigned only in constructors; `@mut` non-`final` fields can also be reassigned in `@mutating` methods (MUT-08).
+Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked.
+Fields without `@mut`, and `@mut final` fields (MUT-03), can be assigned only in constructors.
+`@mut` non-`final` fields can also be reassigned in `@mutating` methods (MUT-08).
 
-### OWN-11 — Record components follow field rules
+### OWN-11 - Record components follow field rules
 
-A record component is a field for the purposes of OWN-07..-09: owned by default, optionally `@borrow`, never `@take`.
+A record component is a field for the purposes of OWN-07 through OWN-09.
+It is owned by default, optionally `@borrow`, never `@take`.
 
-### OWN-12 — Parameter ownership modes
+### OWN-12 - Parameter ownership modes
 
-A parameter declares whether it receives a borrow or takes ownership. Mutability adds further modes in MUT-04.
+A parameter declares whether it receives a borrow or takes ownership.
+Mutability adds further modes in MUT-04.
 
 | Form | Meaning |
 |---|---|
@@ -101,31 +154,45 @@ void inspect(String s);          // borrows s
 void store(@take String s);      // takes ownership of s
 ```
 
-### OWN-13 — Call-site argument forms
+### OWN-13 - Call-site argument forms
 
-A **bare argument** that is a binding fills a bare parameter with a shared borrow for the duration of the call; it fills a `@take` parameter with an implicit ownership transfer (explicit `give(arg)` is the same operation written for clarity). A **temporary expression** (call result, constructor, literal) is owned at the call site and fills either parameter form.
+A **bare argument** that is a binding fills a bare parameter with a shared borrow for the duration of the call.
+It fills a `@take` parameter with an implicit ownership transfer.
+Explicit `give(arg)` is the same operation written for clarity.
+A **temporary expression** (call result, constructor, literal) is owned at the call site and fills either parameter form.
 
-Illegal:
+Illegal cases:
 
-- `give(arg)` to a bare parameter — caller asks to transfer; function will not accept ownership.
-- A bare argument holding only a borrow to a `@take` parameter — there is no ownership to give.
+- `give(arg)` to a bare parameter. The caller asks to transfer, but the function will not accept ownership.
+- A bare argument holding only a borrow to a `@take` parameter. There is no ownership to give.
 
 ```laterita
 var name = makeName();
 inspect(name);              // OK: borrow
 inspect(makeName());        // OK: borrow of a temporary
-store(name);                // OK: implicit transfer; name no longer usable
+store(name);                // OK: implicit transfer, name no longer usable
 store(makeName());          // OK: temporary moved in
-inspect(give(name));        // ERROR: inspect borrows; do not transfer
+inspect(give(name));        // ERROR: inspect borrows, do not transfer
 ```
 
-Laterita annotations are not part of the Java overload signature: two same-name methods differing only in `@take` / `@mut` / `@bound` / `@borrow` / `@mutating` / `@consuming` are a duplicate declaration. APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` / `splitOff`, ARR-01).
+Laterita annotations are not part of the Java overload signature.
+Two same-name methods differing only in `@take`, `@mut`, `@bound`, `@borrow`, `@mutating`, or `@consuming` are a duplicate declaration.
+APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` and `splitOff`, ARR-01).
 
-### OWN-14 — `@consuming` consumes the receiver
+### OWN-14 - `@consuming` consumes the receiver
 
-A method annotated `@consuming` consumes its receiver. The body owns `this`, may move out of `this`'s fields (OWN-05), and may hand `this` to a `@take` parameter or another `@consuming` method. After the call returns, the receiver binding is consumed; subsequent uses are rejected.
+A method annotated `@consuming` consumes its receiver.
+The body owns `this`.
+It may move out of `this`'s fields (OWN-05).
+It may hand `this` to a `@take` parameter or to another `@consuming` method.
+After the call returns, the receiver binding is consumed.
+Subsequent uses are rejected.
 
-`@consuming` sits in modifier position alongside `public` / `final` / `@mutating`. It composes with `@mutating` (MUT-08): a method that both mutates and consumes carries both. Calling `@consuming` requires the receiver binding to own its value; the call site needs no `give(...)` wrapper.
+`@consuming` sits in modifier position alongside `public`, `final`, `@mutating`.
+It composes with `@mutating` (MUT-08).
+A method that both mutates and consumes carries both.
+Calling `@consuming` requires the receiver binding to own its value.
+The call site needs no `give(...)` wrapper.
 
 ```laterita
 class Connection {
@@ -136,13 +203,15 @@ class Connection {
 }
 
 var c = openConnection();
-c.close();                  // OK: c owned; consumed by close()
+c.close();                  // OK: c owned, consumed by close()
 c.use();                    // ERROR: c consumed
 ```
 
-### OWN-15 — Disjoint field borrows are permitted
+### OWN-15 - Disjoint field borrows are permitted
 
-Two simultaneous borrows of statically distinct fields of the same value are non-aliasing and must be permitted, including when both are mutable. The compiler performs this disjointness analysis.
+Two simultaneous borrows of statically distinct fields of the same value are non-aliasing.
+They must be permitted, including when both are mutable.
+The compiler performs this disjointness analysis.
 
 ```laterita
 @mut class Pair { @mut int left; @mut int right; }
@@ -151,9 +220,12 @@ Two simultaneous borrows of statically distinct fields of the same value are non
 @mut int r = p.right;       // OK: disjoint fields
 ```
 
-### OWN-16 — Disjoint slice borrows are permitted
+### OWN-16 - Disjoint slice borrows are permitted
 
-Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted. The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic. For arbitrary computed ranges, ARR-01 supplies the disjointness witness, which reduces to ordinary slice expressions this rule covers.
+Two simultaneous borrows of array slices with provably disjoint index ranges must be permitted.
+The compiler proves disjointness for constant ranges and for ranges related by simple arithmetic.
+For arbitrary computed ranges, ARR-01 supplies the disjointness witness.
+That reduces to ordinary slice expressions this rule covers.
 
 ```laterita
 int[] data = new int[100];
@@ -161,17 +233,20 @@ int[] data = new int[100];
 @mut int[] right = data.slice(50, 100);  // OK: provably disjoint
 ```
 
-### OWN-17 — A bare return is owned
+### OWN-17 - A bare return is owned
 
-A bare return type means the function returns an owned value. `return x;` of an owned binding moves it; `return give(x);` is accepted as the explicit form.
+A bare return type means the function returns an owned value.
+`return x;` of an owned binding moves it.
+`return give(x);` is accepted as the explicit form.
 
 ```laterita
 String upperCase(String s);     // owned return
 ```
 
-### OWN-18 — `@bound` on a parameter — return bound to that parameter
+### OWN-18 - `@bound` on a parameter binds the return to that parameter
 
-`@bound` on a parameter declares that the function returns a borrow whose source is that parameter. Valid only on a non-`void` return.
+`@bound` on a parameter declares that the function returns a borrow whose source is that parameter.
+Valid only on a non-`void` return.
 
 ```laterita
 String firstWord(@bound String s) {              // returned borrow bound to s
@@ -179,9 +254,10 @@ String firstWord(@bound String s) {              // returned borrow bound to s
 }
 ```
 
-### OWN-19 — `@bound` on a return — return bound to `this`
+### OWN-19 - `@bound` on a return binds the return to `this`
 
-`@bound` on a return declares that the function returns a borrow whose source is `this`. Valid only on instance methods (not `static`).
+`@bound` on a return declares that the function returns a borrow whose source is `this`.
+Valid only on instance methods (not `static`).
 
 ```laterita
 class Cache {
@@ -192,17 +268,18 @@ class Cache {
 }
 ```
 
-### OWN-20 — Unmarked sources cannot contribute to a returned borrow
+### OWN-20 - Unmarked sources cannot contribute to a returned borrow
 
-A body that returns a borrow tied to a source not marked `@bound` is a compile error. The diagnostic identifies the source and suggests adding `@bound`.
+A body that returns a borrow tied to a source not marked `@bound` is a compile error.
+The diagnostic identifies the source and suggests adding `@bound`.
 
 ```laterita
 String prefixOf(@bound String text, String pattern) {
-    return text.substring(0, pattern.length());  // bound to text only; pattern unmarked
+    return text.substring(0, pattern.length());  // bound to text only, pattern unmarked
 }
 ```
 
-### OWN-21 — Owned/borrowed mismatch is an error
+### OWN-21 - Owned/borrowed mismatch is an error
 
 The compiler reports an error when:
 
@@ -215,13 +292,14 @@ The diagnostic identifies the contributing source the body actually uses.
 
 ## 2. Lifetimes
 
-### LIFE-01 — A borrow may not outlive its source
+### LIFE-01 - A borrow may not outlive its source
 
 The compiler must reject any program in which a borrow is used after the binding it borrows from has been dropped or moved.
 
-### LIFE-02 — Multiple `@bound` sources intersect
+### LIFE-02 - Multiple `@bound` sources intersect
 
-When more than one source is marked `@bound` (any combination of parameters and the receiver), the returned borrow's lifetime is the intersection — bounded by the shortest-lived marked source.
+When more than one source is marked `@bound` (any combination of parameters and the receiver), the returned borrow's lifetime is the intersection.
+It is bounded by the shortest-lived marked source.
 
 ```laterita
 @bound String chooseLabel(@bound String fallback) {
@@ -229,9 +307,10 @@ When more than one source is marked `@bound` (any combination of parameters and 
 }
 ```
 
-### LIFE-03 — A `@bound` instance intersects its `@borrow` field sources
+### LIFE-03 - A `@bound` instance intersects its `@borrow` field sources
 
-A `@bound` instance produced from `@borrow` fields takes each field's source into LIFE-02's intersection. The instance is usable only while every field's source remains live.
+A `@bound` instance produced from `@borrow` fields takes each field's source into LIFE-02's intersection.
+The instance is usable only while every field's source remains live.
 
 ```laterita
 record EntryView<K, V>(@borrow K key, @borrow V value) {}
@@ -244,11 +323,14 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}
 
 ## 3. Mutability
 
-### MUT-01 — `@mut` is the unified mutability marker
+### MUT-01 - `@mut` is the unified mutability marker
 
-`@mut` denotes mutability in every binding position it appears: local bindings (MUT-02), fields (MUT-07), parameters (MUT-04), and return types. On a class or interface declaration it marks a mutable surface (MUT-05). A method declares mutation of its receiver with `@mutating` (MUT-08). These are the only surface forms for mutability.
+`@mut` denotes mutability in every binding position it appears: local bindings (MUT-02), fields (MUT-07), parameters (MUT-04), and return types.
+On a class or interface declaration it marks a mutable surface (MUT-05).
+A method declares mutation of its receiver with `@mutating` (MUT-08).
+These are the only surface forms for mutability.
 
-### MUT-02 — Binding forms
+### MUT-02 - Binding forms
 
 | Form | Meaning |
 |---|---|
@@ -257,7 +339,10 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}
 
 `@mut` grants two capabilities at once: reassigning the binding and mutating the value through it.
 
-Java's `var` is used as in Java for inferred types; it does not change mutability. `var x = expr` is immutable; `@mut var x = expr` is mutable.
+Java's `var` is used as in Java for inferred types.
+It does not change mutability.
+`var x = expr` is immutable.
+`@mut var x = expr` is mutable.
 
 ```laterita
 String greeting = "hello";
@@ -266,9 +351,11 @@ var count = items.size();
 @mut int retries = 0;
 ```
 
-### MUT-03 — `final` composes with `@mut`
+### MUT-03 - `final` composes with `@mut`
 
-Java's `final` locks reassignment. On an immutable binding it is redundant. On a `@mut` binding it produces a third state: the value may still be mutated through the binding, but the binding cannot be reassigned.
+Java's `final` locks reassignment.
+On an immutable binding it is redundant.
+On a `@mut` binding it produces a third state: the value may still be mutated through the binding, but the binding cannot be reassigned.
 
 ```laterita
 @mut final Properties config = loadConfig();
@@ -276,36 +363,55 @@ config.setProperty("verbose", "true");   // OK: mutate through
 config = loadConfig();                   // ERROR: final locks reassignment
 ```
 
-### MUT-04 — Parameter mutability modes
+### MUT-04 - Parameter mutability modes
 
 Extending OWN-12:
 
 | Form | Meaning |
 |---|---|
 | `@mut T name` | parameter receives a mutable borrow |
-| `@take @mut T name` | parameter receives ownership; slot is reassignable in the body |
+| `@take @mut T name` | parameter receives ownership, slot is reassignable in the body |
 
-A bare argument passed to a `@mut` parameter produces a mutable borrow; the source binding must be `@mut` (owned or mutably borrowed). A temporary fills a `@mut` parameter directly. An immutable binding passed to a `@mut` parameter is rejected — no mutable access to lend.
+A bare argument passed to a `@mut` parameter produces a mutable borrow.
+The source binding must be `@mut` (owned or mutably borrowed).
+A temporary fills a `@mut` parameter directly.
+An immutable binding passed to a `@mut` parameter is rejected.
+There is no mutable access to lend.
 
-### MUT-05 — `@mut` class declaration
+### MUT-05 - `@mut` class declaration
 
-A class, abstract class, or interface may be declared `@mut`: `@mut class C`, `@mut abstract class C`, `@mut interface I`. The marker declares a *mutable surface*: `@mut` fields may be declared in it (MUT-07, classes only) and `@mutating` methods may be declared on it (MUT-08).
+A class, abstract class, or interface may be declared `@mut`: `@mut class C`, `@mut abstract class C`, `@mut interface I`.
+The marker declares a *mutable surface*.
+`@mut` fields may be declared in it (MUT-07, classes only).
+`@mutating` methods may be declared on it (MUT-08).
 
-A type not declared `@mut` is a *value class*. No `@mutating` method may be declared on it; a non-`@mut` interface may declare only methods without `@mutating`. Because no mutation is observable through a value-class binding, a copy of a value-class instance is interchangeable with a borrow under the same lifetime constraints — the compiler may substitute either.
+A type not declared `@mut` is a *value class*.
+No `@mutating` method may be declared on it.
+A non-`@mut` interface may declare only methods without `@mutating`.
+Because no mutation is observable through a value-class binding, a copy of a value-class instance is interchangeable with a borrow under the same lifetime constraints.
+The compiler may substitute either.
 
-Value classes are non-`@local` (STD-07) unless they hold a transitively `@local` field (`Rc<T>`, `Cell<T>`); those primitives are themselves value classes whose hidden mutation makes them thread-affine.
+Value classes are non-`@local` (STD-07) unless they hold a transitively `@local` field (`Rc<T>`, `Cell<T>`).
+Those primitives are themselves value classes whose hidden mutation makes them thread-affine.
 
-`Object` is `@mut`. `Number` is a value class; `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes.
+`Object` is `@mut`.
+`Number` is a value class.
+Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes.
 
-### MUT-06 — `@mut` is rejected on `record` and `enum`
+### MUT-06 - `@mut` is rejected on `record` and `enum`
 
-A `record` and an `enum` may not carry `@mut`: both are value classes by construction.
+A `record` and an `enum` may not carry `@mut`.
+Both are value classes by construction.
 
-### MUT-07 — `@mut` field requires a `@mut` class
+### MUT-07 - `@mut` field requires a `@mut` class
 
-A `@mut` field may be *declared* only in a class declared `@mut`. A value class may *inherit* `@mut` fields from a `@mut` ancestor (HIER-03) but may not declare new ones. The declared type of a `@mut` field is unrestricted: a `@mut` field whose type is a value class is permitted and grants reassignment of the field without granting mutation through it.
+A `@mut` field may be *declared* only in a class declared `@mut`.
+A value class may *inherit* `@mut` fields from a `@mut` ancestor (HIER-03) but may not declare new ones.
+The declared type of a `@mut` field is unrestricted.
+A `@mut` field whose type is a value class is permitted and grants reassignment of the field without granting mutation through it.
 
-A field without `@mut` cannot be reassigned and cannot be mutated through. `@mut final` permits mutation-through but not reassignment.
+A field without `@mut` cannot be reassigned and cannot be mutated through.
+`@mut final` permits mutation-through but not reassignment.
 
 ```laterita
 @mut class User {
@@ -314,11 +420,17 @@ A field without `@mut` cannot be reassigned and cannot be mutated through. `@mut
 }
 ```
 
-### MUT-08 — `@mutating` declares receiver mutation
+### MUT-08 - `@mutating` declares receiver mutation
 
-A method annotated `@mutating` may mutate `this`: reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`. A method without it cannot. `@mutating` sits in modifier position. It is orthogonal to `@consuming` (OWN-14); a method that both mutates and consumes carries both.
+A method annotated `@mutating` may mutate `this`.
+It may reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`.
+A method without it cannot.
+`@mutating` sits in modifier position.
+It is orthogonal to `@consuming` (OWN-14).
+A method that both mutates and consumes carries both.
 
-`@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05). Override variance is HIER-05.
+`@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
+Override variance is HIER-05.
 
 ```laterita
 @mut class Counter {
@@ -329,11 +441,12 @@ A method annotated `@mutating` may mutate `this`: reassign or mutate-through `@m
 }
 ```
 
-### MUT-09 — Immutability is transitive through borrows
+### MUT-09 - Immutability is transitive through borrows
 
-A shared (immutable) borrow grants no mutation rights regardless of any `@mut` markers on fields reached through it. Mutation through a borrow requires the borrow itself to be `@mut`.
+A shared (immutable) borrow grants no mutation rights regardless of any `@mut` markers on fields reached through it.
+Mutation through a borrow requires the borrow itself to be `@mut`.
 
-### MUT-10 — Calling `@mutating` methods
+### MUT-10 - Calling `@mutating` methods
 
 A `@mutating` method is callable on a receiver only when both conditions hold, each checked statically:
 
@@ -342,7 +455,10 @@ A `@mutating` method is callable on a receiver only when both conditions hold, e
 
 When the static type is a `@mut` interface, the `@mut`-binding requirement together with HIER-04 guarantees the dynamic class is `@mut`.
 
-A constructor is exempt: within a constructor, `@mutating` methods may be called on `this` and inherited `@mut` fields assigned regardless of class kind. This is the initialization phase; the value-class freeze takes effect when the constructor returns.
+A constructor is exempt.
+Within a constructor, `@mutating` methods may be called on `this` and inherited `@mut` fields assigned regardless of class kind.
+This is the initialization phase.
+The value-class freeze takes effect when the constructor returns.
 
 ```laterita
 var counter = new Counter();
@@ -351,24 +467,33 @@ counter.inc();              // ERROR: counter is not @mut
 c2.inc();                   // OK
 ```
 
-### MUT-11 — Interior mutability requires `Cell<T>`
+### MUT-11 - Interior mutability requires `Cell<T>`
 
-A type that needs to mutate its contents through a bare receiver must hold those contents inside `Cell<T>`. This is the only mechanism that bypasses MUT-09; `Cell<T>` is an unsafe primitive (UNS-02).
+A type that needs to mutate its contents through a bare receiver must hold those contents inside `Cell<T>`.
+This is the only mechanism that bypasses MUT-09.
+`Cell<T>` is an unsafe primitive (UNS-02).
 
 ---
+
 ## 4. Class Hierarchy and Override
 
-### HIER-01 — `@mut` class extends only `@mut`
+### HIER-01 - `@mut` class extends only `@mut`
 
-A class declared `@mut` may extend only a `@mut` class. Every superclass of a `@mut` class is itself `@mut`, up to `Object`.
+A class declared `@mut` may extend only a `@mut` class.
+Every superclass of a `@mut` class is itself `@mut`, up to `Object`.
 
-### HIER-02 — Value class extends either kind; freeze propagates
+### HIER-02 - Value class extends either kind, freeze propagates
 
-A value class may extend a class of either kind. Once a class in a hierarchy is a value class, every subclass of it is a value class.
+A value class may extend a class of either kind.
+Once a class in a hierarchy is a value class, every subclass of it is a value class.
 
-### HIER-03 — Value subclass of a `@mut` ancestor is a frozen view
+### HIER-03 - Value subclass of a `@mut` ancestor is a frozen view
 
-A value class extending a `@mut` class inherits its ancestors' `@mut` fields and `@mutating` methods. The inherited `@mutating` methods are not callable on the value class (MUT-10): the value class is a frozen view of the inherited surface. This is the mechanism for deriving an immutable variant of a mutable class — a collection, a configuration holder, a builder — without re-declaring its API.
+A value class extending a `@mut` class inherits its ancestors' `@mut` fields and `@mutating` methods.
+The inherited `@mutating` methods are not callable on the value class (MUT-10).
+The value class is a frozen view of the inherited surface.
+This is the mechanism for deriving an immutable variant of a mutable class.
+Examples include a collection, a configuration holder, or a builder, derived without re-declaring its API.
 
 ```laterita
 @mut class Counter {
@@ -384,14 +509,20 @@ class FrozenCounter extends Counter {
 
 var fc = new FrozenCounter(5);
 fc.read();      // OK
-fc.inc();       // ERROR: inc is @mutating; FrozenCounter is a value class
+fc.inc();       // ERROR: inc is @mutating, FrozenCounter is a value class
 ```
 
-### HIER-04 — `@mut` access is not obtainable by widening
+### HIER-04 - `@mut` access is not obtainable by widening
 
-Widening a value-class instance to one of its `@mut` supertypes (class or interface) never produces a `@mut` value. The widened value may not initialize, be assigned to, or be passed to a `@mut` binding, parameter, or field; the cast `(@mut Super) v` is rejected when `v`'s static type is a value class. Widening to a bare (immutable) binding of the supertype remains permitted.
+Widening a value-class instance to one of its `@mut` supertypes (class or interface) never produces a `@mut` value.
+The widened value may not initialize, be assigned to, or be passed to a `@mut` binding, parameter, or field.
+The cast `(@mut Super) v` is rejected when `v`'s static type is a value class.
+Widening to a bare (immutable) binding of the supertype remains permitted.
 
-Together with HIER-01 this guarantees that any `@mut` binding whose static type is a `@mut` class or interface refers to an instance whose dynamic class is `@mut` — which is what makes MUT-10's static check sound. `@mut` access originates only at construction of a `@mut` class and propagates only through `@mut` bindings, parameters, returns, and fields.
+Together with HIER-01 this guarantees that any `@mut` binding whose static type is a `@mut` class or interface refers to an instance whose dynamic class is `@mut`.
+That is what makes MUT-10's static check sound.
+`@mut` access originates only at construction of a `@mut` class.
+It propagates only through `@mut` bindings, parameters, returns, and fields.
 
 ```laterita
 Counter view   = new FrozenCounter(5);    // OK: widens to bare Counter
@@ -400,25 +531,27 @@ FrozenCounter fc = new FrozenCounter(5);
 @mut Counter bad = (@mut Counter) fc;     // ERROR (HIER-04)
 ```
 
-### HIER-05 — Override variance
+### HIER-05 - Override variance
 
-An override of an inherited method — subclass override or interface implementation — may **demand less of its caller** and **guarantee more to its caller**, but never the reverse.
+An override of an inherited method (subclass override or interface implementation) may **demand less of its caller** and **guarantee more to its caller**, but never the reverse.
 
-- **Parameters** and **the receiver** describe what the method demands; an override may demand less.
-- **The return** describes what the method gives back; an override may give more.
+- **Parameters** and **the receiver** describe what the method demands. An override may demand less.
+- **The return** describes what the method gives back. An override may give more.
 
 | Annotation | Position | Override may drop | Override may add | Reason |
 |---|---|---|---|---|
 | `@take` | parameter | ✗ | ✗ | Either direction breaks the caller's transfer expectation |
-| `@mut` | parameter | ✓ | ✗ | Override needs only shared access; adding `@mut` rejects shared-borrow callers |
-| `@bound` | parameter | ✓ (jointly with return) | ✗ | Source for a return borrow; dropping requires the return to drop `@bound` too |
+| `@mut` | parameter | ✓ | ✗ | Override needs only shared access. Adding `@mut` rejects shared-borrow callers |
+| `@bound` | parameter | ✓ (jointly with return) | ✗ | Source for a return borrow. Dropping requires the return to drop `@bound` too |
 | `@bound` | return | ✓ | ✗ | Owned return is a stronger guarantee than receiver-bound |
 | `@mutating` | method | ✓ | ✗ | Drops the `@mut` demand on the receiver |
 | `@consuming` | method | ✓ (to `@mutating` or bare) | ✗ | Drops the ownership demand on the receiver |
 | `@mut` | class | ✓ (value subclass of `@mut` parent) | ✗ | HIER-02 |
 | Call mode of an FI slot | parameter (FI type) | ✗ | ✓ (strengthen) | A stronger slot accepts strictly more closures (CLO-05) |
 
-The FI call-mode row inverts surface direction because what is being relaxed is *closure-acceptance*: a stronger call mode (bare → `@mutating` → `@consuming`) accepts strictly more closures, so every closure the base accepted remains accepted.
+The FI call-mode row inverts surface direction because what is being relaxed is *closure-acceptance*.
+A stronger call mode (bare to `@mutating` to `@consuming`) accepts strictly more closures.
+Every closure the base accepted remains accepted.
 
 ```laterita
 interface Visitor {
@@ -428,25 +561,30 @@ interface Visitor {
 
 class CountingVisitor implements Visitor {
     @Override void visit(Node n) { ... }                       // OK: drops @mut
-    @Override String describe(Node n) { return "counting"; }   // OK: drops @bound jointly; returns owned
+    @Override String describe(Node n) { return "counting"; }   // OK: drops @bound jointly, returns owned
 }
 
 interface Reader { void read(Node n); }
 
 class BadReader implements Reader {
-    @Override void read(@mut Node n) { ... }                   // ERROR: adds @mut; rejects shared callers
+    @Override void read(@mut Node n) { ... }                   // ERROR: adds @mut, rejects shared callers
 }
 ```
 
-The rule mirrors Java's existing treatment of `throws`: an override may declare fewer or narrower checked exceptions than the inherited signature, never more.
+The rule mirrors Java's existing treatment of `throws`.
+An override may declare fewer or narrower checked exceptions than the inherited signature, never more.
 
 ---
 
 ## 5. Annotations in Generic Type Arguments
 
-### TARG-01 — `@bound` admitted in a type argument
+### TARG-01 - `@bound` admitted in a type argument
 
-`@bound` may appear inside a generic type argument. A class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value, with lifetime per LIFE-02 (and TARG-04 idempotence when `@bound` stacks). No struct-level lifetime parameters are introduced — the `@bound` binding on the instance carries the lifetime.
+`@bound` may appear inside a generic type argument.
+A class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value.
+Its lifetime follows LIFE-02, with TARG-04 idempotence when `@bound` stacks.
+No struct-level lifetime parameters are introduced.
+The `@bound` binding on the instance carries the lifetime.
 
 ```laterita
 record Pair<L, R>(L left, R right) {}
@@ -455,13 +593,19 @@ Pair<String, Integer>                       p1 = new Pair<>("hello".clone(), 42)
 @bound Pair<@bound String, @bound Integer> view = new Pair<>(name, count);
 ```
 
-### TARG-02 — `@take` rejected in a type argument
+### TARG-02 - `@take` rejected in a type argument
 
-`@take` may not appear inside a generic type argument. It is a parameter mode — describing how a call site transfers ownership into a slot — not an attribute a value carries; as a type argument it has no referent. `Pair<@take K, @take V>` is a compile error. Ownership of a generic structure's contents is carried by the structure's own binding (owned vs. `@bound`).
+`@take` may not appear inside a generic type argument.
+It is a parameter mode that describes how a call site transfers ownership into a slot.
+It is not an attribute a value carries.
+As a type argument it has no referent.
+`Pair<@take K, @take V>` is a compile error.
+Ownership of a generic structure's contents is carried by the structure's own binding (owned vs. `@bound`).
 
-### TARG-03 — `@mut` in a type argument requires `@mut` container
+### TARG-03 - `@mut` in a type argument requires `@mut` container
 
-`@mut` may appear inside a generic type argument only when the enclosing generic type is itself `@mut` at that occurrence — the type of a `@mut` binding, `@mut` parameter, `@mut` field, or `@mut`/owned return.
+`@mut` may appear inside a generic type argument only when the enclosing generic type is itself `@mut` at that occurrence.
+That is, the type of a `@mut` binding, `@mut` parameter, `@mut` field, or `@mut`/owned return.
 
 ```laterita
 @mut List<@mut Foo> a = ...;     // OK
@@ -470,13 +614,24 @@ List<Foo>           c = ...;     // OK
 List<@mut Foo>      d = ...;     // ERROR (TARG-03)
 ```
 
-The restriction is a soundness requirement. An element accessor declared `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`; producing a `@mut` element borrow re-borrows the whole container mutably (MUT-09), which by OWN-03 is exclusive — the same receiver-reborrow pattern `splitAt` uses (ARR-01). A *shared* `List<@mut Foo>` would let that `@mut` element borrow be drawn from each of several coexisting shared borrows of the container, aliasing the element. Requiring the container to be `@mut` makes every `@mut` element borrow an exclusive re-borrow, so two simultaneous element borrows are a borrow-check error rather than aliasing.
+The restriction is a soundness requirement.
+An element accessor declared `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`.
+Producing a `@mut` element borrow re-borrows the whole container mutably (MUT-09).
+By OWN-03 that is exclusive, the same receiver-reborrow pattern `splitAt` uses (ARR-01).
+A *shared* `List<@mut Foo>` would let that `@mut` element borrow be drawn from each of several coexisting shared borrows of the container, aliasing the element.
+Requiring the container to be `@mut` makes every `@mut` element borrow an exclusive re-borrow.
+Two simultaneous element borrows are then a borrow-check error rather than aliasing.
 
-A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
+A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05).
+The `@unsafe` cost is visible at the storage site.
 
-### TARG-04 — `@bound` is idempotent under stacking
+### TARG-04 - `@bound` is idempotent under stacking
 
-`@bound` is a binding-mode marker, not a type constructor; it carries no "layer" to stack. When `@bound` appears in stacked position — typically through generic substitution, e.g. `@bound E` returned from a method on `Container<@bound T>`, which substitutes to `@bound @bound T` — the resulting form denotes the same shape as a single `@bound T`. Each `@bound` position contributes its source to LIFE-02's intersection.
+`@bound` is a binding-mode marker, not a type constructor.
+It carries no "layer" to stack.
+When `@bound` appears in stacked position, typically through generic substitution, the resulting form denotes the same shape as a single `@bound T`.
+For example, `@bound E` returned from a method on `Container<@bound T>` substitutes to `@bound @bound T`, which is one `@bound T`.
+Each `@bound` position contributes its source to LIFE-02's intersection.
 
 ```laterita
 class ArrayList<E> {
@@ -484,32 +639,44 @@ class ArrayList<E> {
 }
 
 var list = new ArrayList<@bound String>();           // inner @bound: bound to element source
-var got = list.get(0);                               // shape is @bound String;
+var got = list.get(0);                               // shape is @bound String
                                                      // lifetime = min(list, source-of-element)
 ```
 
-The rule is what lets `Container<@bound T>` compose through any method whose return is `@bound E`: the doubly-marked form arising from substitution does not introduce a "borrow of a borrow" indirection — it accumulates lifetime constraints on a single borrow.
+The rule is what lets `Container<@bound T>` compose through any method whose return is `@bound E`.
+The doubly-marked form arising from substitution does not introduce a "borrow of a borrow" indirection.
+It accumulates lifetime constraints on a single borrow.
 
 ---
 
 ## 6. Static Storage
 
-### STAT-01 — Static fields are immutable
+### STAT-01 - Static fields are immutable
 
-A field declared `static` is initialized once at program start and cannot be reassigned. `static final` is accepted for Java compatibility but `final` is redundant; `@mut static` is a compile error.
+A field declared `static` is initialized once at program start and cannot be reassigned.
+`static final` is accepted for Java compatibility, but `final` is redundant.
+`@mut static` is a compile error.
 
-### STAT-02 — Const initializer or once-init wrapper
+### STAT-02 - Const initializer or once-init wrapper
 
-A static field's initializer must be a *const expression* — a literal, a reference to another const-initialized static, or a call to a constructor or function the compiler can evaluate at compile time. The set of const-eligible operations is defined by the compiler and standard library; at minimum it covers primitive arithmetic, string literals, and the const-eligible constructors of the synchronizing stdlib types (`Mutex<T>` per STD-09, `Arc<T>` per STD-02, and the atomic primitives). Initializers that require runtime computation go through a once-init wrapper held in the static slot and forced at first access.
+A static field's initializer must be a *const expression*.
+A const expression is a literal, a reference to another const-initialized static, or a call to a constructor or function the compiler can evaluate at compile time.
+The set of const-eligible operations is defined by the compiler and standard library.
+At minimum it covers primitive arithmetic, string literals, and the const-eligible constructors of the synchronizing stdlib types (`Mutex<T>` per STD-09, `Arc<T>` per STD-02, and the atomic primitives).
+Initializers that require runtime computation go through a once-init wrapper held in the static slot and forced at first access.
 
 ```laterita
 static Mutex<Map<String, Session>> SESSIONS = new Mutex<>(new HashMap<>());
 static Arc<Config>                 BUILTIN  = new Arc<>(Config.DEFAULT);
 ```
 
-### STAT-03 — Static field type must be non-`@local`
+### STAT-03 - Static field type must be non-`@local`
 
-The declared type of a static field must be non-`@local` (STD-07). A static slot is reachable from every thread, so a `@local` type stored there would be reachable cross-thread — exactly the case `@local` exists to forbid. `static Rc<T>`, `static Cell<T>`, and `static Heap<T>` are rejected; use `static Arc<T>`.
+The declared type of a static field must be non-`@local` (STD-07).
+A static slot is reachable from every thread.
+A `@local` type stored there would be reachable cross-thread, exactly the case `@local` exists to forbid.
+`static Rc<T>`, `static Cell<T>`, and `static Heap<T>` are rejected.
+Use `static Arc<T>`.
 
 ---
 
