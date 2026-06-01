@@ -24,11 +24,10 @@ Distinct from `@bound`, which marks a borrowed *value* at parameters, returns, a
 See `OWN-10`, `LIFE-03`.
 
 ### @bound (annotation on returns, parameters, and type arguments)
-Marks that a binding holds a borrowed value, and at parameters/returns expresses the source relationship.
+Declares a lifetime relationship between two values.
 On a parameter, declares that the function's return is bound to that parameter (`OWN-18`).
 On a return type, declares that the return is bound to `this` (`OWN-19`).
 In a generic type argument, declares that the substituted type is borrowed and forces the enclosing instance to be `@bound` (`TARG-01`).
-On a local or field binding it appears as the produced state of a value flowing out of a `@borrow`-containing instance or a `@bound`-substituted generic.
 Distinct from `@borrow`, which declares a field as a borrow slot.
 
 ### binding modifiers
@@ -278,8 +277,6 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `LAT` | `.lat` surface forms (syntactic sugar over the Java-compatible surface) |
 | `NABI` | Native ABI guarantees |
 | `GEN` | Code generation annotations (Lombok-compatible surface) |
-
-Example: `OWN-02` is the rule "a local follows its RHS" in the Ownership section.
 
 ---
 

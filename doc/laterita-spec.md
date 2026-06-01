@@ -36,9 +36,8 @@ Codes are grouped by area:
 
 ## 1. Ownership
 
-This section specifies what a binding holds.
-A binding holds owned storage or a borrow.
-It also specifies how ownership transfers across bindings, parameters, returns, and fields.
+This section specifies the declaration and difference between owned and borrowed storage.
+It also specifies how ownership transfers across local variables, parameters, returns, and fields.
 Mutability is orthogonal and specified in §3.
 Lifetime intersection across multiple sources is in §2.
 
@@ -46,7 +45,7 @@ Lifetime intersection across multiple sources is in §2.
 
 A binding holds a value whose storage is either *owned* or *borrowed*.
 An owned binding is the sole responsibility holder for its value.
-When the binding leaves scope, the value's `onDrop()` runs (DROP-01).
+When the binding leaves scope, the value is dropped (DROP-01) and its memory released.
 A borrowed binding references storage owned elsewhere.
 Its lifetime is bounded by the source (LIFE-01).
 
@@ -54,7 +53,7 @@ Its lifetime is bounded by the source (LIFE-01).
 
 A local binding's owned/borrowed state is determined by the right-hand side of its initializer.
 
-- A **producer expression** (call, constructor, literal, `give(x)`) yields an owned binding.
+- A **producer expression** (call, constructor, literal) yields an owned binding.
 - A **bare binding RHS** (naming another binding) yields a shared borrow of that source.
 
 ```java
@@ -76,7 +75,7 @@ The compiler must reject programs that violate this.
 ### OWN-04 - Disjoint field borrows are permitted
 
 Two simultaneous borrows of statically distinct fields of the same value are non-aliasing.
-They must be permitted, including when both are mutable.
+They are permitted, including when both are mutable.
 The compiler performs this disjointness analysis.
 
 ```java
