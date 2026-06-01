@@ -15,7 +15,7 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
 
-**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each binding produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / OWN-07)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each binding produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
 
 **The question.**
 - Do record-pattern bindings default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
@@ -25,7 +25,7 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums; without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
-**Related codes:** OWN-02, OWN-14, OWN-07, DROP-04.
+**Related codes:** OWN-02, OWN-13, OWN-06, DROP-04.
 
 ## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
@@ -64,7 +64,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 **Why it matters.** Without a channel primitive, Laterita programs that want Rust-style "share by communicating" fall back to hand-rolled `Arc<Mutex<Queue<T>>>` and lose the static guarantee that a sent value is uniquely owned by the receiver.
 
-**Related codes:** STD-07, STD-09, THR-01, THR-04, OWN-14.
+**Related codes:** STD-07, STD-09, THR-01, THR-04, OWN-13.
 
 ## OQ-27 — `From`/`Into`-style conversions and implicit-coercion control
 
@@ -79,7 +79,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 **Why it matters.** Without a conversion mechanism, the OQ-22 `Result` story is stunted: every error boundary needs an explicit `.mapErr(MyError::wrap)` call. With it, library composition tightens substantially.
 
-**Related codes:** OWN-14, OQ-22.
+**Related codes:** OWN-13, OQ-22.
 
 ## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
 
