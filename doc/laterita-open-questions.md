@@ -15,17 +15,17 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
 
-**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each binding produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / MOVE-07)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each binding produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
 
 **The question.**
-- Do record-pattern bindings default to borrow (consistent with MOVE-01) or to move (consistent with the Rust idiom)?
+- Do record-pattern bindings default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
 - Is there an opt-in `@take` form on a pattern binding to switch arms between borrow and consume?
 - How does exhaustiveness interact with partial moves: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums; without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
-**Related codes:** MOVE-01, MOVE-03, MOVE-07, DROP-04.
+**Related codes:** OWN-02, OWN-13, OWN-06, DROP-04.
 
 ## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
@@ -52,19 +52,19 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ## OQ-23 — Channels and message-passing for inter-thread communication
 
-**Surfaced when:** observing that §16 specifies threads, interruption, joining, and `Mutex<T>`, but no channel primitive — yet Rust's primary thread-communication idiom is `std::sync::mpsc` / `crossbeam` channels with move-on-send.
+**Surfaced when:** observing that §18 specifies threads, interruption, joining, and `Mutex<T>`, but no channel primitive — yet Rust's primary thread-communication idiom is `std::sync::mpsc` / `crossbeam` channels with move-on-send.
 
 **The issue.** Shared-state concurrency via `Arc<Mutex<T>>` is covered. Message-passing concurrency — sender moves a `@take` value into the channel, receiver gets ownership on the other side, no aliasing across threads — is not. The ownership model maps to channels especially cleanly: `Sender<T>.send(@take T)` and `Receiver<T>.recv() → T` are simply moves across a queue, with `@local` (STD-07) gating which `T` may be sent.
 
 **The question.**
-- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required stdlib (§15, Reserved Names §18) or a third-party library?
+- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required stdlib (§17, Reserved Names §20) or a third-party library?
 - Bounded vs unbounded? SPSC vs MPSC vs MPMC? Does the stdlib commit to a single shape, or expose a hierarchy?
 - Is `send` an interruption point (THR-04)? Does dropping the last `Sender` close the channel (analog of Rust's `RecvError`)?
 - How does back-pressure surface — `BlockingQueue`-style `put`/`offer`, or a structured `trySend` returning the value back on full?
 
 **Why it matters.** Without a channel primitive, Laterita programs that want Rust-style "share by communicating" fall back to hand-rolled `Arc<Mutex<Queue<T>>>` and lose the static guarantee that a sent value is uniquely owned by the receiver.
 
-**Related codes:** STD-07, STD-09, THR-01, THR-04, MOVE-03.
+**Related codes:** STD-07, STD-09, THR-01, THR-04, OWN-13.
 
 ## OQ-27 — `From`/`Into`-style conversions and implicit-coercion control
 
@@ -79,11 +79,11 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 **Why it matters.** Without a conversion mechanism, the OQ-22 `Result` story is stunted: every error boundary needs an explicit `.mapErr(MyError::wrap)` call. With it, library composition tightens substantially.
 
-**Related codes:** MOVE-03, OQ-22.
+**Related codes:** OWN-13, OQ-22.
 
 ## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
 
-**Surfaced when:** BIND-11 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
+**Surfaced when:** STAT-01 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
 
 **The issue.** Const-only static initialization keeps the AOT story (COMP-01) honest — no classloader, no static-init-order fiasco, no observable initialization race. But it leaves a real case unspecified: statics whose value genuinely requires runtime work — a compiled regex, a config loaded from disk, a precomputed table, a service registry. Java handles these in `static {}` blocks under the classloader's per-class init lock; Rust uses `LazyLock<T>` / `OnceLock<T>` from `std::sync`. Laterita has neither yet, so every such case must hand-roll a `Mutex<T?>` and a first-access check at every read site.
 
@@ -92,11 +92,11 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 - Is the first-access work serialized by an internal `Mutex<T>`, by double-checked-locking over an atomic slot, or by a one-time CAS? The choice determines whether two threads racing on first access both run the supplier or whether the loser blocks.
 - Does the supplier's exception poison the slot (subsequent `get()` re-throws, mirroring THR-10), retry on the next call (Rust's `LazyLock` behavior), or terminate the program?
 - Is the supplier captured as a `@take () -> T` closure (consumed on success, dropped) or held for retry? Falls out of the previous answer.
-- How does this compose with `@local` (BIND-12)? A `static Lazy<L>` where `L` is `@local` puts the `L` cross-thread on first access — BIND-12 presumably extends through the wrapper.
+- How does this compose with `@local` (STAT-03)? A `static Lazy<L>` where `L` is `@local` puts the `L` cross-thread on first access — STAT-03 presumably extends through the wrapper.
 
 **Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site. The pattern is universal; the shape of the stdlib carrier is what's open.
 
-**Related codes:** BIND-11, BIND-12, STD-09, THR-10, COMP-01.
+**Related codes:** STAT-01, STAT-03, STD-09, THR-10, COMP-01.
 
 ---
 
@@ -111,4 +111,4 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 - Should `var` be accepted as a synonym for `@mut var` (mutable inferred local), shadowing Java's `var`?
 - Or should `val`/`var` remain unsupported in `.java` files and only permitted in `.lat` files, to avoid the Java-compatibility ambiguity?
 
-**Related codes:** BIND-01, GEN-14, LAT-00.
+**Related codes:** MUT-02, GEN-14, LAT-00.
