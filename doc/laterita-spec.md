@@ -38,20 +38,16 @@ Codes are grouped by area:
 
 This section specifies the declaration and difference between owned and borrowed storage.
 It also specifies how ownership transfers across local variables, parameters, returns, and fields.
-Mutability is orthogonal and specified in §3.
-Lifetime intersection across multiple sources is in §2.
 
 A **binding** is a name in scope that refers to a value: a local variable, a field, a parameter, or a return slot.
 Java's `variable` is the same concept framed as storage rather than as a name.
-The rules below ascribe ownership and borrowing to bindings — at any program point, each binding either owns its value or borrows it from another source.
+Bindings are Java references with a discipline applied: among all the references to a value, exactly one is the *owner* and the rest are *borrows*.
+The rules below specify what each side can do.
 
 ### OWN-01 - Owned and borrowed values
 
-A binding holds a value whose storage is either *owned* or *borrowed*.
-An owned binding is the sole responsibility holder for its value.
-When the binding leaves scope, the value is dropped (DROP-01) and its memory released.
-A borrowed binding references storage owned elsewhere.
-Its lifetime is bounded by the source (LIFE-01).
+Each value has exactly one **owner** — the binding responsible for dropping the value (DROP-01) when the binding leaves scope.
+All other bindings to the same value are **borrows**: they reference storage owned elsewhere, with a lifetime bounded by the source (LIFE-01).
 
 ### OWN-02 - A local follows its RHS
 

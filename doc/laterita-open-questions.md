@@ -112,3 +112,39 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 - Or should `val`/`var` remain unsupported in `.java` files and only permitted in `.lat` files, to avoid the Java-compatibility ambiguity?
 
 **Related codes:** MUT-02, GEN-14, LAT-00.
+
+## OQ-33 — Primitives in the ownership and mutability system
+
+**Surfaced when:** thinking through the "binding = restricted Java reference" framing in §1.
+The framing maps cleanly onto reference types (every binding is a pointer to a heap value, with one owner among them) but is awkward for `int`, `long`, `double`, `boolean`, etc.
+Primitives have no heap identity: there is nothing to point at, nothing to drop, and a "borrow" of an `int` has no observable difference from a copy.
+
+**The issue.**
+A `@mut int x` parameter in Laterita can be made to behave like Rust's `&mut i32` — the compiler passes a pointer to the caller's int slot and the callee mutates through it.
+This is implementable (Laterita compiles natively per COMP-01) but unusual.
+The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `AtomicI32` with interior mutability; `&mut <primitive>` is rare even in Rust stdlib (it shows up generically through `mem::swap` / `mem::replace`, not as a deliberate out-parameter).
+The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern; struct and array out-pointers dominate.
+Java itself has no equivalent — primitives are pass-by-value.
+
+If primitives sit outside the borrow system entirely, two follow-on rules need to be specified.
+
+**The question.**
+
+- *Are `@mut` parameters of primitive type rejected?*
+  The proposal: yes, since a primitive cannot be borrowed in a way distinguishable from a copy, and the few cases that genuinely want pass-by-pointer (shared counters, atomic flags) are served better by `AtomicInt` / `AtomicBoolean` (STD-04 territory) or by `Cell<int>` (STD-05).
+- *Do primitive returns default to `@mut`?*
+  A returned primitive is a pure rvalue — there is no source for a borrow and no owner for a move; it is simply a value the caller may bind however they like.
+  Marking it `@mut` by default means `@mut int n = computeCount();` works without an explicit annotation on the signature, where the alternative would force every primitive-returning method to spell `@mut int computeCount()` or face an owned/`@mut` mismatch at the call site.
+- *What about `@bound` on primitive returns and `@borrow` on primitive fields?*
+  The proposal: both rejected for the same reason — there is no storage to bind a lifetime to.
+  A primitive field is always its own owner (the enclosing instance holds the bits inline).
+- *Does any of this carry across `Nullable` (NULL-02)?*
+  An `int?` is encoded as a tagged union, not a primitive pointer.
+  Borrow rules might apply to the storage of the nullable wrapper even when the underlying type is primitive.
+
+**Why it matters.**
+The "binding = restricted reference" mental model in §1 only holds for reference types.
+Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
+The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
+
+**Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07, STD-04, STD-05.
