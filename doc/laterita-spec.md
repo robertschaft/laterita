@@ -100,9 +100,9 @@ int[] data = new int[100];
 ### OWN-06 - Partial moves are tracked per field
 
 Moving out of a field of a value leaves that field in the moved-out state while sibling fields remain valid.
-The compiler tracks per-field move state.
-It uses this state for both use-after-move checking and cleanup emission (DROP-04).
-A field that the enclosing value's `onDrop()` reads cannot be moved out (DROP-08).
+Any subsequent access to a moved-out field is a compile error.
+The compiler uses per-field move state for both use-after-move checking and cleanup emission (DROP-04).
+It is a compile error when a field is in any code path moved out **and** accessed in any code path of the enclosing value's `onDrop()` (DROP-08).
 
 ### OWN-07 - An unbound owned value drops at end of statement
 
@@ -148,7 +148,7 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be
 
 `@take` describes a transfer of ownership into a parameter slot at a call site.
 It has no meaning on a field, a record component, or a local declaration.
-A field always owns or borrows its value (OWN-08, OWN-09).
+A field either owns (the default) or `@borrow`s the value (OWN-08, OWN-09).
 A local's mode follows its RHS (OWN-02).
 
 ### OWN-11 - Constructor initializes every field exactly once
