@@ -41,6 +41,10 @@ It also specifies how ownership transfers across local variables, parameters, re
 Mutability is orthogonal and specified in §3.
 Lifetime intersection across multiple sources is in §2.
 
+A **binding** is a name in scope that refers to a value: a local variable, a field, a parameter, or a return slot.
+Java's `variable` is the same concept framed as storage rather than as a name.
+The rules below ascribe ownership and borrowing to bindings — at any program point, each binding either owns its value or borrows it from another source.
+
 ### OWN-01 - Owned and borrowed values
 
 A binding holds a value whose storage is either *owned* or *borrowed*.
