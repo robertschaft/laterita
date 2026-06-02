@@ -15,11 +15,11 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
 
-**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each binding produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each reference produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
 
 **The question.**
-- Do record-pattern bindings default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
-- Is there an opt-in `@take` form on a pattern binding to switch arms between borrow and consume?
+- Do record-pattern references default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
+- Is there an opt-in `@take` form on a pattern reference to switch arms between borrow and consume?
 - How does exhaustiveness interact with partial moves: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 
@@ -115,8 +115,8 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ## OQ-33 — Primitives in the ownership and mutability system
 
-**Surfaced when:** thinking through the "binding = restricted Java reference" framing in §1.
-The framing maps cleanly onto reference types (every binding is a pointer to a heap value, with one owner among them) but is awkward for `int`, `long`, `double`, `boolean`, etc.
+**Surfaced when:** thinking through the §1 framing of references as Java-reference slots carrying an ownership discipline.
+The framing maps cleanly onto reference types (each slot points at a heap value, with one owner among the slots) but is awkward for `int`, `long`, `double`, `boolean`, etc.
 Primitives have no heap identity: there is nothing to point at, nothing to drop, and a "borrow" of an `int` has no observable difference from a copy.
 
 **The issue.**
@@ -143,7 +143,7 @@ If primitives sit outside the borrow system entirely, two follow-on rules need t
   Borrow rules might apply to the storage of the nullable wrapper even when the underlying type is primitive.
 
 **Why it matters.**
-The "binding = restricted reference" mental model in §1 only holds for reference types.
+The §1 model of references-as-ownership-disciplined-slots only holds for reference types.
 Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
