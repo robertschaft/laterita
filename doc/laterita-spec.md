@@ -61,9 +61,9 @@ print(b);                   // OK
 
 A value's borrow state at any point is one of:
 
-- **no borrow** — the owner has access (subject to MUT-01);
-- **any number of shared (immutable) borrows** — everyone reads; no one mutates;
-- **exactly one mutable borrow** — only that borrow accesses the value; the owner is frozen until the borrow ends.
+- **no borrows** — the owner has unobstructed access (subject to MUT-01).
+- **shared borrows** — any number of readers may coexist. No mutation is allowed.
+- **one mutable borrow** — that borrow has exclusive access. The owner is frozen until the borrow ends.
 
 The compiler must reject programs that violate this.
 
