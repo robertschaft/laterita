@@ -28,5 +28,5 @@ Non-language-design items (tooling, migration, roadmap) are tracked as GitHub is
 
 ## Response style
 
-Use one line per sentence in chat responses.
-Do not use semicolons or em dashes in chat text (they are fine inside spec/code/doc files).
+Use one line per sentence.
+Do not use semicolons or em dashes in prose text (code blocks and section heading formats like `### RULE — Title` are exempt).

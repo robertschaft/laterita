@@ -694,7 +694,9 @@ Within a scope, variables are dropped in the reverse of their declaration order.
 
 ### DROP-04 — Drop flags for partial moves
 
-When OWN-06 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. Only a class that implements no `onDrop()` can be partially moved (DROP-08), so this conditional cleanup never has to skip a body-bearing class's own `onDrop()` — only the surviving fields' drops are at issue.
+When OWN-06 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point.
+Implementations may optimize away drop flags when static analysis proves they are constant.
+Only a class that implements no `onDrop()` can be partially moved (DROP-08), so this conditional cleanup only ever skips individual fields' drops, never a body-bearing class's own `onDrop()`.
 
 ### DROP-05 — Drop sequence
 
@@ -705,7 +707,10 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 3. Step 2 repeated for `B`, then for each superclass up to `Object`.
 4. If the instance is heap-allocated, its storage is released.
 
-Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-09) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, and may read all of its class's fields: DROP-08 forbids moving any field out of a class that implements `onDrop()`, so none can be moved-out when the body runs.
+Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-09) are skipped in steps 2 and 3.
+Each surviving owned field is dropped recursively by this same procedure.
+The step-1 body runs before any field teardown of that class and may read all of its class's fields.
+DROP-08 forbids moving any field out of a class that implements `onDrop()`, so none can be moved-out when the body runs.
 
 ```java
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
@@ -739,7 +744,8 @@ If multiple invocations along a drop path throw — sibling variables (DROP-02),
 
 No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field. The compiler diagnoses the violation at the move: a `give` of such a field is rejected. The diagnostic identifies the field, the move, and the `onDrop()` declaration that locks it.
 
-A class with no `onDrop()` implementation — every record, every plain data carrier — locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04. A class that needs both an `onDrop()` and the ability to surrender a part holds that part behind a handle the cleanup path does not touch, or restructures so the part is extracted before the resource-owning husk is built.
+A class with no `onDrop()` implementation (every record, every plain data carrier) locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04.
+A class that needs both an `onDrop()` and the ability to surrender a part holds that part behind a handle the cleanup path does not touch, or restructures so the part is extracted before the resource-owning husk is built.
 
 ```java
 record Pair(Resource left, Resource right) {}        // no onDrop implementation

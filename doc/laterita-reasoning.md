@@ -270,13 +270,23 @@ A rule of thumb still holds: `onDrop()` should be best-effort cleanup. Fallible 
 
 ### Why a class with `onDrop()` cannot be partially moved (DROP-08)
 
-Partial moves (OWN-06) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup. There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so a body that read a moved-out field would be reading a vacated slot on the partial-move path. The rule that resolves this is the one Rust reaches by the same route (`E0509`): a value whose class implements `onDrop()` is moved atomically — no field may be moved out of it. Among the candidates this is the only one that keeps the destructor's view of its own fields trivially sound.
+Partial moves (OWN-06) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup.
+There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so a body that read a moved-out field would be reading a vacated slot on the partial-move path.
+The rule that resolves this is the one Rust reaches by the same route (`E0509`): a value whose class implements `onDrop()` is moved atomically, so no field may be moved out of it.
+Among the candidates this is the only one that keeps the destructor's view of its own fields trivially sound.
 
-The discarded candidates fall two ways. *Disable cleanup on the partial-move path* — skip `onDrop()` entirely once any field is moved, dropping only the survivors — is rejected outright: partially moving one field would silently switch off the whole object's destructor, a quiet correctness hole exactly where resource handling matters most. *Pin only the fields the body reads* — the finer-grained, per-field lock — is rejected as more machinery for less safety. Its pinned set is a function of the `onDrop()` body's internals and of every method that body transitively calls on `this`, so the set of fields that may be `give`-n out is invisible at the move site and brittle under refactoring: adding one field read inside cleanup silently breaks a `give` in unrelated code. The analysis cost buys little, because a class that carries an `onDrop()` is a resource-owning leaf (DROP-09) — a lock guard, a handle, a refcount — and gutting one of its fields while keeping the husk alive is rarely what the programmer means. The type-level rule states the contract a reader can see from the class alone: *has `onDrop()` ⇒ moved whole*. The rare case that genuinely wants both cleanup and a surrenderable part pays a single, explicit std idiom — extract the part before the husk is built, or hold it behind a handle the cleanup path does not touch — rather than taxing every class with a body-dependent move-legality analysis.
+The discarded candidates fall two ways.
+*Disable cleanup on the partial-move path* (skip `onDrop()` entirely once any field is moved, dropping only the survivors) is rejected outright: partially moving one field would silently switch off the whole object's destructor, a quiet correctness hole exactly where resource handling matters most.
+*Pin only the fields the body reads* (the finer-grained, per-field lock) is rejected as more machinery for less safety.
+Its pinned set is a function of the `onDrop()` body's internals and of every method that body transitively calls on `this`, so the set of fields that may be `give`-n out is invisible at the move site and brittle under refactoring: adding one field read inside cleanup silently breaks a `give` in unrelated code.
+The analysis cost buys little, because a class that carries an `onDrop()` is a resource-owning leaf (DROP-09) such as a lock guard, a handle, or a refcount, and gutting one of its fields while keeping the husk alive is rarely what the programmer means.
+The type-level rule states the contract a reader can see from the class alone: *has `onDrop()` means moved whole*.
+The rare case that genuinely wants both cleanup and a surrenderable part pays a single, explicit idiom: extract the part before the husk is built, or hold it behind a handle the cleanup path does not touch.
 
 Diagnosing at the move site (rather than at the `onDrop()` definition) keeps the error where the programmer made the choice, and lets the `onDrop()` body stay an ordinary method whose field reads need no special annotation.
 
-This also explains why `StringBuilder.build()` (OWN-15) — `return this.contents;` — is legal: `StringBuilder` declares no `onDrop()`, so it is freely splittable and the move of `this.contents` is fine. Give `StringBuilder` an `onDrop()` and that move becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle the `build()` path can extract without the husk needing it).
+This also explains why `StringBuilder.build()` (OWN-15), which is `return this.contents;`, is legal: `StringBuilder` declares no `onDrop()`, so it is freely splittable and the move of `this.contents` is fine.
+Give `StringBuilder` an `onDrop()` and that move becomes an error, which is the correct signal that the design now needs a different shape (for example, an explicit `close()` per THR-05's split, or holding the buffer behind a handle the `build()` path can extract without the husk needing it).
 
 ### Why `onDrop()` is confined to `final` classes (DROP-09)
 
@@ -288,7 +298,7 @@ DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `fin
 
 With at most one user `onDrop()` body per instance, several candidate rules collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`. DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
 
-The orthogonal cleanup rules — DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 no partial move of `onDrop()` classes, DROP-10 no-escape-of-this, THR-05 no-blocking — all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
+The orthogonal cleanup rules (DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 no partial move of `onDrop()` classes, DROP-10 no-escape-of-this, THR-05 no-blocking) all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
 
 ### Why `this` does not escape `onDrop()` (DROP-10)
 

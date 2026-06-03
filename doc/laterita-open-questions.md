@@ -21,7 +21,7 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 - Do record-pattern variables default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
 - Is there an opt-in `@take` form on a pattern variable to switch arms between borrow and consume?
 - How does exhaustiveness interact with partial moves: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
-- For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once — which of these is the rule?
+- For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once. Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums; without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
