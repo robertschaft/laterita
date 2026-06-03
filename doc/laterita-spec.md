@@ -62,7 +62,7 @@ print(b);                   // OK
 A value's borrow state at any point is one of:
 
 - **no borrows** — the owner has unobstructed access (subject to MUT-01).
-- **shared borrows** — any number of readers may coexist. No mutation is allowed.
+- **shared borrows** — any number of readers may coexist (including the owner). No mutation is allowed, not even by the owner.
 - **one mutable borrow** — that borrow has exclusive access. The owner is frozen until the borrow ends.
 
 The compiler must reject programs that violate this.
@@ -88,7 +88,7 @@ For arbitrary computed ranges, ARR-01 supplies the disjointness witness.
 That reduces to ordinary slice expressions this rule covers.
 
 ```java
-int[] data = new int[100];
+@mut int[] data = new int[100];
 @mut int[] left  = data.slice(0, 50);
 @mut int[] right = data.slice(50, 100);  // OK: provably disjoint
 ```
