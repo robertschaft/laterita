@@ -25,3 +25,8 @@ Currently the spec in doc is work in progress and needs to mature.
 If a question is resolved, document the reasoning in `doc/laterita-reasoning.md`, remove the question from `doc/laterita-open-questions.md`, and add a tombstone to `doc/resolved-questions.md`. If the resolution rejects a named alternative, also add a row to the "Rejected alternatives" table so it is not re-raised.
 
 Non-language-design items (tooling, migration, roadmap) are tracked as GitHub issues on `robertschaft/laterita`, not in the open-questions document.
+
+## Response style
+
+Use one line per sentence in chat responses.
+Do not use semicolons or em dashes in chat text (they are fine inside spec/code/doc files).
