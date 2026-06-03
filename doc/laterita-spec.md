@@ -41,7 +41,7 @@ This section specifies how values are owned and borrowed, and how ownership tran
 ### OWN-01 - Owned and borrowed values
 
 Each value has one **owner**: the variable that drops it (DROP-01) at scope exit.
-Other variables holding the same value are **borrows**, bounded by the source's lifetime (LIFE-01).
+Other variables holding the same value are **borrows**, bounded by the owner's lifetime (LIFE-01).
 
 ### OWN-02 - A local follows its RHS
 
@@ -59,10 +59,11 @@ print(b);                   // OK
 
 ### OWN-03 - Borrow exclusivity
 
-At any point during a value's lifetime, either:
+A value's borrow state at any point is one of:
 
-- any number of shared (immutable) borrows may coexist, or
-- exactly one mutable borrow may exist, with no other borrows.
+- **no borrow** — the owner has access (subject to MUT-01);
+- **any number of shared (immutable) borrows** — everyone reads; no one mutates;
+- **exactly one mutable borrow** — only that borrow accesses the value; the owner is frozen until the borrow ends.
 
 The compiler must reject programs that violate this.
 
@@ -94,7 +95,7 @@ int[] data = new int[100];
 
 ### OWN-06 - Partial moves are tracked per field
 
-Moving out of a field of a value leaves that field in the moved-out state while sibling fields remain valid.
+Moving a value out of a field leaves that field in the moved-out state while sibling fields remain valid.
 Any subsequent access to a moved-out field is a compile error.
 The compiler uses per-field move state for both use-after-move checking and cleanup emission (DROP-04).
 It is a compile error when a field is in any code path moved out **and** accessed in any code path of the enclosing value's `onDrop()` (DROP-08).
