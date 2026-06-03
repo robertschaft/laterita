@@ -98,7 +98,7 @@ That reduces to ordinary slice expressions this rule covers.
 Moving a value out of a field leaves that field in the moved-out state while sibling fields remain valid.
 Any subsequent access to a moved-out field is a compile error.
 The compiler uses per-field move state for both use-after-move checking and cleanup emission (DROP-04).
-It is a compile error when a field is in any code path moved out **and** accessed in any code path of the enclosing value's `onDrop()` (DROP-08).
+A class that implements `onDrop()` cannot be partially moved: no field may be moved out of it (DROP-08).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -200,7 +200,7 @@ APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` a
 
 A method annotated `@consuming` consumes its receiver.
 The body owns `this`.
-It may move out of `this`'s fields (OWN-06).
+It may move out of `this`'s fields (OWN-06) unless the class implements `onDrop()`, which locks every field against partial move (DROP-08).
 It may hand `this` to a `@take` parameter or to another `@consuming` method.
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
@@ -694,7 +694,7 @@ Within a scope, variables are dropped in the reverse of their declaration order.
 
 ### DROP-04 — Drop flags for partial moves
 
-When OWN-06 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. The enclosing value's own `onDrop()` may not observe the moved-out parts (DROP-08).
+When OWN-06 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point. Implementations may optimize away drop flags when static analysis proves they are constant. Only a class that implements no `onDrop()` can be partially moved (DROP-08), so this conditional cleanup never has to skip a body-bearing class's own `onDrop()` — only the surviving fields' drops are at issue.
 
 ### DROP-05 — Drop sequence
 
@@ -705,7 +705,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 3. Step 2 repeated for `B`, then for each superclass up to `Object`.
 4. If the instance is heap-allocated, its storage is released.
 
-Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-09) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, so it may read its class's non-moved-out fields (subject to DROP-08).
+Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-09) are skipped in steps 2 and 3; each surviving owned field is dropped recursively by this same procedure. The step-1 body runs before any field teardown of that class, and may read all of its class's fields: DROP-08 forbids moving any field out of a class that implements `onDrop()`, so none can be moved-out when the body runs.
 
 ```java
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
@@ -735,11 +735,11 @@ If multiple invocations along a drop path throw — sibling variables (DROP-02),
 
 `onDrop()` implementations that perform fallible operations (network flushes, file syncs) may either catch internally or allow exceptions to propagate. DROP-10 guarantees that no external reference to the value can survive into step 4, so the drop sequence is safe to complete even after the body throws.
 
-### DROP-08 — `onDrop()` may not observe moved-out fields
+### DROP-08 — A class with `onDrop()` cannot be partially moved
 
-A field that may be moved out (OWN-06) on any path to a drop site may not be read by that class's `onDrop()` body, nor by any method it transitively invokes on `this`. The compiler diagnoses the violation at the move: a `give` of a field is rejected when the containing class has an `onDrop()` that reads it. The diagnostic identifies the field, the move, and the read.
+No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field. The compiler diagnoses the violation at the move: a `give` of such a field is rejected. The diagnostic identifies the field, the move, and the `onDrop()` declaration that locks it.
 
-The restriction is per field — an `onDrop()` reading only some fields pins only those, and partial cleanup of the rest follows DROP-04. A class whose `onDrop()` reads no field — every record, every plain data carrier, every class without an `onDrop()` implementation — imposes no restriction at all.
+A class with no `onDrop()` implementation — every record, every plain data carrier — locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04. A class that needs both an `onDrop()` and the ability to surrender a part holds that part behind a handle the cleanup path does not touch, or restructures so the part is extracted before the resource-owning husk is built.
 
 ```java
 record Pair(Resource left, Resource right) {}        // no onDrop implementation
@@ -750,11 +750,13 @@ useRight(give(p.right));       // OK: right still owned; nothing of p remains to
 
 final class Logged {           // final: required to implement onDrop (DROP-09)
     Handle h;
-    @internal void onDrop() { log("closing " + h.id()); }  // reads field h
+    Buffer buf;
+    @internal void onDrop() { log("closing " + h.id()); }  // reads h, never buf
 }
 
-var x = new Logged(openHandle());
-useHandle(give(x.h));          // ERROR: Logged.onDrop() reads h; h cannot be moved out of x
+var x = new Logged(openHandle(), allocBuf());
+useHandle(give(x.h));          // ERROR: Logged implements onDrop(); no field may be moved out
+useBuffer(give(x.buf));        // ERROR: same rule — even though onDrop() never reads buf
 ```
 
 ### DROP-09 — `onDrop()` implementations only on `final` classes
