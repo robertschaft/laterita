@@ -1772,7 +1772,7 @@ A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-c
 Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it. Consequently:
 
 - Any `.lat` source built from LAT-01–LAT-07 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
-- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06). LAT-08 (record-component visibility) is the one documented exception.
+- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06). LAT-08 (record-component visibility) is no exception: a deconstructed record keeps its `record` identity in the `.java` mirror and the deconstruction desugars to generated §1–18 members.
 - A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §20.
 
 Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
@@ -1859,11 +1859,29 @@ var h = give(s.head);     // head is a public component field, moved out
 var t = give(s.tail);     // tail moved out; s fully deconstructed
 ```
 
-A canonical accessor (`s.head()`) returns a borrow bound to the record (OWN-18), so it can never be the subject of a move. Deconstruction always reads the component as a field. A record declared in a `.java` source keeps javac's private components and cannot be deconstructed there. Deconstruction in `.java` requires a class with accessible fields (a POJO, OWN-06).
+A canonical accessor (`s.head()`) returns a borrow bound to the record (OWN-18), so it can never be the subject of a move. Deconstruction always reads the component as a field. A record declared in a `.java` source keeps javac's private components, so the `give(s.head)` spelling is `.lat`-only.
 
-Because a record move has no `.java` accessor form, this is the one `.lat` capability whose meaning-preserving `.java` mirror (LAT-00) is not a `record`: a `.lat` record that is deconstructed mirrors to a `.java` class exposing `public final` component fields alongside the canonical accessors. A record that is never deconstructed mirrors to an ordinary `.java` `record`.
+The `give`-of-a-component spelling is pure sugar (LAT-00). It desugars through a companion POJO and a `@consuming` method the compiler generates beside the record. For a record `Record(T left, S right)` deconstructed by a `.lat` source the generated members are:
 
-This makes a record's deconstructability depend on its source surface, the one documented exception to LAT-00's rule that a declaration's identity is independent of its file extension.
+```java
+@AllArgsConstructor public final class Record$AsClass { public T left; public S right; }
+
+// on Record:
+@consuming Record$AsClass intoClass() { return new Record$AsClass(give(this.left), give(this.right)); }
+```
+
+`intoClass()` is a `@consuming` method (OWN-15) running inside the record's own body, where the components are accessible, so it may move each one out into the companion (OWN-06). The companion is a POJO whose component fields are `public` — the deconstructable shape OWN-06 already requires — so it deconstructs field by field on the plain `.java` surface. A deconstruction site rewrites accordingly:
+
+```java
+record Span(Buffer head, Buffer tail) {}   // .lat
+
+var s = makeSpan();
+// .lat surface:                 desugared .java:
+var h = give(s.head);            // var c = give(s).intoClass();
+var t = give(s.tail);            // var h = give(c.head); var t = give(c.tail);
+```
+
+The record keeps its `record` identity in the `.java` mirror, and the deconstruction reduces to a `@consuming` method plus an ordinary POJO partial move — both already in the §1–18 surface — so record deconstruction adds no semantics of its own (LAT-00). `intoClass()` and the companion are generated members like any in §23: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method). A record's `.java` identity therefore no longer depends on whether it is deconstructed.
 
 ---
 

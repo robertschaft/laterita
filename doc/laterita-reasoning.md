@@ -162,8 +162,11 @@ For that state to be decidable, every move has to name a specific field statical
 So the moved field is a direct field-access path, and a move whose target depends on runtime control flow (`cond ? give(x.a) : give(x.b)`) is rejected, because it would leave the move state of both fields ambiguous at the join.
 The move also has to reach an owned field directly, which is why it reads a field rather than a method result.
 A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields, and letting a call silently deconstruct its receiver would hide the move behind a method, which is the invisibility `give` exists to prevent.
-This is what keeps records out of the deconstruction story on the `.java` surface: a record's accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
-A POJO with accessible fields is the deconstructable shape, and `.lat` brings records in by making their components public (LAT-08).
+This is what keeps a `.java` record off the direct deconstruction path: its accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
+A POJO with accessible fields is the deconstructable shape.
+The `.lat` `give`-of-a-component spelling (LAT-08) does not add a second shape: it desugars to a generated `@consuming` method that moves the record's components into a companion POJO, which is then taken apart by ordinary partial move.
+Routing through the companion lets records reuse the one deconstructable shape and keeps the record a `record` in the `.java` mirror, so LAT-00 holds without exception.
+Mirroring a deconstructed record instead to a `.java` class with public component fields would have made deconstructability a property of the source surface — whether `.lat` code happens to take the record apart — and that is the one thing LAT-00 forbids: a declaration's identity must not depend on its file extension.
 
 Once a field is gone the object is a husk, and the restrictions keep that fact honest.
 A method receives the whole receiver, part of which no longer exists, so no method may run on a partially-moved object.
