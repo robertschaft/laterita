@@ -149,9 +149,32 @@ A red-black tree node needs to access `left` and `right` independently while the
 
 Same principle as OWN-04, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness OWN-05 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
-### Why partial-move tracking (OWN-06)
+### Why partial move is restricted to direct field deconstruction (OWN-06)
 
-Once you have moves out of fields, you need to know which fields are still alive at every point in the function. This is bookkeeping the compiler does silently, and it pays off both in normal control flow (use-after-move detection on partially-moved values) and during exception unwind (DROP-04, EXC-03). Skipping it would mean making `give(...)` on a field illegal, which would make ownership transfer in real code far more painful.
+Partial move earns its keep in one job: taking a simple aggregate, preferably a `record`, apart into independently owned fields.
+That is the case that recurs.
+A builder hands out its parts, a `Pair` splits into two owning halves (ARR-04), a state object distributes its resources before it dies.
+Everything in OWN-06's shape follows from confining the feature to that job and rejecting the temptation to let a partially-moved object keep behaving like a whole one.
+
+Per-field move state is the enabling bookkeeping.
+The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the partial-move path and on exception unwind (DROP-04, EXC-03).
+For that state to be decidable, every move has to name a specific field statically.
+So the moved field is a direct field-access path, and a move whose target depends on runtime control flow (`cond ? give(x.a) : give(x.b)`) is rejected, because it would leave the move state of both fields ambiguous at the join.
+A `record` exposes its components only through canonical accessors, so those accessors count as direct component paths: each names one fixed declared component and computes nothing.
+A general method that returns a value is not a partial move at all.
+It produces an ordinary owned or borrowed result, and letting it silently deconstruct its receiver would hide the move behind a call, which is the invisibility `give` exists to prevent.
+
+Once a field is gone the object is a husk, and the restrictions keep that fact honest.
+A method receives the whole receiver, part of which no longer exists, so no method may run on a partially-moved object.
+Only further fields may be moved out, and the husk drops its survivors at block end.
+This is the rule Rust enforces, for the same reason: there is no sound `&self` or `self` to hand a method once a field has moved.
+Forbidding field assignment, and forbidding return or storage of the husk, close the remaining ways a half-object could escape and be mistaken for a live one.
+From its first move to the end of its block, the object exists only to be taken apart.
+
+This is also where the feature stops colliding with closures.
+Field-granular *move* capture, where a closure reaches into a live object and moves one field into its environment as Rust 2021 does (RFC 2229), is not expressible, because a closure captures whole variables rather than declared field paths and a move must name a field path.
+The idiom instead is to deconstruct the object into owned locals first and let the closure capture those locals, which is precisely the pre-2021 Rust pattern.
+Field-granular *borrow* capture is unaffected: a Read or Mutate closure (CLO-01) borrowing one field is an ordinary borrow, not a partial move, and stays available whenever the closure does not outlive the source.
 
 ### Why ownership annotations are not part of overload identity (OWN-13)
 
@@ -591,8 +614,8 @@ For the two-way split, three shapes were considered — continuation-passing, re
 
 ```java
 var s = arr.splitAt(mid);
-spawnWorker(give(s.left));
-processLocally(give(s.right));
+spawnWorker(give(s.left()));      // partial move of the left component out of the pair record (OWN-06)
+processLocally(give(s.right()));
 ```
 
 vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-02 already implicit in the lifetime rules.

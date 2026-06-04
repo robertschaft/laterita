@@ -93,12 +93,54 @@ That reduces to ordinary slice expressions this rule covers.
 @mut int[] right = data.slice(50, 100);  // OK: provably disjoint
 ```
 
-### OWN-06 - Partial moves are tracked per field
+### OWN-06 - Partial moves deconstruct an owned object field by field
 
-Moving a value out of a field leaves that field in the moved-out state while sibling fields remain valid.
-Any subsequent access to a moved-out field is a compile error.
-The compiler uses per-field move state for both use-after-move checking and cleanup emission (DROP-04).
-A class that implements `onDrop()` cannot be partially moved: no field may be moved out of it (DROP-08).
+A *partial move* takes an owned object apart into its independently owned fields.
+It exists for that single purpose, deconstructing a simple aggregate (preferably a `record`), and is deliberately restricted so the compiler can track it statically.
+The canonical form is an explicit `give` of a directly named field:
+
+```java
+class Split { Buffer head; Buffer tail; }     // plain owner, no onDrop()
+
+var s = makeSplit();
+var h = give(s.head);          // moves the head field out of s
+var t = give(s.tail);          // moves the tail field out; s is now fully deconstructed
+```
+
+Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
+Any subsequent read of a moved-out field is a compile error.
+The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
+
+A field may be partially moved only when all of:
+
+1. the object is owned at the move site, not borrowed (OWN-13).
+2. no borrow of the object is outstanding (OWN-03).
+3. the moved field is named by a direct field-access path `obj.field`.
+For a `record`, whose components are not public fields, the canonical component accessor `obj.field()` is such a path: it names one fixed declared component the compiler can track.
+A value produced by any other method, one that computes a result rather than projecting a declared field or component, is an ordinary owned or borrowed value, not a partial move.
+
+Once any field has been moved out, the object is partially deconstructed and may only be taken further apart:
+
+1. no method may be invoked on it, since a method receives the whole object and would observe the missing field.
+Its still-owned fields, including further record components, may themselves be moved out.
+2. its fields may not be assigned.
+3. it cannot be returned, stored, or passed whole. It is consumed at the end of the enclosing block, where its remaining owned fields are dropped (DROP-02).
+4. every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
+
+```java
+var s = makeSplit();
+var h = give(s.head);                          // s is now partially deconstructed; tail still owned
+
+s.flush();                                     // ERROR: no method may be called on a partially deconstructed object
+s.tail = makeBuffer();                         // ERROR: its fields may not be assigned
+return s;                                      // ERROR: it cannot be returned whole
+var t = give(s.tail);                          // OK: a remaining field may still be moved out
+
+var p = makeSplit();
+var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
+```
+
+A class that implements `onDrop()` cannot be partially moved at all: no field may be moved out of it (DROP-08).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -201,6 +243,7 @@ APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` a
 A method annotated `@consuming` consumes its receiver.
 The body owns `this`.
 It may move out of `this`'s fields (OWN-06) unless the class implements `onDrop()`, which locks every field against partial move (DROP-08).
+Once it moves one out, `this` is partially deconstructed under OWN-06: no further method may be invoked on `this`, only its remaining fields moved out.
 It may hand `this` to a `@take` parameter or to another `@consuming` method.
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
@@ -751,8 +794,8 @@ A class that needs both an `onDrop()` and the ability to surrender a part holds 
 record Pair(Resource left, Resource right) {}        // no onDrop implementation
 
 var p = new Pair(openA(), openB());
-useLeft(give(p.left));         // OK: Pair has no onDrop(); left is now moved-out
-useRight(give(p.right));       // OK: right still owned; nothing of p remains to drop
+useLeft(give(p.left()));       // OK: Pair has no onDrop(); left component moved out (OWN-06)
+useRight(give(p.right()));     // OK: right still owned; nothing of p remains to drop
 
 final class Logged {           // final: required to implement onDrop (DROP-09)
     Handle h;
@@ -1288,8 +1331,8 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 ```java
 var arr   = readInput();
 var split = arr.splitOff(arr.length / 2);
-var left  = split.left();
-var right = split.right();
+var left  = give(split.left());     // partial move: left component out of the pair (OWN-06)
+var right = give(split.right());    // partial move: right component; split now fully deconstructed
 var t1 = Thread.ofVirtual().start(() -> heavy(left));
 var t2 = Thread.ofVirtual().start(() -> heavy(right));
 t1.join();
@@ -1352,7 +1395,7 @@ public record Pair<L, R>(L left, R right) {}
 
 Instantiations encountered in this spec:
 
-- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Accessors `left()` and `right()` participate in partial-move tracking (OWN-06), so both fields may be consumed from the same instance.
+- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Its components are moved out individually by `give(p.left())` then `give(p.right())`, deconstructing the pair per OWN-06. The canonical component accessors name the components directly, so each is a tracked field move, and `Pair` declares no `onDrop()` so DROP-08 does not apply. This is a move, not a borrow: each half becomes an independently owned `T[]`.
 - `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing variable is `@bound` because the instance contains `@bound`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03); its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.

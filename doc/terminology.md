@@ -144,7 +144,7 @@ A method the compiler invokes to clean up a value. Only a `final` class may impl
 "Open Question." A numbered entry in the open-questions document listing unresolved language-design decisions. Example: OQ-20 (pattern matching and destructuring under ownership). Not part of the normative spec.
 
 ### Pair<L, R>
-General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases — driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves; accessors participate in partial-move tracking, OWN-06) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves). See `ARR-04`.
+General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, each component moved out individually by `give(p.left())` / `give(p.right())`, deconstructing the pair per OWN-06) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves). See `ARR-04`.
 
 ### ownership
 Having the right and obligation to drop (clean up) a value when done. An owned variable can move the value to another variable, pass it to a `@take` parameter, or drop it at scope exit. Only one variable can own a value at a time. See `OWN-01`.
@@ -156,7 +156,7 @@ The rules governing whether an overriding method's signature may differ from the
 How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `OWN-13`.
 
 ### partial move
-Moving a value out of a field while other fields of the same object remain owned. The compiler tracks which fields are moved and which remain, emitting `onDrop()` only on the unmoved fields. Available only on classes that implement no `onDrop()`. A class with an `onDrop()` body is moved whole (`DROP-08`). See `OWN-06`.
+Taking an owned object apart field by field, by `give`-ing a directly named field (`give(obj.field)`, or for a record `give(obj.field())`). Once any field is moved out the object is partially deconstructed: no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart and dropped at block end. The compiler tracks per field which are moved and which remain, emitting `onDrop()` only on the unmoved fields. Available only on classes that implement no `onDrop()`. A class with an `onDrop()` body is moved whole (`DROP-08`). See `OWN-06`.
 
 ### poisoned (Mutex)
 A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
