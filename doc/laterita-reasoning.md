@@ -151,7 +151,7 @@ Same principle as OWN-04, applied to arrays. The compiler can prove disjointness
 
 ### Why partial move is restricted to direct field deconstruction (OWN-06)
 
-Partial move earns its keep in one job: taking a simple aggregate, preferably a `record`, apart into independently owned fields.
+Partial move earns its keep in one job: taking a plain object with accessible fields (a POJO) apart into independently owned fields.
 That is the case that recurs.
 A builder hands out its parts, a `Pair` splits into two owning halves (ARR-04), a state object distributes its resources before it dies.
 Everything in OWN-06's shape follows from confining the feature to that job and rejecting the temptation to let a partially-moved object keep behaving like a whole one.
@@ -160,9 +160,10 @@ Per-field move state is the enabling bookkeeping.
 The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the partial-move path and on exception unwind (DROP-04, EXC-03).
 For that state to be decidable, every move has to name a specific field statically.
 So the moved field is a direct field-access path, and a move whose target depends on runtime control flow (`cond ? give(x.a) : give(x.b)`) is rejected, because it would leave the move state of both fields ambiguous at the join.
-A `record` exposes its components only through canonical accessors, so those accessors count as direct component paths: each names one fixed declared component and computes nothing.
-A general method that returns a value is not a partial move at all.
-It produces an ordinary owned or borrowed result, and letting it silently deconstruct its receiver would hide the move behind a call, which is the invisibility `give` exists to prevent.
+The move also has to reach an owned field directly, which is why it reads a field rather than a method result.
+A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields, and letting a call silently deconstruct its receiver would hide the move behind a method, which is the invisibility `give` exists to prevent.
+This is what keeps records out of the deconstruction story on the `.java` surface: a record's accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
+A POJO with accessible fields is the deconstructable shape, and `.lat` brings records in by making their components public (LAT-08).
 
 Once a field is gone the object is a husk, and the restrictions keep that fact honest.
 A method receives the whole receiver, part of which no longer exists, so no method may run on a partially-moved object.
@@ -614,8 +615,8 @@ For the two-way split, three shapes were considered — continuation-passing, re
 
 ```java
 var s = arr.splitAt(mid);
-spawnWorker(give(s.left()));      // partial move of the left component out of the pair record (OWN-06)
-processLocally(give(s.right()));
+spawnWorker(s.left());            // accessor borrows the left half, bound to s
+processLocally(s.right());
 ```
 
 vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-02 already implicit in the lifetime rules.

@@ -96,11 +96,11 @@ That reduces to ordinary slice expressions this rule covers.
 ### OWN-06 - Partial moves deconstruct an owned object field by field
 
 A *partial move* takes an owned object apart into its independently owned fields.
-It exists for that single purpose, deconstructing a simple aggregate (preferably a `record`), and is deliberately restricted so the compiler can track it statically.
+It exists for that single purpose, deconstructing a plain object with accessible fields (a POJO), and is deliberately restricted so the compiler can track it statically.
 The canonical form is an explicit `give` of a directly named field:
 
 ```java
-class Split { Buffer head; Buffer tail; }     // plain owner, no onDrop()
+class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
 
 var s = makeSplit();
 var h = give(s.head);          // moves the head field out of s
@@ -115,9 +115,10 @@ A field may be partially moved only when all of:
 
 1. the object is owned at the move site, not borrowed (OWN-13).
 2. no borrow of the object is outstanding (OWN-03).
-3. the moved field is named by a direct field-access path `obj.field`.
-For a `record`, whose components are not public fields, the canonical component accessor `obj.field()` is such a path: it names one fixed declared component the compiler can track.
-A value produced by any other method, one that computes a result rather than projecting a declared field or component, is an ordinary owned or borrowed value, not a partial move.
+3. the moved field is named by a direct field-access path `obj.field` to an accessible field.
+A method result is never a partial move: a method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
+In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
+A record's components are not accessible fields in `.java`, so a `.java` record cannot be deconstructed; in `.lat` its components are public (LAT-08) and deconstruct directly.
 
 Once any field has been moved out, the object is partially deconstructed and may only be taken further apart:
 
@@ -787,15 +788,15 @@ If multiple invocations along a drop path throw — sibling variables (DROP-02),
 
 No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field. The compiler diagnoses the violation at the move: a `give` of such a field is rejected. The diagnostic identifies the field, the move, and the `onDrop()` declaration that locks it.
 
-A class with no `onDrop()` implementation (every record, every plain data carrier) locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04.
+A class with no `onDrop()` implementation (every POJO, every plain data carrier, and in `.lat` every record) locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04.
 A class that needs both an `onDrop()` and the ability to surrender a part holds that part behind a handle the cleanup path does not touch, or restructures so the part is extracted before the resource-owning husk is built.
 
 ```java
-record Pair(Resource left, Resource right) {}        // no onDrop implementation
+class Holder { Resource left; Resource right; }      // POJO: no onDrop(), fields accessible
 
-var p = new Pair(openA(), openB());
-useLeft(give(p.left()));       // OK: Pair has no onDrop(); left component moved out (OWN-06)
-useRight(give(p.right()));     // OK: right still owned; nothing of p remains to drop
+var p = makeHolder();
+useLeft(give(p.left));         // OK: Holder has no onDrop(); left field moved out (OWN-06)
+useRight(give(p.right));       // OK: right still owned; nothing of p remains to drop
 
 final class Logged {           // final: required to implement onDrop (DROP-09)
     Handle h;
@@ -1331,8 +1332,8 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 ```java
 var arr   = readInput();
 var split = arr.splitOff(arr.length / 2);
-var left  = give(split.left());     // partial move: left component out of the pair (OWN-06)
-var right = give(split.right());    // partial move: right component; split now fully deconstructed
+var left  = give(split.left);       // .lat deconstruction: left component moved out of the pair (OWN-06, LAT-08)
+var right = give(split.right);      // right component; split now fully deconstructed
 var t1 = Thread.ofVirtual().start(() -> heavy(left));
 var t2 = Thread.ofVirtual().start(() -> heavy(right));
 t1.join();
@@ -1395,7 +1396,7 @@ public record Pair<L, R>(L left, R right) {}
 
 Instantiations encountered in this spec:
 
-- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. Its components are moved out individually by `give(p.left())` then `give(p.right())`, deconstructing the pair per OWN-06. The canonical component accessors name the components directly, so each is a tracked field move, and `Pair` declares no `onDrop()` so DROP-08 does not apply. This is a move, not a borrow: each half becomes an independently owned `T[]`.
+- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. The accessors `left()` and `right()` return borrows bound to the pair (OWN-18). To obtain the owning halves the pair is deconstructed by direct component access — `give(p.left)`, `give(p.right)` — a partial move (OWN-06) available in `.lat`, where record components are public (LAT-08). `Pair` declares no `onDrop()`, so DROP-08 does not apply, and each half becomes an independently owned `T[]`. A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors.
 - `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing variable is `@bound` because the instance contains `@bound`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03); its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
@@ -1771,7 +1772,7 @@ A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-c
 Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it. Consequently:
 
 - Any `.lat` source built from LAT-01–LAT-07 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
-- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06).
+- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06). LAT-08 (record-component visibility) is the one documented exception.
 - A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §20.
 
 Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
@@ -1845,6 +1846,24 @@ The method name is unconstrained. `@Operator` names the operator, so `BigDecimal
 `a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including GEN-01 `@Delegate` records whose generated forwarder widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
 Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–20 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
+
+### LAT-08 — Record components are public in `.lat`
+
+In a `.lat` source the components of a `record` are `public` fields. A record may therefore be deconstructed by partial move (OWN-06) through direct component access:
+
+```java
+record Span(Buffer head, Buffer tail) {}   // .lat
+
+var s = makeSpan();
+var h = give(s.head);     // head is a public component field, moved out
+var t = give(s.tail);     // tail moved out; s fully deconstructed
+```
+
+A canonical accessor (`s.head()`) returns a borrow bound to the record (OWN-18), so it can never be the subject of a move. Deconstruction always reads the component as a field. A record declared in a `.java` source keeps javac's private components and cannot be deconstructed there. Deconstruction in `.java` requires a class with accessible fields (a POJO, OWN-06).
+
+Because a record move has no `.java` accessor form, this is the one `.lat` capability whose meaning-preserving `.java` mirror (LAT-00) is not a `record`: a `.lat` record that is deconstructed mirrors to a `.java` class exposing `public final` component fields alongside the canonical accessors. A record that is never deconstructed mirrors to an ordinary `.java` `record`.
+
+This makes a record's deconstructability depend on its source surface, the one documented exception to LAT-00's rule that a declaration's identity is independent of its file extension.
 
 ---
 
