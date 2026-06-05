@@ -18,7 +18,7 @@ The Laterita specification lives in `doc/` at the repo root and consists of:
 
 IMPORTANT: As of branch `claude/adoring-fermat-d3KkY` the spec NO LONGER uses numeric sections (`§1`, `## 1.`, etc.). Each top-level topic is identified by its code prefix in the heading, e.g. `## OWN — Ownership`. The reason: a prefix is a stable ID, so inserting or moving a topic never renumbers anything or invalidates cross-references.
 
-- Cross-references use the prefix and rule code (`OWN-02`, `DEC-04`), never `§N`.
+- Cross-references use the prefix and rule code (`OWN-02`, `DEC-03`), never `§N`.
 - Former ordinal ranges ("§1–18 surface", "§1–20") are now the named concept "the Java-compatible surface" (= every topic except `LAT`).
 - If a `§N` numeric reference ever reappears, treat it as STALE and flag it.
 
@@ -34,7 +34,7 @@ OBSOLETE prefixes that may linger in old notes: `BIND`, `MOVE`. These were reorg
 
 ## Deconstruction (DEC) and terminology
 
-- `DEC` is its own topic (DEC-01 through DEC-04), between `UNR` and `OBJ`. `OWN-06` remains only as a short pointer to `DEC`.
+- `DEC` is its own topic (DEC-01 through DEC-03), between `UNR` and `OBJ`. `OWN-06` remains only as a short pointer to `DEC`.
 - The term "partial move" is RETIRED in favor of "deconstruction".
 - "partially deconstructed" is dropped: an object is "deconstructed" as soon as its first field is moved out.
 - `doc/terminology.md` glossary has `### deconstruction` (in its alphabetical slot), and the "Spec Code Prefixes" table includes `DEC` and `RESV`.

@@ -98,12 +98,9 @@ That reduces to ordinary slice expressions this rule covers.
 ### OWN-06 - Deconstruction of an owned object
 
 Only the owner of a value may deconstruct it, and only while no borrow of it is outstanding (OWN-03).
-An active borrow holds the value frozen until that borrow's lifetime ends (LIFE-01), so a borrowed value cannot be taken apart.
-Deconstruction moves the ownership of each field out of the object.
-A moved-out field is no longer bound to the object.
-It becomes an independently owned value with its own lifetime (OWN-07), handled like any other owned value.
 A value whose class implements `onDrop()` cannot be deconstructed (DROP-08).
-The mechanics are specified as their own topic under `DEC` (DEC-01 through DEC-04).
+Deconstruction detaches each field from the object: a moved-out field becomes an independently owned value with its own lifetime (OWN-07), no longer tied to the object it came from.
+The `DEC` topic specifies the mechanics.
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -843,10 +840,8 @@ if (n < 0) broken("n must be non-negative");
 
 ## DEC — Deconstruction
 
-Deconstruction takes an owned object apart into its independently owned fields.
-It applies only to an owned value with no outstanding borrow whose class implements no `onDrop()` (OWN-06, OWN-03, DROP-08).
-Each field it yields detaches from the object and becomes an independently owned value with its own lifetime (OWN-06).
-This topic specifies the mechanics that follow from those rules: how a field is moved out, the per-field move state the compiler keeps, the lifetime of the husk that remains, and what that husk allows.
+This topic covers the details of deconstruction.
+Other topics describe when it is allowed: an owner may deconstruct an owned object (OWN-06) whose class implements no `onDrop()` (DROP-08), and that doing so separates the object's fields into independently owned values (OWN-06).
 It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
 ### DEC-01 — Deconstruct by `give`-ing a directly accessible field
@@ -865,15 +860,12 @@ The field must be directly accessible.
 A POJO's fields are directly accessible.
 A record's components are directly accessible only in `.lat`, where they are public (LAT-08).
 A `.java` record keeps private components and cannot be deconstructed.
-A method result is never a deconstruction.
-A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
-In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
+A method result is never a deconstruction: a `give` must name a field, never a call, and a record's canonical accessor returns a borrow rather than the component (OWN-18).
 
 ### DEC-02 — Per-field move state
 
 Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
 Any subsequent read of a moved-out field is a compile error.
-The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
 Every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
 
 ```java
@@ -881,13 +873,7 @@ var p = makeSplit();
 var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
 ```
 
-### DEC-03 — Lifetime of a deconstructed instance
-
-A deconstructed instance lives from its first move to the end of its enclosing block.
-Once any field has been moved out, the object exists only to be taken further apart.
-At the end of the block it is dropped, and only its still-owned fields are dropped with it (DROP-04).
-
-### DEC-04 — Restrictions for deconstructed instances
+### DEC-03 — Restrictions for deconstructed instances
 
 Once any field has been moved out, the object may only be taken further apart:
 
@@ -896,6 +882,7 @@ Once any field has been moved out, the object may only be taken further apart:
 3. it cannot be returned, stored, or passed whole.
 
 Its still-owned fields, including further record components, may themselves be moved out.
+At the end of its block the husk is dropped, and only the fields still owned then are dropped with it (DROP-04).
 
 ```java
 var s = makeSplit();

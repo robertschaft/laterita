@@ -80,7 +80,7 @@ A reference that doesn't count toward refcount. Used to break cycles in `Rc` gra
 **Cleanup terminology** appears in:
 - Scope exit (`DROP-01`, `DROP-02`, `DROP-03`)
 - Exception unwind (`EXC-02`, `EXC-03`)
-- Deconstruction (`DROP-04`, `DEC-01`–`DEC-04`)
+- Deconstruction (`DROP-04`, `DEC` topic)
 - Iterators (`STD-08`: invalidating a borrow via iterator mutation)
 - Threads (`THR-06`: `Thread.onDrop()` interruption)
 

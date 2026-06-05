@@ -53,7 +53,7 @@ As of branch `claude/adoring-fermat-d3KkY` all such references were removed acro
 | STAT | Static storage |
 | DROP | Scope-exit cleanup, onDrop() |
 | UNR | Unreachability (broken()) |
-| DEC | Deconstruction (DEC-01…DEC-04) |
+| DEC | Deconstruction (DEC-01…DEC-03) |
 | OBJ | Object copying |
 | NULL | Optionality |
 | EXC | Exceptions |
