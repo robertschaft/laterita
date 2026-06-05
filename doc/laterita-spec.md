@@ -97,8 +97,12 @@ That reduces to ordinary slice expressions this rule covers.
 
 ### OWN-06 - Deconstruction of an owned object
 
-Deconstruction takes an owned object apart field by field.
-It is specified as its own topic under `DEC` (DEC-01 through DEC-04).
+Only the owner of a value may deconstruct it.
+
+Deconstruction moves the ownership of fields away from an object.
+They are not bound to the object anymore and gain their own lifetime.
+This allows handling them independently.
+Deconstruction is specified as its own topic under `DEC` (DEC-01 through DEC-04).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -200,9 +204,15 @@ APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` a
 
 A method annotated `@consuming` consumes its receiver.
 The body owns `this`.
-It may move out of `this`'s fields (OWN-06) unless the class implements `onDrop()`, which locks every field against deconstruction (DROP-08).
-Once it moves one out, `this` is deconstructed under OWN-06: no further method may be invoked on `this`, only its remaining fields moved out.
-It may hand `this` to a `@take` parameter or to another `@consuming` method.
+It runs therefore exactly one of the special operations that are normally only permitted to the owner:
+
+- return `this` un-`@bound`.
+- hand `this` to another method as a `@take` parameter.
+- call another `@consuming` method on `this`.
+- drop `this` at the end of the method by doing nothing with it.
+- deconstruct `this` (DEC topic) and own its fields as independent objects.
+  All the above operations can then be performed on those fields independently.
+
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
 

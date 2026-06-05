@@ -301,11 +301,3 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `Condition` | `java.util.concurrent.locks.Condition` or `Object.wait`/`notify` | Same API as `j.u.c.l.Condition`; runtime-checks the bound lock is held |
 | `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object; closer to C++ destructors than Java finalizers |
 | `drop` flag | N/A | Java doesn't track per-field move state |
-
----
-
-## Further Reading
-
-Readers new to ownership and borrowing should start with the `OWN`, `LIFE`, and `MUT` topics of `laterita-spec.md` and then read the corresponding sections of `laterita-reasoning.md` to understand the design trade-offs.
-
-For specific term definitions, cross-reference the spec code (e.g., `OWN-02`, `MUT-01`) listed in the spec document itself.

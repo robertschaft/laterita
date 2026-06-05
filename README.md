@@ -74,7 +74,7 @@ In `.java` files the same callback is expressed by declaring a nominal functiona
 
 ## Reading order
 
-- New to the project: skim the `OWN`, `LIFE`, and `MUT` topics of the spec (ownership, lifetimes, mutability) and the `LAT` topic (`.lat` forms), then read the matching sections of the reasoning document.
+- New to the project: high-level skim the [`specification`](doc/laterita-spec.md) topics in the order they appear, and look up unknown terms in the [`terminology`](doc/terminology.md).
 - Evaluating a design choice: open the reasoning document at the relevant section; cross-reference the spec codes it cites, and check `resolved-questions.md` for decisions already closed.
 - Looking for what's still undecided: start with the open-questions document.
 
