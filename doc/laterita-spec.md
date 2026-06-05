@@ -97,11 +97,9 @@ That reduces to ordinary slice expressions this rule covers.
 
 ### OWN-06 - Deconstruction transfers an owned object's fields to its scope
 
-Only an owned object can be deconstructed, and only by its owner while no borrow of it is outstanding (OWN-03).
-At its first deconstructing operation (DEC) the ownership of the object's fields transfers to the scope where the deconstruction was initiated.
-Each formerly owned field becomes an independent value owned by that scope.
-A `@borrow` field becomes unbound, releasing the borrow it held for the object (OWN-09).
-A value whose class implements `onDrop()` cannot be deconstructed (DROP-08).
+Only an owned object can be deconstructed.
+At its first deconstructing operation (DEC) the ownership of its fields transfers to the scope where the deconstruction was initiated.
+Each formerly owned field becomes an independent value owned by that scope, and a `@borrow` field becomes unbound (OWN-09).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -847,7 +845,7 @@ if (n < 0) broken("n must be non-negative");
 ## DEC — Deconstruction
 
 This topic covers the details of deconstruction.
-Other topics describe when it is allowed and what it does: an owner may deconstruct an owned object (OWN-06) whose class implements no `onDrop()` (DROP-08), which transfers the object's fields to the surrounding scope (OWN-06) and ends the object's lifetime while giving each formerly owned field an independent one (LIFE-04).
+Other topics describe when it is allowed and what it does: only an owner may deconstruct an owned object, with no borrow of it outstanding (OWN-03) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope (OWN-06) and ends the object's lifetime, giving each formerly owned field an independent one (LIFE-04).
 It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
 ### DEC-01 — Deconstruct by `give`-ing a directly accessible field
