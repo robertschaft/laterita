@@ -97,12 +97,13 @@ That reduces to ordinary slice expressions this rule covers.
 
 ### OWN-06 - Deconstruction of an owned object
 
-Only the owner of a value may deconstruct it.
-
-Deconstruction moves the ownership of fields away from an object.
-They are not bound to the object anymore and gain their own lifetime.
-This allows handling them independently.
-Deconstruction is specified as its own topic under `DEC` (DEC-01 through DEC-04).
+Only the owner of a value may deconstruct it, and only while no borrow of it is outstanding (OWN-03).
+An active borrow holds the value frozen until that borrow's lifetime ends (LIFE-01), so a borrowed value cannot be taken apart.
+Deconstruction moves the ownership of each field out of the object.
+A moved-out field is no longer bound to the object.
+It becomes an independently owned value with its own lifetime (OWN-07), handled like any other owned value.
+A value whose class implements `onDrop()` cannot be deconstructed (DROP-08).
+The mechanics are specified as their own topic under `DEC` (DEC-01 through DEC-04).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -843,37 +844,33 @@ if (n < 0) broken("n must be non-negative");
 ## DEC — Deconstruction
 
 Deconstruction takes an owned object apart into its independently owned fields.
-It is part of the Java-compatible surface: every form here is expressible as annotated `.java` that `javac` parses.
+It applies only to an owned value with no outstanding borrow whose class implements no `onDrop()` (OWN-06, OWN-03, DROP-08).
+Each field it yields detaches from the object and becomes an independently owned value with its own lifetime (OWN-06).
+This topic specifies the mechanics that follow from those rules: how a field is moved out, the per-field move state the compiler keeps, the lifetime of the husk that remains, and what that husk allows.
+It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
-### DEC-01 — When an object may be deconstructed
+### DEC-01 — Deconstruct by `give`-ing a directly accessible field
 
-An owned object may be deconstructed only when all of:
-
-1. it is owned at the move site, not borrowed (OWN-13).
-2. no borrow of it is outstanding (OWN-03).
-3. it implements no `onDrop()` (DROP-08).
-4. the field being moved out is directly accessible.
-
-A POJO's fields are directly accessible.
-A record's components are directly accessible only in `.lat`, where they are public (LAT-08).
-A `.java` record keeps private components and cannot be deconstructed.
-
-### DEC-02 — Deconstruct by `give`-ing an owned field
-
-The canonical form is an explicit `give` of a directly named field:
+A field is moved out by `give`-ing it through a direct field-access path `obj.field`:
 
 ```java
 class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
 
 var s = makeSplit();
 var h = give(s.head);          // moves the head field out of s
-var t = give(s.tail);          // moves the tail field out; s is now fully deconstructed
+var t = give(s.tail);          // moves the tail field out, leaving s fully deconstructed
 ```
 
-A field is moved out only by reading it through a direct field-access path `obj.field`.
+The field must be directly accessible.
+A POJO's fields are directly accessible.
+A record's components are directly accessible only in `.lat`, where they are public (LAT-08).
+A `.java` record keeps private components and cannot be deconstructed.
 A method result is never a deconstruction.
 A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
 In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
+
+### DEC-02 — Per-field move state
+
 Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
 Any subsequent read of a moved-out field is a compile error.
 The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
@@ -888,8 +885,7 @@ var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not 
 
 A deconstructed instance lives from its first move to the end of its enclosing block.
 Once any field has been moved out, the object exists only to be taken further apart.
-It is consumed at the end of the enclosing block, where its remaining owned fields are dropped (DROP-02).
-The compiler emits `onDrop()` only on the fields still owned at that exit point (DROP-04).
+At the end of the block it is dropped, and only its still-owned fields are dropped with it (DROP-04).
 
 ### DEC-04 — Restrictions for deconstructed instances
 
@@ -903,7 +899,7 @@ Its still-owned fields, including further record components, may themselves be m
 
 ```java
 var s = makeSplit();
-var h = give(s.head);                          // s is now deconstructed; tail still owned
+var h = give(s.head);                          // s is now deconstructed, tail still owned
 
 s.flush();                                     // ERROR: no method may be called on a deconstructed object
 s.tail = makeBuffer();                         // ERROR: it can't be mutated anymore
@@ -977,7 +973,9 @@ A class opts out of copying by overriding `clone()` with a body that reaches `br
 
 ## NULL — Optionality
 
-Nullability is a property of types in both source surfaces. The `.lat` spelling `T?` and the operators `?.`, `?:`, and `!!` are syntactic sugar specified in the `LAT` topic; the rules below define nullability semantics independent of spelling.
+Nullability is a property of types in both source surfaces.
+The `.lat` spelling `T?` and the operators `?.`, `?:`, and `!!` are syntactic sugar specified in the `LAT` topic.
+The rules below define nullability semantics independent of spelling.
 
 ### NULL-01 — Types are non-nullable by default
 

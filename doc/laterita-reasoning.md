@@ -38,9 +38,16 @@ The source surface is therefore split in two rather than dropping either group. 
 
 ### Why the `.lat` surface is pure syntactic sugar (LAT-00)
 
-The five `.lat` forms are confined to the `LAT` topic, which carries a hard constraint: every form in it is sugar with an exact desugaring to the Java-compatible surface, and none introduces semantics of its own (LAT-00). This keeps the two surfaces from drifting into two languages. A `.lat` source and its desugared `.java` form are the same program; migration tooling rewrites one into the other mechanically in either direction.
+The five `.lat` forms are confined to the `LAT` topic, which carries a hard constraint: every form in it is sugar with an exact desugaring to the Java-compatible surface, and none introduces semantics of its own (LAT-00).
+This keeps the two surfaces from drifting into two languages.
+A `.lat` source and its desugared `.java` form are the same program.
+Migration tooling rewrites one into the other mechanically in either direction.
 
-The constraint also resolves where a future feature belongs. A proposed addition that is genuinely just notation — a shorter spelling for something the annotation-and-intrinsic surface (RESV) already expresses — goes in the `LAT` topic. A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar; it belongs on the Java-compatible surface, expressed through annotations or intrinsics so that the `.java` surface carries it too. Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise — that the surfaces are interchangeable — would quietly fail.
+The constraint also resolves where a future feature belongs.
+A proposed addition that is genuinely just notation, a shorter spelling for something the annotation-and-intrinsic surface (RESV) already expresses, goes in the `LAT` topic.
+A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar.
+It belongs on the Java-compatible surface, expressed through annotations or intrinsics so that the `.java` surface carries it too.
+Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise that the surfaces are interchangeable would quietly fail.
 
 ### Why `.lat` drops the diamond on constructor calls (LAT-06)
 
