@@ -1,77 +1,46 @@
 ---
 name: Specification Structure
-description: Layout and relationships of the four core Laterita specification documents
+description: Layout and relationships of the Laterita specification documents
 type: reference
 ---
 
 ## Document Organization
 
-The Laterita specification is in `/workspace/jdk/doc/laterita/` and consists of four files:
+The Laterita specification lives in `doc/` at the repo root and consists of:
 
-### 1. README.md
-Overview and entry point. Lists the three main spec documents and reading order recommendations (new to project → skim §1–3, then read matching reasoning; evaluating a design → open reasoning doc; looking for unresolved questions → open questions doc).
+- `doc/laterita-spec.md` — normative spec. Every topic except `LAT` is the Java-compatible surface (expressible as annotated `.java` that `javac` parses). The `LAT` topic is the `.lat` sugar (LAT-00: pure syntactic sugar, exact desugaring, no semantics of its own).
+- `doc/laterita-reasoning.md` — design rationale. Section headers reference the corresponding spec codes. Written as if the current spec were the first commit (no project history).
+- `doc/laterita-open-questions.md` — unresolved questions (`OQ-NN`).
+- `doc/resolved-questions.md` — closed decisions: rejected-alternatives table + resolved-OQ tombstones.
+- `doc/terminology.md` — defined terms, plus a "Spec Code Prefixes" table and "Java Analogies" table.
 
-### 2. laterita-spec.md (~64KB)
-**Normative specification.** Defines every requirement a compiler must implement. Organized in 16 sections (numbered §1–16, with §17 for reserved names):
-- §1–2: Bindings, optionality
-- §3–6: Move/borrow, mutability, lifetimes, cleanup
-- §7–11: Copying, unreachability, strings, functional interfaces, closures
-- §12–15: Exceptions, unsafe, standard library types (Rc/Arc/Cell/Heap/Mutex), threads
-- §16–17: Compilation model, reserved names
+## Topics are prefix-identified (no section numbers)
 
-Each requirement carries a mnemonic code (e.g., `BIND-01`, `MOVE-03`) for cross-reference.
+IMPORTANT: As of branch `claude/adoring-fermat-d3KkY` the spec NO LONGER uses numeric sections (`§1`, `## 1.`, etc.). Each top-level topic is identified by its code prefix in the heading, e.g. `## OWN — Ownership`. The reason: a prefix is a stable ID, so inserting or moving a topic never renumbers anything or invalidates cross-references.
 
-### 3. laterita-reasoning.md (~90KB)
-**Design rationale.** Explains *why* each spec rule reads the way it does. Section headers reference the corresponding spec codes. Includes:
-- Design alternatives considered
-- Trade-offs taken
-- Java/Rust/Kotlin precedents followed or rejected
-- Non-normative recommendations on implementation and style
+- Cross-references use the prefix and rule code (`OWN-02`, `DEC-04`), never `§N`.
+- Former ordinal ranges ("§1–18 surface", "§1–20") are now the named concept "the Java-compatible surface" (= every topic except `LAT`).
+- If a `§N` numeric reference ever reappears, treat it as STALE and flag it.
 
-### 4. laterita-open-questions.md (~5KB)
-**Unresolved design decisions.** Entries that were surfaced during design but *not* resolved. Format:
-- OQ-N: name
-- Surfaced when: context
-- The issue: what's unresolved
-- Why it matters: implications
-- Related codes: spec sections it touches
+## Current topic order (verified from `^## ` headings)
 
-Current entries: OQ-06 (Spring DI), OQ-10 (JavaBean migration), OQ-11 (bean scopes), OQ-14 (string ownership), OQ-15 (Java code migratability).
+OWN, LIFE, MUT, HIER, TARG, STAT, DROP, UNR, **DEC**, OBJ, NULL, EXC, FN, CLO, STR, ARR, UNS, STD, THR, COMP, **RESV**, LAT, NABI, GEN.
 
-Resolved questions are reduced to one-line tombstones at the end.
+## Spec code prefixes
 
----
+OWN (ownership), LIFE (lifetimes), MUT (mutability), HIER (class hierarchy and override), TARG (annotations in generic type arguments), STAT (static storage), DROP (scope-exit cleanup), UNR (unreachability), **DEC (deconstruction)**, OBJ (object copying), NULL (optionality), EXC (exceptions), FN (functional interfaces), CLO (closures), STR (strings), ARR (arrays), UNS (unsafe), STD (standard library types), THR (threads), COMP (compilation model), **RESV (reserved names + the annotation/intrinsic surface)**, LAT (`.lat` surface forms), NABI (native ABI), GEN (code generation annotations).
 
-## Key Terminology Observations
+OBSOLETE prefixes that may linger in old notes: `BIND`, `MOVE`. These were reorganized long ago into `OWN` / `MUT` / `LIFE` / `HIER` / `TARG` / `STAT` (see resolved-questions.md). Any memory referencing them is stale.
 
-**Spec code prefixes** organize requirements:
-- BIND, NULL, MOVE, MUT, LIFE, DROP, OBJ, UNR, STR, FN, CLO, EXC, UNS, STD, THR, COMP
+## Deconstruction (DEC) and terminology
 
-**Rust-derived vocabulary** pervades the spec:
-- Ownership, borrowing, moves, lifetimes, traits (via functional interfaces), RAII (`onDrop()`)
-
-**Java-preserving choices:**
-- Types-first syntax, not postfix (Rust uses postfix)
-- `mut` for mutability (single unified keyword)
-- `give`/`take` instead of Rust's single `move` (reflecting Java's two-ended asymmetry)
-- Anonymous functional interfaces instead of trait objects
-
-**Project conventions:**
-- Do not change existing OQ numbers
-- Resolved questions must document the reasoning before becoming tombstones
-- New terminology is added to terminology.md; each entry must be used in the spec
+- `DEC` is its own topic (DEC-01 through DEC-04), between `UNR` and `OBJ`. `OWN-06` remains only as a short pointer to `DEC`.
+- The term "partial move" is RETIRED in favor of "deconstruction".
+- "partially deconstructed" is dropped: an object is "deconstructed" as soon as its first field is moved out.
+- `doc/terminology.md` glossary has `### deconstruction` (in its alphabetical slot), and the "Spec Code Prefixes" table includes `DEC` and `RESV`.
 
 ---
 
-## Terminology Coverage Status
+## Audit status
 
-**Created:** 2026-05-07
-
-**Entries included:** 60+ terms covering:
-- Rust concepts (borrow, lifetime, move, ownership, etc.)
-- Project-specific keywords (give, take, bound, local, nonlocal, unsafe, internal, onDrop, etc.)
-- Standard library types (Rc, Arc, Cell, Heap, Mutex, MutexGuard, WeakReference, Thread)
-- Advanced concepts (monomorphization, variance, interior mutability, drop flags, poison, etc.)
-- Java analogies for every Rust concept
-
-**Audit status:** Initial creation. Next audit after 4 more edits (5/5 edit threshold).
+Memory refreshed on branch `claude/adoring-fermat-d3KkY` to record the prefix-as-identifier scheme, the `DEC` and `RESV` topics, the current topic order, and the deconstruction terminology. Next orphan audit per the usual 5-edit threshold.
