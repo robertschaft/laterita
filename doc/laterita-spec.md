@@ -95,12 +95,13 @@ That reduces to ordinary slice expressions this rule covers.
 @mut int[] right = data.slice(50, 100);  // OK: provably disjoint
 ```
 
-### OWN-06 - Deconstruction of an owned object
+### OWN-06 - Deconstruction transfers an owned object's fields to its scope
 
-Only the owner of a value may deconstruct it, and only while no borrow of it is outstanding (OWN-03).
+Only an owned object can be deconstructed, and only by its owner while no borrow of it is outstanding (OWN-03).
+At its first deconstructing operation (DEC) the ownership of the object's fields transfers to the scope where the deconstruction was initiated.
+Each formerly owned field becomes an independent value owned by that scope.
+A `@borrow` field becomes unbound, releasing the borrow it held for the object (OWN-09).
 A value whose class implements `onDrop()` cannot be deconstructed (DROP-08).
-Deconstruction detaches each field from the object: a moved-out field becomes an independently owned value with its own lifetime (OWN-07), no longer tied to the object it came from.
-The `DEC` topic specifies the mechanics.
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -318,6 +319,11 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}
 @bound EntryView<String, Integer> view = new EntryView<>(name, count);
 // view's lifetime = min(name, count)
 ```
+
+### LIFE-04 - Deconstruction ends an object's lifetime
+
+The lifetime of a deconstructed object ends immediately, at its first deconstructing operation (DEC).
+In exchange, deconstruction gives each of the object's formerly owned fields an independent lifetime, bounded by the scope that now owns it (OWN-06).
 
 ---
 
@@ -841,12 +847,13 @@ if (n < 0) broken("n must be non-negative");
 ## DEC — Deconstruction
 
 This topic covers the details of deconstruction.
-Other topics describe when it is allowed: an owner may deconstruct an owned object (OWN-06) whose class implements no `onDrop()` (DROP-08), and that doing so separates the object's fields into independently owned values (OWN-06).
+Other topics describe when it is allowed and what it does: an owner may deconstruct an owned object (OWN-06) whose class implements no `onDrop()` (DROP-08), which transfers the object's fields to the surrounding scope (OWN-06) and ends the object's lifetime while giving each formerly owned field an independent one (LIFE-04).
 It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
 ### DEC-01 — Deconstruct by `give`-ing a directly accessible field
 
-A field is moved out by `give`-ing it through a direct field-access path `obj.field`:
+`give(x.y)` deconstructs `x` by moving its field `y` out.
+The moved field is named by a direct field-access path `obj.field`:
 
 ```java
 class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
@@ -875,14 +882,14 @@ var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not 
 
 ### DEC-03 — Restrictions for deconstructed instances
 
-Once any field has been moved out, the object may only be taken further apart:
+Once any field has been moved out, the object's lifetime has ended (LIFE-04).
+It may only be taken further apart, one remaining field at a time:
 
 1. no method may be invoked on it.
 2. its fields may not be assigned.
 3. it cannot be returned, stored, or passed whole.
 
-Its still-owned fields, including further record components, may themselves be moved out.
-At the end of its block the husk is dropped, and only the fields still owned then are dropped with it (DROP-04).
+Its remaining fields, including further record components, may still be moved out.
 
 ```java
 var s = makeSplit();
