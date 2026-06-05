@@ -15,12 +15,12 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
 
-**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each variable produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or partially moving (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each variable produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or deconstructing (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
 
 **The question.**
 - Do record-pattern variables default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
 - Is there an opt-in `@take` form on a pattern variable to switch arms between borrow and consume?
-- How does exhaustiveness interact with partial moves: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
+- How does exhaustiveness interact with deconstruction: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
 - For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once. Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 
@@ -53,12 +53,12 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ## OQ-23 — Channels and message-passing for inter-thread communication
 
-**Surfaced when:** observing that §18 specifies threads, interruption, joining, and `Mutex<T>`, but no channel primitive — yet Rust's primary thread-communication idiom is `std::sync::mpsc` / `crossbeam` channels with move-on-send.
+**Surfaced when:** observing that the `THR` topic specifies threads, interruption, joining, and `Mutex<T>`, but no channel primitive — yet Rust's primary thread-communication idiom is `std::sync::mpsc` / `crossbeam` channels with move-on-send.
 
 **The issue.** Shared-state concurrency via `Arc<Mutex<T>>` is covered. Message-passing concurrency — sender moves a `@take` value into the channel, receiver gets ownership on the other side, no aliasing across threads — is not. The ownership model maps to channels especially cleanly: `Sender<T>.send(@take T)` and `Receiver<T>.recv() → T` are simply moves across a queue, with `@local` (STD-07) gating which `T` may be sent.
 
 **The question.**
-- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required stdlib (§17, Reserved Names §20) or a third-party library?
+- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required stdlib (`STD`, Reserved Names `RESV`) or a third-party library?
 - Bounded vs unbounded? SPSC vs MPSC vs MPMC? Does the stdlib commit to a single shape, or expose a hierarchy?
 - Is `send` an interruption point (THR-04)? Does dropping the last `Sender` close the channel (analog of Rust's `RecvError`)?
 - How does back-pressure surface — `BlockingQueue`-style `put`/`offer`, or a structured `trySend` returning the value back on full?
@@ -116,7 +116,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ## OQ-33 — Primitives in the ownership and mutability system
 
-**Surfaced when:** thinking through the §1 framing of variables as Java-variable slots carrying an ownership discipline.
+**Surfaced when:** thinking through the `OWN` framing of variables as Java-variable slots carrying an ownership discipline.
 The framing maps cleanly onto reference types (each slot points at a heap value, with one owner among the slots) but is awkward for `int`, `long`, `double`, `boolean`, etc.
 Primitives have no heap identity: there is nothing to point at, nothing to drop, and a "borrow" of an `int` has no observable difference from a copy.
 
@@ -144,7 +144,7 @@ If primitives sit outside the borrow system entirely, two follow-on rules need t
   Borrow rules might apply to the storage of the nullable wrapper even when the underlying type is primitive.
 
 **Why it matters.**
-The §1 model of variables-as-ownership-disciplined-slots only holds for reference types.
+The `OWN` model of variables-as-ownership-disciplined-slots only holds for reference types.
 Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 

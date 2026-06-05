@@ -3,9 +3,9 @@
 This document specifies the normative requirements that a Laterita compiler and standard library must satisfy.
 Each requirement carries a mnemonic code for cross-reference.
 
-Sections 1 through 20 specify the Java-compatible surface.
+Every topic except `LAT` specifies the Java-compatible surface.
 Every rule there is expressible as annotated `.java` source that `javac` parses (COMP-06).
-Section 21 specifies the `.lat` surface forms.
+The `LAT` topic specifies the `.lat` surface forms.
 Those are syntactic sugar that desugars to the Java-compatible surface and adds no semantics of its own (LAT-00).
 
 Codes are grouped by area:
@@ -18,6 +18,7 @@ Codes are grouped by area:
 `NULL` (optionality),
 `DROP` (cleanup),
 `OBJ` (object copying),
+`DEC` (deconstruction),
 `UNR` (unreachability),
 `STR` (strings),
 `ARR` (arrays),
@@ -28,13 +29,14 @@ Codes are grouped by area:
 `STD` (standard library types),
 `THR` (threads),
 `COMP` (compilation model),
+`RESV` (reserved names),
 `LAT` (`.lat` surface forms),
 `NABI` (native ABI),
 `GEN` (code generation annotations).
 
 ---
 
-## 1. Ownership
+## OWN — Ownership
 
 This section specifies how values are owned and borrowed, and how ownership transfers across local variables, parameters, returns, and fields.
 
@@ -93,10 +95,10 @@ That reduces to ordinary slice expressions this rule covers.
 @mut int[] right = data.slice(50, 100);  // OK: provably disjoint
 ```
 
-### OWN-06 - Partial moves deconstruct an owned object field by field
+### OWN-06 - Deconstruction of an owned object
 
-Partial move is the deconstruction of an owned object field by field.
-It is specified as its own topic in §24 (DEC-01 through DEC-04).
+Deconstruction takes an owned object apart field by field.
+It is specified as its own topic under `DEC` (DEC-01 through DEC-04).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -198,8 +200,8 @@ APIs needing both borrow and consume shapes use distinct names (e.g. `splitAt` a
 
 A method annotated `@consuming` consumes its receiver.
 The body owns `this`.
-It may move out of `this`'s fields (OWN-06) unless the class implements `onDrop()`, which locks every field against partial move (DROP-08).
-Once it moves one out, `this` is partially deconstructed under OWN-06: no further method may be invoked on `this`, only its remaining fields moved out.
+It may move out of `this`'s fields (OWN-06) unless the class implements `onDrop()`, which locks every field against deconstruction (DROP-08).
+Once it moves one out, `this` is deconstructed under OWN-06: no further method may be invoked on `this`, only its remaining fields moved out.
 It may hand `this` to a `@take` parameter or to another `@consuming` method.
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
@@ -280,7 +282,7 @@ The diagnostic identifies the contributing source the body actually uses.
 
 ---
 
-## 2. Lifetimes
+## LIFE — Lifetimes
 
 ### LIFE-01 - A borrow may not outlive its source
 
@@ -311,7 +313,7 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}
 
 ---
 
-## 3. Mutability
+## MUT — Mutability
 
 ### MUT-01 - `@mut` is the unified mutability marker
 
@@ -465,7 +467,7 @@ This is the only mechanism that bypasses MUT-09.
 
 ---
 
-## 4. Class Hierarchy and Override
+## HIER — Class Hierarchy and Override
 
 ### HIER-01 - `@mut` class extends only `@mut`
 
@@ -566,7 +568,7 @@ An override may declare fewer or narrower checked exceptions than the inherited 
 
 ---
 
-## 5. Annotations in Generic Type Arguments
+## TARG — Annotations in Generic Type Arguments
 
 ### TARG-01 - `@bound` admitted in a type argument
 
@@ -639,7 +641,7 @@ It accumulates lifetime constraints on a single borrow.
 
 ---
 
-## 6. Static Storage
+## STAT — Static Storage
 
 ### STAT-01 - Static fields are immutable
 
@@ -670,7 +672,7 @@ Use `static Arc<T>`.
 
 ---
 
-## 7. Scope-Exit Cleanup
+## DROP — Scope-Exit Cleanup
 
 ### DROP-01 — Universal `onDrop()`
 
@@ -691,11 +693,11 @@ Within a scope, variables are dropped in the reverse of their declaration order.
 
 `onDrop()` must be invoked on every exit path from a scope: normal completion, return, break, continue, and exceptional unwind.
 
-### DROP-04 — Drop flags for partial moves
+### DROP-04 — Drop flags for deconstruction
 
-When OWN-06 has resulted in partially-moved values, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point.
+When deconstruction (OWN-06) has left fields moved out, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point.
 Implementations may optimize away drop flags when static analysis proves they are constant.
-Only a class that implements no `onDrop()` can be partially moved (DROP-08), so this conditional cleanup only ever skips individual fields' drops, never a body-bearing class's own `onDrop()`.
+Only a class that implements no `onDrop()` can be deconstructed (DROP-08), so this conditional cleanup only ever skips individual fields' drops, never a body-bearing class's own `onDrop()`.
 
 ### DROP-05 — Drop sequence
 
@@ -727,7 +729,7 @@ final class TimerScope {                  // final: required to implement onDrop
 
 The annotation `@internal` declares that a method may be invoked only by compiler-emitted call sites. User code cannot invoke an `@internal` method directly (`x.onDrop()`); doing so is a compile error.
 
-`onDrop()` is the only `@internal` method introduced by this specification. The compiler emits its invocations at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and as part of the drop sequence (DROP-05).
+`onDrop()` is the only `@internal` method introduced by this specification. The compiler emits its invocations at scope exits (DROP-01), on deconstruction paths (DROP-04), on exception unwind (EXC-02), and as part of the drop sequence (DROP-05).
 
 `@internal` is reserved for future compiler-orchestrated hooks. It is not a general-purpose access-control level; ordinary visibility scoping continues to use `public`, `protected`, `private`, and package-default.
 
@@ -739,7 +741,7 @@ If multiple invocations along a drop path throw — sibling variables (DROP-02),
 
 `onDrop()` implementations that perform fallible operations (network flushes, file syncs) may either catch internally or allow exceptions to propagate. DROP-10 guarantees that no external reference to the value can survive into step 4, so the drop sequence is safe to complete even after the body throws.
 
-### DROP-08 — A class with `onDrop()` cannot be partially moved
+### DROP-08 — A class with `onDrop()` cannot be deconstructed
 
 No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field.
 The compiler diagnoses the violation at the move: a `give` of such a field is rejected.
@@ -790,7 +792,7 @@ Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the cal
 
 ---
 
-## 8. Unreachability
+## UNR — Unreachability
 
 ### UNR-01 — `broken()` declares a path unreachable
 
@@ -828,7 +830,80 @@ if (n < 0) broken("n must be non-negative");
 
 ---
 
-## 9. Copying
+## DEC — Deconstruction
+
+Deconstruction takes an owned object apart into its independently owned fields.
+It is part of the Java-compatible surface: every form here is expressible as annotated `.java` that `javac` parses.
+
+### DEC-01 — When an object may be deconstructed
+
+An owned object may be deconstructed only when all of:
+
+1. it is owned at the move site, not borrowed (OWN-13).
+2. no borrow of it is outstanding (OWN-03).
+3. it implements no `onDrop()` (DROP-08).
+4. the field being moved out is directly accessible.
+
+A POJO's fields are directly accessible.
+A record's components are directly accessible only in `.lat`, where they are public (LAT-08).
+A `.java` record keeps private components and cannot be deconstructed.
+
+### DEC-02 — Deconstruct by `give`-ing an owned field
+
+The canonical form is an explicit `give` of a directly named field:
+
+```java
+class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
+
+var s = makeSplit();
+var h = give(s.head);          // moves the head field out of s
+var t = give(s.tail);          // moves the tail field out; s is now fully deconstructed
+```
+
+A field is moved out only by reading it through a direct field-access path `obj.field`.
+A method result is never a deconstruction.
+A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
+In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
+Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
+Any subsequent read of a moved-out field is a compile error.
+The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
+Every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
+
+```java
+var p = makeSplit();
+var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
+```
+
+### DEC-03 — Lifetime of a deconstructed instance
+
+A deconstructed instance lives from its first move to the end of its enclosing block.
+Once any field has been moved out, the object exists only to be taken further apart.
+It is consumed at the end of the enclosing block, where its remaining owned fields are dropped (DROP-02).
+The compiler emits `onDrop()` only on the fields still owned at that exit point (DROP-04).
+
+### DEC-04 — Restrictions for deconstructed instances
+
+Once any field has been moved out, the object may only be taken further apart:
+
+1. no method may be invoked on it.
+2. its fields may not be assigned.
+3. it cannot be returned, stored, or passed whole.
+
+Its still-owned fields, including further record components, may themselves be moved out.
+
+```java
+var s = makeSplit();
+var h = give(s.head);                          // s is now deconstructed; tail still owned
+
+s.flush();                                     // ERROR: no method may be called on a deconstructed object
+s.tail = makeBuffer();                         // ERROR: it can't be mutated anymore
+return s;                                      // ERROR: it cannot be returned whole
+var t = give(s.tail);                          // OK: a remaining field may still be moved out
+```
+
+---
+
+## OBJ — Copying
 
 ### OBJ-01 — Auto-generated copy constructor
 
@@ -890,9 +965,9 @@ A class opts out of copying by overriding `clone()` with a body that reaches `br
 
 ---
 
-## 10. Optionality
+## NULL — Optionality
 
-Nullability is a property of types in both source surfaces. The `.lat` spelling `T?` and the operators `?.`, `?:`, and `!!` are syntactic sugar specified in §21; the rules below define nullability semantics independent of spelling.
+Nullability is a property of types in both source surfaces. The `.lat` spelling `T?` and the operators `?.`, `?:`, and `!!` are syntactic sugar specified in the `LAT` topic; the rules below define nullability semantics independent of spelling.
 
 ### NULL-01 — Types are non-nullable by default
 
@@ -918,7 +993,7 @@ print(maybeName.length());        // ERROR: requires null check
 
 The literal `null` has type `Nothing?` and is assignable to any `T?`. `null` is not assignable to a non-nullable type.
 
-*NULL-04, NULL-05, NULL-07 — Relocated.* The safe-call (`?.`), elvis (`?:`), and null-assertion (`!!`) operators are `.lat` surface forms. Their definitions and `.java`-surface desugarings are LAT-02, LAT-03, and LAT-04 (§21).
+*NULL-04, NULL-05, NULL-07 — Relocated.* The safe-call (`?.`), elvis (`?:`), and null-assertion (`!!`) operators are `.lat` surface forms. Their definitions and `.java`-surface desugarings are LAT-02, LAT-03, and LAT-04 in the `LAT` topic.
 
 ### NULL-06 — Smart narrowing on null check
 
@@ -951,7 +1026,7 @@ When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call
 
 ---
 
-## 11. Exceptions
+## EXC — Exceptions
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
@@ -977,7 +1052,7 @@ The `throws` clause is permitted as documentation. A method may list the excepti
 
 ---
 
-## 12. Functional Interfaces
+## FN — Functional Interfaces
 
 Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface.
 
@@ -1068,7 +1143,7 @@ The restrictions govern the written type expression, not value flow: a `var` loc
 
 ---
 
-## 13. Closures
+## CLO — Closures
 
 A closure value is a lambda together with the variables it captures from the enclosing scope — a synthesized object whose fields are the captured variables and whose single method is the lambda body, passed to (or returned from) a function and invoked through that method. The mode in which each variable is captured — shared borrow, mutable borrow, or moved owned — determines what the closure may do and how often it may be invoked. CLO-01 classifies these modes; CLO-03 connects them to the FI type that holds the closure.
 
@@ -1104,7 +1179,7 @@ interface Finalizer         { @consuming void run(); }              // once-call
 
 **Variable mode** is a property of the *variable* that holds the value. A functional-interface variable follows the ordinary variable rules with no special case: a field owns its value by default (OWN-08); a parameter receives ownership with `@take` or a borrow otherwise (OWN-13); `@mut` grants mutability (MUT-02); `@borrow` marks a borrowed field (OWN-09); `@bound` marks a borrowed return (OWN-17, OWN-18); a local follows its RHS (OWN-02).
 
-Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-15): invoking a mut-call SAM requires the variable to be `@mut`; invoking a once-call SAM requires the variable to own the value, and the call consumes it (a partial move per OWN-06 when the variable is a field). Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, independently of the call mode — a value may be held in a variable from which its SAM cannot be invoked.
+Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-15): invoking a mut-call SAM requires the variable to be `@mut`; invoking a once-call SAM requires the variable to own the value, and the call consumes it (a deconstruction per OWN-06 when the variable is a field). Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, independently of the call mode — a value may be held in a variable from which its SAM cannot be invoked.
 
 ```java
 class C {
@@ -1215,7 +1290,7 @@ A closure value carries the lifetimes of every variable it captures by borrow. T
 
 ---
 
-## 14. Strings
+## STR — Strings
 
 ### STR-07 — `String` is a value class
 
@@ -1260,7 +1335,7 @@ Methods declared on `String` borrow the receiver unless the signature marks othe
 
 ---
 
-## 15. Arrays
+## ARR — Arrays
 
 ### ARR-01 — Methods on `T[]` (`.lat` surface)
 
@@ -1284,7 +1359,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 `splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows OWN-13 (annotation-only differences are duplicate declarations).
 
-**Example — long-lived workers.** Each half is pre-extracted by partial move (OWN-06) before spawning, so each thread captures and consumes its own owning variable.
+**Example — long-lived workers.** Each half is pre-extracted by deconstruction (OWN-06) before spawning, so each thread captures and consumes its own owning variable.
 
 ```java
 var arr   = readInput();
@@ -1353,14 +1428,14 @@ public record Pair<L, R>(L left, R right) {}
 
 Instantiations encountered in this spec:
 
-- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. The accessors `left()` and `right()` return borrows bound to the pair (OWN-18). To obtain the owning halves the pair is deconstructed by direct component access — `give(p.left)`, `give(p.right)` — a partial move (OWN-06) available in `.lat`, where record components are public (LAT-08). `Pair` declares no `onDrop()`, so DROP-08 does not apply, and each half becomes an independently owned `T[]`. A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors.
+- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. The accessors `left()` and `right()` return borrows bound to the pair (OWN-18). To obtain the owning halves the pair is deconstructed by direct component access — `give(p.left)`, `give(p.right)` — a deconstruction (OWN-06) available in `.lat`, where record components are public (LAT-08). `Pair` declares no `onDrop()`, so DROP-08 does not apply, and each half becomes an independently owned `T[]`. A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors.
 - `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing variable is `@bound` because the instance contains `@bound`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03); its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
 ---
 
-## 16. Unsafe
+## UNS — Unsafe
 
 ### UNS-01 — `@unsafe` is a private-method-only annotation
 
@@ -1403,7 +1478,7 @@ A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell
 
 ---
 
-## 17. Standard Library Types (Required)
+## STD — Standard Library Types (Required)
 
 ### STD-01 — `Rc<T>`
 
@@ -1523,7 +1598,7 @@ As `java.util.concurrent.locks.Condition`, created by `ReentrantLock.newConditio
 
 ---
 
-## 18. Threads
+## THR — Threads
 
 ### THR-01 — `Thread` type
 
@@ -1612,7 +1687,7 @@ Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection
 
 ---
 
-## 19. Compilation Model
+## COMP — Compilation Model
 
 ### COMP-01 — Native compilation, no GC
 
@@ -1640,10 +1715,10 @@ Use cases traditionally served by reflection are served by compile-time code gen
 
 A laterita source file uses one of two extensions:
 
-- **`.lat`** — full surface. Additionally admits the `.lat` surface forms specified in §21.
-- **`.java`** — Java-compatible subset, parseable by `javac` and Java-aware IDEs. The §21 forms are rejected; equivalent meaning is expressed through their `.java`-surface desugarings.
+- **`.lat`** — full surface. Additionally admits the `.lat` surface forms specified in the `LAT` topic.
+- **`.java`** — Java-compatible subset, parseable by `javac` and Java-aware IDEs. The `.lat` forms are rejected; equivalent meaning is expressed through their `.java`-surface desugarings.
 
-Both extensions denote the same language: the type system, annotation/intrinsic surface (§20), and emitted artifacts are identical, and cross-unit variables work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Because every `.lat` form is pure syntactic sugar (LAT-00), migration tooling may mechanically translate between the two forms.
+Both extensions denote the same language: the type system, annotation/intrinsic surface (RESV), and emitted artifacts are identical, and cross-unit variables work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Because every `.lat` form is pure syntactic sugar (LAT-00), migration tooling may mechanically translate between the two forms.
 
 ### COMP-07 — Compiler invocation
 
@@ -1651,17 +1726,17 @@ The reference laterita compiler is named `latc`. It accepts both `.lat` and `.ja
 
 ### COMP-08 — Inlining permission
 
-The compiler is permitted and encouraged to inline any function whose body is small enough that call overhead dominates. No annotation is required. Generated forwarding methods (§23) and accessor methods on records and value classes are primary candidates. The compiler may apply any semantics-preserving combination of inlining, constant folding, and dead-code elimination.
+The compiler is permitted and encouraged to inline any function whose body is small enough that call overhead dominates. No annotation is required. Generated forwarding methods (GEN) and accessor methods on records and value classes are primary candidates. The compiler may apply any semantics-preserving combination of inlining, constant folding, and dead-code elimination.
 
 ---
 
-## 20. Reserved Names
+## RESV — Reserved Names
 
 The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `ReentrantLock`, `LockGuard`, `Condition`, `PoisonedException`. The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08; `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04. Anonymous functional interfaces are structural per FN-01 and require no named stdlib interfaces.
 
 The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook (DROP-01).
 
-**Laterita requires no new keywords or constructs.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; some non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) and class extensions are gated to `.lat` sources per §21.
+**Laterita requires no new keywords or constructs.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls; some non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) and class extensions are gated to `.lat` sources per the `LAT` topic.
 Below is a list of laterita annotations. Combinations not listed are currently not supported and won't compile.
 
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
@@ -1720,7 +1795,7 @@ Java's existing keywords and their meanings are otherwise preserved unless expli
 
 ---
 
-## 21. `.lat` Surface Forms
+## LAT — `.lat` Surface Forms
 
 A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-compatible subset that `javac` parses, and `.lat`, which additionally admits the forms specified in this section. Every rule outside this section belongs to the `.java`-compatible surface.
 
@@ -1729,8 +1804,8 @@ A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-c
 Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it. Consequently:
 
 - Any `.lat` source built from LAT-01–LAT-07 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
-- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06). LAT-08 (record-component visibility) is no exception: a deconstructed record keeps its `record` identity in the `.java` mirror and the deconstruction desugars to generated §1–18 members.
-- A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of §20.
+- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06). LAT-08 (record-component visibility) is no exception: a deconstructed record keeps its `record` identity in the `.java` mirror and the deconstruction desugars to generated members on the Java-compatible surface.
+- A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of the `RESV` topic.
 
 Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
 
@@ -1787,7 +1862,7 @@ Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .la
 
 In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Other operators are currently not supported in this way for various reasons.
 
-Arithmetic desugars to an **instance** method annotated `@Operator(op)` (§20). Comparison desugars through `java.lang.Comparable`:
+Arithmetic desugars to an **instance** method annotated `@Operator(op)` (RESV). Comparison desugars through `java.lang.Comparable`:
 
 | Form | Desugars to | Eligibility on the left operand's type |
 |---|---|---|
@@ -1802,12 +1877,12 @@ The method name is unconstrained. `@Operator` names the operator, so `BigDecimal
 
 `a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including GEN-01 `@Delegate` records whose generated forwarder widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
-Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys §1–20 unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
+Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`. The desugared call then obeys the Java-compatible surface unchanged. `javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
 
 ### LAT-08 — Record components are public in `.lat`
 
 In a `.lat` source the components of a `record` are `public` fields.
-A record may therefore be deconstructed by partial move (OWN-06) through direct component access:
+A record may therefore be deconstructed (OWN-06) through direct component access:
 
 ```java
 record Span(Buffer head, Buffer tail) {}   // .lat
@@ -1846,13 +1921,13 @@ var h = give(s.head);      // var h = give(s$class.head);
 var t = give(s.tail);      // var t = give(s$class.tail);
 ```
 
-The record keeps its `record` identity in the `.java` mirror, and the deconstruction reduces to a `@consuming` method plus an ordinary POJO partial move, both already in the §1–18 surface, so record deconstruction adds no semantics of its own (LAT-00).
-`intoClass()` and the companion are generated members like any in §23: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method).
+The record keeps its `record` identity in the `.java` mirror, and the deconstruction reduces to a `@consuming` method plus an ordinary POJO deconstruction, both already in the Java-compatible surface, so record deconstruction adds no semantics of its own (LAT-00).
+`intoClass()` and the companion are generated members like any in the `GEN` topic: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method).
 A record's `.java` identity therefore no longer depends on whether it is deconstructed.
 
 ---
 
-## 22. Native ABI Guarantees
+## NABI — Native ABI Guarantees
 
 ### NABI-01 — Single-field aggregate layout and calling convention
 
@@ -1860,7 +1935,7 @@ A value class (MUT-05) or record with exactly one field or component has the sam
 
 ---
 
-## 23. Code Generation Annotations
+## GEN — Code Generation Annotations
 
 Laterita supports the stable [Project Lombok](https://projectlombok.org/) annotations natively. A `.java` or `.lat` source using them compiles unchanged and produces the same observable result a Lombok build produces on the JVM. The compiler generates the members at compile time, and generated members are visible to the type checker and overload resolution.
 
@@ -1955,81 +2030,8 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 
 ### GEN-14 — `val` and `var`
 
-`val` is unsupported in laterita, while `var` has a slightly different meaning. Lombok's `val` is an immutable inferred local, identical to laterita `var` (immutable by default, §20). Lombok's `var` is a mutable inferred local, identical to laterita `@mut var`. See OQ-31.
+`val` is unsupported in laterita, while `var` has a slightly different meaning. Lombok's `val` is an immutable inferred local, identical to laterita `var` (immutable by default, RESV). Lombok's `var` is a mutable inferred local, identical to laterita `@mut var`. See OQ-31.
 
 ### GEN-15 — `@StandardException`
 
 `@StandardException` on a `Throwable` subclass generates the four standard exception constructors (no-arg, `(String message)`, `(Throwable cause)`, and `(String message, Throwable cause)`), each chaining to `super`.
-
----
-
-## 24. Deconstruction
-
-Deconstruction takes an owned object apart into its independently owned fields.
-It is part of the Java-compatible surface: every form here is expressible as annotated `.java` that `javac` parses.
-It earns its keep in one job, taking a plain object with accessible fields (a POJO) apart, and is deliberately restricted so the compiler can track it statically.
-The four rules below specify when an object may be deconstructed (DEC-01), how a field is moved out (DEC-02), the lifetime of the resulting husk (DEC-03), and what that husk allows (DEC-04).
-
-### DEC-01 — Requirements for deconstruction
-
-A field may be moved out of an object only when all of:
-
-1. the object is owned at the move site, not borrowed (OWN-13).
-2. no borrow of the object is outstanding (OWN-03).
-3. the moved field is named by a direct field-access path `obj.field` to an accessible field.
-
-A method result is never a deconstruction.
-A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
-In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
-A record's components are not accessible fields in `.java`, so a `.java` record cannot be deconstructed.
-In `.lat` its components are public (LAT-08) and deconstruct directly.
-A class that implements `onDrop()` cannot be deconstructed at all: no field may be moved out of it (DROP-08).
-
-### DEC-02 — Deconstruct by `give`-ing an owned field
-
-The canonical form is an explicit `give` of a directly named field:
-
-```java
-class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
-
-var s = makeSplit();
-var h = give(s.head);          // moves the head field out of s
-var t = give(s.tail);          // moves the tail field out; s is now fully deconstructed
-```
-
-Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
-Any subsequent read of a moved-out field is a compile error.
-The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
-Every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
-
-```java
-var p = makeSplit();
-var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
-```
-
-### DEC-03 — Lifetime of a deconstructed instance
-
-A deconstructed instance lives from its first move to the end of its enclosing block.
-Once any field has been moved out, the object is partially deconstructed and exists only to be taken further apart.
-It is consumed at the end of the enclosing block, where its remaining owned fields are dropped (DROP-02).
-The compiler emits `onDrop()` only on the fields still owned at that exit point (DROP-04).
-
-### DEC-04 — What a partially deconstructed instance allows
-
-Once any field has been moved out, the object may only be taken further apart:
-
-1. no method may be invoked on it, since a method receives the whole object and would observe the missing field.
-2. its fields may not be assigned.
-3. it cannot be returned, stored, or passed whole.
-
-Its still-owned fields, including further record components, may themselves be moved out.
-
-```java
-var s = makeSplit();
-var h = give(s.head);                          // s is now partially deconstructed; tail still owned
-
-s.flush();                                     // ERROR: no method may be called on a partially deconstructed object
-s.tail = makeBuffer();                         // ERROR: it can't be mutated anymore
-return s;                                      // ERROR: it cannot be returned whole
-var t = give(s.tail);                          // OK: a remaining field may still be moved out
-```

@@ -4,7 +4,7 @@ Currently the spec in doc is work in progress and needs to mature.
 
 ## Documents
 
-- `doc/laterita-spec.md` — normative spec. Sections 1–18 are the Java-compatible surface (expressible as annotated `.java` that `javac` parses). Section 19 (`LAT-*`) is the `.lat` surface: pure syntactic sugar only.
+- `doc/laterita-spec.md` — normative spec. Topics other than `LAT` are the Java-compatible surface (expressible as annotated `.java` that `javac` parses). The `LAT` topic (`LAT-*`) is the `.lat` surface: pure syntactic sugar only.
 - `doc/laterita-reasoning.md` — why each rule is the way it is.
 - `doc/laterita-open-questions.md` — unresolved language-design questions (`OQ-NN`).
 - `doc/resolved-questions.md` — registry of closed decisions: rejected alternatives + resolved-OQ tombstones.
@@ -13,7 +13,7 @@ Currently the spec in doc is work in progress and needs to mature.
 ## Working rules
 
 - **Before proposing any new mechanism** for concurrency, ownership, error handling, optionality, cleanup, or syntax, check the "Rejected alternatives" table in `doc/resolved-questions.md`. If it is listed there, the decision is closed — do not re-raise it as an open question or re-propose it unless you have new evidence that directly contradicts the recorded reasoning.
-- Any new `.lat` form must be pure syntactic sugar with an exact desugaring to the §1–18 surface (LAT-00). A construct that carries its own semantics belongs in §1–18, expressed through annotations or intrinsics (§18) — not in §19.
+- Any new `.lat` form must be pure syntactic sugar with an exact desugaring to the Java-compatible surface (LAT-00). A construct that carries its own semantics belongs on the Java-compatible surface, expressed through annotations or intrinsics, not in the `LAT` topic.
 - Do not change existing OQ numbers or spec codes. For new questions use unused numbers. Relocating a rule may leave a numbered gap; that is fine (stable IDs).
 
 ## Reasoning-document voice

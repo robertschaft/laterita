@@ -65,6 +65,9 @@ An overriding method may **require less** of its parameters than the base method
 ### copy constructor
 A constructor that takes a single parameter of the same type as the class being constructed (e.g., `new User(User source)`). Used to duplicate an object. Laterita auto-generates one per `OBJ-01` if not provided.
 
+### deconstruction
+Taking an owned object apart field by field, by `give`-ing a directly named accessible field (`give(obj.field)`). Works on a POJO in any source, and on a `record` only in `.lat`, where its components are public (`LAT-08`); a record's accessor returns a borrow and cannot be moved. An object is deconstructed as soon as its first field is moved out: from then on no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart and dropped at block end. The compiler tracks per field which are moved and which remain, emitting `onDrop()` only on the unmoved fields. Available only on classes that implement no `onDrop()`; a class with an `onDrop()` body is moved whole (`DROP-08`). See `DEC-01` through `DEC-04`.
+
 ### divergence point / diverges
 A code path that reaches `broken()` (a static method declared in `laterita.lang.Intrinsics`) that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken()` is dead code. The method has return type `Nothing` (the bottom type). See `UNR-01`.
 
@@ -72,7 +75,7 @@ A code path that reaches `broken()` (a static method declared in `laterita.lang.
 To clean up a value when its owning variable leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). A `final` class implements `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead. See `DROP-01`, `DROP-09`.
 
 ### drop flag
-Compiler bookkeeping tracking whether each field of a partially-moved value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
+Compiler bookkeeping tracking whether each field of a deconstructed value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
 
 ### exclusive / exclusivity (also "mutual exclusion")
 Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
@@ -99,7 +102,7 @@ The ability to mutate an object's contents through a non-`@mut` (immutable) vari
 An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `HIER-05`. (Contrast with contravariance.)
 
 ### .lat / .java (source file extensions)
-The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in §21 (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
+The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in the `LAT` topic (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
 
 ### latc (laterita compiler)
 The reference laterita compiler. Accepts `.lat` and `.java` in a single compilation unit, dispatches by extension per `COMP-06`, and emits artifacts per `COMP-01`–`COMP-04`. See `COMP-07`.
@@ -154,9 +157,6 @@ The rules governing whether an overriding method's signature may differ from the
 
 ### parameter mode / ownership mode
 How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `OWN-13`.
-
-### partial move
-Taking an owned object apart field by field, by `give`-ing a directly named accessible field (`give(obj.field)`). Works on a POJO in any source, and on a `record` only in `.lat`, where its components are public (`LAT-08`); a record's accessor returns a borrow and cannot be moved. Once any field is moved out the object is partially deconstructed: no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart and dropped at block end. The compiler tracks per field which are moved and which remain, emitting `onDrop()` only on the unmoved fields. Available only on classes that implement no `onDrop()`. A class with an `onDrop()` body is moved whole (`DROP-08`). See `OWN-06`.
 
 ### poisoned (Mutex)
 A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
@@ -264,6 +264,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `NULL` | Nullable types, null safety |
 | `DROP` | Scope-exit cleanup, `onDrop()` |
 | `OBJ` | Copying, clone semantics |
+| `DEC` | Deconstruction: taking an owned object apart field by field (`give(obj.field)`) |
 | `UNR` | Unreachable paths (`broken()`) |
 | `STR` | String ownership and slicing |
 | `ARR` | Array methods and the `laterita.lang.Arrays` static surface |
@@ -274,6 +275,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `STD` | Standard library types (`Rc<T>`, `Arc<T>`, `Mutex<T>`, `@local` marker, etc.) |
 | `THR` | Threading, interrupts, `Thread.onDrop()`, lock poisoning |
 | `COMP` | Compilation model (monomorphization, reflection, etc.) |
+| `RESV` | Reserved names and the annotation / intrinsic surface |
 | `LAT` | `.lat` surface forms (syntactic sugar over the Java-compatible surface) |
 | `NABI` | Native ABI guarantees |
 | `GEN` | Code generation annotations (Lombok-compatible surface) |
@@ -304,6 +306,6 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 
 ## Further Reading
 
-Readers new to ownership and borrowing should start with §1–§3 of `laterita-spec.md` (Ownership, Lifetimes, Mutability) and then read the corresponding sections of `laterita-reasoning.md` to understand the design trade-offs.
+Readers new to ownership and borrowing should start with the `OWN`, `LIFE`, and `MUT` topics of `laterita-spec.md` and then read the corresponding sections of `laterita-reasoning.md` to understand the design trade-offs.
 
 For specific term definitions, cross-reference the spec code (e.g., `OWN-02`, `MUT-01`) listed in the spec document itself.
