@@ -166,7 +166,8 @@ This is what keeps a `.java` record off the direct deconstruction path: its acce
 A POJO with accessible fields is the deconstructable shape.
 The `.lat` `give`-of-a-component spelling (LAT-08) does not add a second shape: it desugars to a generated `@consuming` method that moves the record's components into a companion POJO, which is then taken apart by ordinary partial move.
 Routing through the companion lets records reuse the one deconstructable shape and keeps the record a `record` in the `.java` mirror, so LAT-00 holds without exception.
-Mirroring a deconstructed record instead to a `.java` class with public component fields would have made deconstructability a property of the source surface — whether `.lat` code happens to take the record apart — and that is the one thing LAT-00 forbids: a declaration's identity must not depend on its file extension.
+Mirroring a deconstructed record instead to a `.java` class with public component fields would have made deconstructability a property of the source surface, namely whether `.lat` code happens to take the record apart.
+That is the one thing LAT-00 forbids: a declaration's identity must not depend on its file extension.
 
 Once a field is gone the object is a husk, and the restrictions keep that fact honest.
 A method receives the whole receiver, part of which no longer exists, so no method may run on a partially-moved object.

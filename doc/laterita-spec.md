@@ -95,54 +95,8 @@ That reduces to ordinary slice expressions this rule covers.
 
 ### OWN-06 - Partial moves deconstruct an owned object field by field
 
-A *partial move* takes an owned object apart into its independently owned fields.
-It exists for that single purpose, deconstructing a plain object with accessible fields (a POJO), and is deliberately restricted so the compiler can track it statically.
-The canonical form is an explicit `give` of a directly named field:
-
-```java
-class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
-
-var s = makeSplit();
-var h = give(s.head);          // moves the head field out of s
-var t = give(s.tail);          // moves the tail field out; s is now fully deconstructed
-```
-
-Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
-Any subsequent read of a moved-out field is a compile error.
-The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
-
-A field may be partially moved only when all of:
-
-1. the object is owned at the move site, not borrowed (OWN-13).
-2. no borrow of the object is outstanding (OWN-03).
-3. the moved field is named by a direct field-access path `obj.field` to an accessible field.
-A method result is never a partial move: a method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
-In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
-A record's components are not accessible fields in `.java`, so a `.java` record cannot be deconstructed.
-In `.lat` its components are public (LAT-08) and deconstruct directly.
-
-Once any field has been moved out, the object is partially deconstructed and may only be taken further apart:
-
-1. no method may be invoked on it, since a method receives the whole object and would observe the missing field.
-Its still-owned fields, including further record components, may themselves be moved out.
-2. its fields may not be assigned.
-3. it cannot be returned, stored, or passed whole. It is consumed at the end of the enclosing block, where its remaining owned fields are dropped (DROP-02).
-4. every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
-
-```java
-var s = makeSplit();
-var h = give(s.head);                          // s is now partially deconstructed; tail still owned
-
-s.flush();                                     // ERROR: no method may be called on a partially deconstructed object
-s.tail = makeBuffer();                         // ERROR: it can't be mutated anymore
-return s;                                      // ERROR: it cannot be returned whole
-var t = give(s.tail);                          // OK: a remaining field may still be moved out
-
-var p = makeSplit();
-var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
-```
-
-A class that implements `onDrop()` cannot be partially moved at all: no field may be moved out of it (DROP-08).
+Partial move is the deconstruction of an owned object field by field.
+It is specified as its own topic in §24 (DEC-01 through DEC-04).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -1852,7 +1806,8 @@ Desugaring preserves Java operator precedence. So `a + b * c` is `a.add(b.multip
 
 ### LAT-08 — Record components are public in `.lat`
 
-In a `.lat` source the components of a `record` are `public` fields. A record may therefore be deconstructed by partial move (OWN-06) through direct component access:
+In a `.lat` source the components of a `record` are `public` fields.
+A record may therefore be deconstructed by partial move (OWN-06) through direct component access:
 
 ```java
 record Span(Buffer head, Buffer tail) {}   // .lat
@@ -1862,9 +1817,13 @@ var h = give(s.head);     // head is a public component field, moved out
 var t = give(s.tail);     // tail moved out; s fully deconstructed
 ```
 
-A canonical accessor (`s.head()`) returns a borrow bound to the record (OWN-18), so it can never be the subject of a move. Deconstruction always reads the component as a field. A record declared in a `.java` source keeps javac's private components, so the `give(s.head)` spelling is `.lat`-only.
+A canonical accessor (`s.head()`) returns a borrow bound to the record (OWN-18), so it can never be the subject of a move.
+Deconstruction always reads the component as a field.
+A record declared in a `.java` source keeps javac's private components, so the `give(s.head)` spelling is `.lat`-only.
 
-The `give`-of-a-component spelling is pure sugar (LAT-00). It desugars through a companion POJO and a `@consuming` method the compiler generates beside the record. For a record `Record(T left, S right)` deconstructed by a `.lat` source the generated members are:
+The `give`-of-a-component spelling is pure sugar (LAT-00).
+It desugars through a companion POJO and a `@consuming` method the compiler generates beside the record.
+For a record `Record(T left, S right)` deconstructed by a `.lat` source the generated members are:
 
 ```java
 @AllArgsConstructor public final class Record$AsClass { public T left; public S right; }
@@ -1873,7 +1832,9 @@ The `give`-of-a-component spelling is pure sugar (LAT-00). It desugars through a
 @consuming Record$AsClass intoClass() { return new Record$AsClass(give(this.left), give(this.right)); }
 ```
 
-`intoClass()` is a `@consuming` method (OWN-15) running inside the record's own body, where the components are accessible, so it may move each one out into the companion (OWN-06). The companion is a POJO whose component fields are `public` — the deconstructable shape OWN-06 already requires — so it deconstructs field by field on the plain `.java` surface. A deconstruction site rewrites accordingly:
+`intoClass()` is a `@consuming` method (OWN-15) running inside the record's own body, where the components are accessible, so it may move each one out into the companion (OWN-06).
+The companion is a POJO whose component fields are `public`, the deconstructable shape OWN-06 already requires, so it deconstructs field by field on the plain `.java` surface.
+A deconstruction site rewrites accordingly:
 
 ```java
 record Span(Buffer head, Buffer tail) {}   // .lat
@@ -1885,7 +1846,9 @@ var h = give(s.head);      // var h = give(s$class.head);
 var t = give(s.tail);      // var t = give(s$class.tail);
 ```
 
-The record keeps its `record` identity in the `.java` mirror, and the deconstruction reduces to a `@consuming` method plus an ordinary POJO partial move — both already in the §1–18 surface — so record deconstruction adds no semantics of its own (LAT-00). `intoClass()` and the companion are generated members like any in §23: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method). A record's `.java` identity therefore no longer depends on whether it is deconstructed.
+The record keeps its `record` identity in the `.java` mirror, and the deconstruction reduces to a `@consuming` method plus an ordinary POJO partial move, both already in the §1–18 surface, so record deconstruction adds no semantics of its own (LAT-00).
+`intoClass()` and the companion are generated members like any in §23: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method).
+A record's `.java` identity therefore no longer depends on whether it is deconstructed.
 
 ---
 
@@ -1997,3 +1960,76 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 ### GEN-15 — `@StandardException`
 
 `@StandardException` on a `Throwable` subclass generates the four standard exception constructors (no-arg, `(String message)`, `(Throwable cause)`, and `(String message, Throwable cause)`), each chaining to `super`.
+
+---
+
+## 24. Deconstruction
+
+Deconstruction takes an owned object apart into its independently owned fields.
+It is part of the Java-compatible surface: every form here is expressible as annotated `.java` that `javac` parses.
+It earns its keep in one job, taking a plain object with accessible fields (a POJO) apart, and is deliberately restricted so the compiler can track it statically.
+The four rules below specify when an object may be deconstructed (DEC-01), how a field is moved out (DEC-02), the lifetime of the resulting husk (DEC-03), and what that husk allows (DEC-04).
+
+### DEC-01 — Requirements for deconstruction
+
+A field may be moved out of an object only when all of:
+
+1. the object is owned at the move site, not borrowed (OWN-13).
+2. no borrow of the object is outstanding (OWN-03).
+3. the moved field is named by a direct field-access path `obj.field` to an accessible field.
+
+A method result is never a deconstruction.
+A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
+In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
+A record's components are not accessible fields in `.java`, so a `.java` record cannot be deconstructed.
+In `.lat` its components are public (LAT-08) and deconstruct directly.
+A class that implements `onDrop()` cannot be deconstructed at all: no field may be moved out of it (DROP-08).
+
+### DEC-02 — Deconstruct by `give`-ing an owned field
+
+The canonical form is an explicit `give` of a directly named field:
+
+```java
+class Split { Buffer head; Buffer tail; }     // POJO: no onDrop(), fields directly accessible
+
+var s = makeSplit();
+var h = give(s.head);          // moves the head field out of s
+var t = give(s.tail);          // moves the tail field out; s is now fully deconstructed
+```
+
+Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
+Any subsequent read of a moved-out field is a compile error.
+The compiler keeps per-field move state for both use-after-move checking and cleanup emission (DROP-04).
+Every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
+
+```java
+var p = makeSplit();
+var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
+```
+
+### DEC-03 — Lifetime of a deconstructed instance
+
+A deconstructed instance lives from its first move to the end of its enclosing block.
+Once any field has been moved out, the object is partially deconstructed and exists only to be taken further apart.
+It is consumed at the end of the enclosing block, where its remaining owned fields are dropped (DROP-02).
+The compiler emits `onDrop()` only on the fields still owned at that exit point (DROP-04).
+
+### DEC-04 — What a partially deconstructed instance allows
+
+Once any field has been moved out, the object may only be taken further apart:
+
+1. no method may be invoked on it, since a method receives the whole object and would observe the missing field.
+2. its fields may not be assigned.
+3. it cannot be returned, stored, or passed whole.
+
+Its still-owned fields, including further record components, may themselves be moved out.
+
+```java
+var s = makeSplit();
+var h = give(s.head);                          // s is now partially deconstructed; tail still owned
+
+s.flush();                                     // ERROR: no method may be called on a partially deconstructed object
+s.tail = makeBuffer();                         // ERROR: it can't be mutated anymore
+return s;                                      // ERROR: it cannot be returned whole
+var t = give(s.tail);                          // OK: a remaining field may still be moved out
+```
