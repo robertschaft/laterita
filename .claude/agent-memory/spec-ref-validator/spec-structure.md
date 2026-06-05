@@ -21,7 +21,7 @@ type: project
 
 ## Topic order in `laterita-spec.md` (verified 2026-06-05)
 
-OWN, LIFE, MUT, HIER, TARG, STAT, DROP, UNR, **DEC**, OBJ, NULL, EXC, FN, CLO, STR, ARR, UNS, STD, THR, COMP, **RESV**, LAT, NABI, GEN.
+OWN, LIFE, MUT, HIER, TARG, STAT, DROP, UNR, **DES**, OBJ, NULL, EXC, FN, CLO, STR, ARR, UNS, STD, THR, COMP, **RESV**, LAT, NABI, GEN.
 
 Rule of thumb in the spec intro: every topic except `LAT` is the Java-compatible surface.
 
@@ -45,7 +45,7 @@ As of branch `claude/adoring-fermat-d3KkY` all such references were removed acro
 
 | Prefix | Domain |
 |---|---|
-| OWN | Ownership, parameter modes; OWN-06 is a pointer to DEC |
+| OWN | Ownership, parameter modes; OWN-06 is a pointer to DES |
 | LIFE | Lifetimes and borrow lifetime intersection |
 | MUT | Mutability |
 | HIER | Class hierarchy, override variance |
@@ -53,7 +53,7 @@ As of branch `claude/adoring-fermat-d3KkY` all such references were removed acro
 | STAT | Static storage |
 | DROP | Scope-exit cleanup, onDrop() |
 | UNR | Unreachability (broken()) |
-| DEC | Deconstruction (DEC-01…DEC-03) |
+| DES | Destruction (DES-01…DES-03) |
 | OBJ | Object copying |
 | NULL | Optionality |
 | EXC | Exceptions |
@@ -71,12 +71,12 @@ As of branch `claude/adoring-fermat-d3KkY` all such references were removed acro
 | GEN | Code generation annotations |
 | OQ | Open design questions |
 
-## DEC topic — key facts
+## DES topic — key facts
 
 - Own topic between UNR and OBJ since branch `claude/adoring-fermat-d3KkY`.
-- OWN-06 is now a one-sentence pointer to DEC.
-- DROP-04 and DROP-08 reference deconstruction (DROP-04: "When deconstruction (OWN-06) has left fields moved out…"; DROP-08: "A class with `onDrop()` cannot be deconstructed").
-- Reasoning-doc heading: "Why deconstruction is restricted to direct field access (DEC)".
+- OWN-06 is now a one-sentence pointer to DES.
+- DROP-04 and DROP-08 reference destruction (DROP-04: "When destruction (OWN-06) has left fields moved out…"; DROP-08: "A class with `onDrop()` cannot be destructed").
+- Reasoning-doc heading: "Why destruction is restricted to direct field access (DES)".
 
 ## RESV topic — key facts
 
@@ -86,9 +86,9 @@ As of branch `claude/adoring-fermat-d3KkY` all such references were removed acro
 
 ## Terminology changes (branch `claude/adoring-fermat-d3KkY`)
 
-- "partial move" → retired; now "deconstruction".
-- "partially deconstructed" → retired; an object is "deconstructed" from its first field move onward.
-- Reasoning-doc headings renamed from "partial move" wording: "Why deconstruction is restricted to direct field access", "Why a class with `onDrop()` cannot be deconstructed".
+- "partial move" → retired; now "destruction".
+- "partially destructed" → retired; an object is "destructed" from its first field move onward.
+- Reasoning-doc headings renamed from "partial move" wording: "Why destruction is restricted to direct field access", "Why a class with `onDrop()` cannot be destructed".
 
 ## Obsolete code groups
 

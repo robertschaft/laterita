@@ -65,8 +65,8 @@ An overriding method may **require less** of its parameters than the base method
 ### copy constructor
 A constructor that takes a single parameter of the same type as the class being constructed (e.g., `new User(User source)`). Used to duplicate an object. Laterita auto-generates one per `OBJ-01` if not provided.
 
-### deconstruction
-Taking an owned object apart field by field, by `give`-ing a directly named accessible field (`give(obj.field)`). Works on a POJO in any source, and on a `record` only in `.lat`, where its components are public (`LAT-08`). A record's accessor returns a borrow and cannot be moved. An object is deconstructed as soon as its first field is moved out: from then on no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart. Its lifetime ends at that point (LIFE-04) and its formerly owned fields live on independently in the scope that received them (OWN-06). The compiler tracks per field which are moved and which remain, emitting `onDrop()` only on the unmoved fields. Available only on classes that implement no `onDrop()`. A class with an `onDrop()` body is moved whole (`DROP-08`). See the `DEC` topic.
+### destruction
+Taking an owned object apart field by field, by `give`-ing a directly named accessible field (`give(obj.field)`). Works on a POJO in any source, and on a `record` only in `.lat`, where its components are public (`LAT-08`). A record's accessor returns a borrow and cannot be moved. An object is destructed as soon as its first field is moved out: from then on no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart. Its lifetime ends at that point (LIFE-04) and its formerly owned fields live on independently in the scope that received them (OWN-06). The compiler tracks per field which are moved and which remain, emitting `onDrop()` only on the unmoved fields. Available only on classes that implement no `onDrop()`. A class with an `onDrop()` body is moved whole (`DROP-08`). See the `DES` topic.
 
 ### divergence point / diverges
 A code path that reaches `broken()` (a static method declared in `laterita.lang.Intrinsics`) that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken()` is dead code. The method has return type `Nothing` (the bottom type). See `UNR-01`.
@@ -75,7 +75,7 @@ A code path that reaches `broken()` (a static method declared in `laterita.lang.
 To clean up a value when its owning variable leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). A `final` class implements `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead. See `DROP-01`, `DROP-09`.
 
 ### drop flag
-Compiler bookkeeping tracking whether each field of a deconstructed value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
+Compiler bookkeeping tracking whether each field of a destructed value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
 
 ### exclusive / exclusivity (also "mutual exclusion")
 Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
@@ -147,7 +147,7 @@ A method the compiler invokes to clean up a value. Only a `final` class may impl
 "Open Question." A numbered entry in the open-questions document listing unresolved language-design decisions. Example: OQ-20 (pattern matching and destructuring under ownership). Not part of the normative spec.
 
 ### Pair<L, R>
-General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, deconstructed by direct component access `give(p.left)` / `give(p.right)` in `.lat`, OWN-06 / LAT-08) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves, read through the accessors). See `ARR-04`.
+General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct component access `give(p.left)` / `give(p.right)` in `.lat`, OWN-06 / LAT-08) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves, read through the accessors). See `ARR-04`.
 
 ### ownership
 Having the right and obligation to drop (clean up) a value when done. An owned variable can move the value to another variable, pass it to a `@take` parameter, or drop it at scope exit. Only one variable can own a value at a time. See `OWN-01`.
@@ -264,7 +264,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `NULL` | Nullable types, null safety |
 | `DROP` | Scope-exit cleanup, `onDrop()` |
 | `OBJ` | Copying, clone semantics |
-| `DEC` | Deconstruction: taking an owned object apart field by field (`give(obj.field)`) |
+| `DES` | Destruction: taking an owned object apart field by field (`give(obj.field)`) |
 | `UNR` | Unreachable paths (`broken()`) |
 | `STR` | String ownership and slicing |
 | `ARR` | Array methods and the `laterita.lang.Arrays` static surface |

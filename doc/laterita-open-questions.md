@@ -15,12 +15,12 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
 
-**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each variable produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or deconstructing (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+**The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each variable produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or destructing (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
 
 **The question.**
 - Do record-pattern variables default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
 - Is there an opt-in `@take` form on a pattern variable to switch arms between borrow and consume?
-- How does exhaustiveness interact with deconstruction: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
+- How does exhaustiveness interact with destruction: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
 - For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once. Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 

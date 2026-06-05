@@ -156,28 +156,28 @@ A red-black tree node needs to access `left` and `right` independently while the
 
 Same principle as OWN-04, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness OWN-05 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
-### Why deconstruction is restricted to direct field access (DEC)
+### Why destruction is restricted to direct field access (DES)
 
-Deconstruction earns its keep in one job: taking a plain object with accessible fields (a POJO) apart into independently owned fields.
+Destruction earns its keep in one job: taking a plain object with accessible fields (a POJO) apart into independently owned fields.
 That is the case that recurs.
 A builder hands out its parts, a `Pair` splits into two owning halves (ARR-04), a state object distributes its resources before it dies.
-Everything in deconstruction's shape follows from confining the feature to that job and rejecting the temptation to let a deconstructed object keep behaving like a whole one.
+Everything in destruction's shape follows from confining the feature to that job and rejecting the temptation to let a destructed object keep behaving like a whole one.
 
 Per-field move state is the enabling bookkeeping.
-The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the deconstruction path and on exception unwind (DROP-04, EXC-03).
+The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the destruction path and on exception unwind (DROP-04, EXC-03).
 For that state to be decidable, every move has to name a specific field statically.
 So the moved field is a direct field-access path, and a move whose target depends on runtime control flow (`cond ? give(x.a) : give(x.b)`) is rejected, because it would leave the move state of both fields ambiguous at the join.
 The move also has to reach an owned field directly, which is why it reads a field rather than a method result.
-A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields, and letting a call silently deconstruct its receiver would hide the move behind a method, which is the invisibility `give` exists to prevent.
-This is what keeps a `.java` record off the direct deconstruction path: its accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
-A POJO with accessible fields is the deconstructable shape.
-The `.lat` `give`-of-a-component spelling (LAT-08) does not add a second shape: it desugars to a generated `@consuming` method that moves the record's components into a companion POJO, which is then taken apart by ordinary deconstruction.
-Routing through the companion lets records reuse the one deconstructable shape and keeps the record a `record` in the `.java` mirror, so LAT-00 holds without exception.
-Mirroring a deconstructed record instead to a `.java` class with public component fields would have made deconstructability a property of the source surface, namely whether `.lat` code happens to take the record apart.
+A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields, and letting a call silently destruct its receiver would hide the move behind a method, which is the invisibility `give` exists to prevent.
+This is what keeps a `.java` record off the direct destruction path: its accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
+A POJO with accessible fields is the destructable shape.
+The `.lat` `give`-of-a-component spelling (LAT-08) does not add a second shape: it desugars to a generated `@consuming` method that moves the record's components into a companion POJO, which is then taken apart by ordinary destruction.
+Routing through the companion lets records reuse the one destructable shape and keeps the record a `record` in the `.java` mirror, so LAT-00 holds without exception.
+Mirroring a destructed record instead to a `.java` class with public component fields would have made destructability a property of the source surface, namely whether `.lat` code happens to take the record apart.
 That is the one thing LAT-00 forbids: a declaration's identity must not depend on its file extension.
 
 Once a field is gone the object is a husk, and the restrictions keep that fact honest.
-A method receives the whole receiver, part of which no longer exists, so no method may run on a deconstructed object.
+A method receives the whole receiver, part of which no longer exists, so no method may run on a destructed object.
 Only further fields may be moved out, and the husk drops its survivors at block end.
 This is the rule Rust enforces, for the same reason: there is no sound `&self` or `self` to hand a method once a field has moved.
 Forbidding field assignment, and forbidding return or storage of the husk, close the remaining ways a half-object could escape and be mistaken for a live one.
@@ -185,8 +185,8 @@ From its first move to the end of its block, the object exists only to be taken 
 
 This is also where the feature stops colliding with closures.
 Field-granular *move* capture, where a closure reaches into a live object and moves one field into its environment as Rust 2021 does (RFC 2229), is not expressible, because a closure captures whole variables rather than declared field paths and a move must name a field path.
-The idiom instead is to deconstruct the object into owned locals first and let the closure capture those locals, which is precisely the pre-2021 Rust pattern.
-Field-granular *borrow* capture is unaffected: a Read or Mutate closure (CLO-01) borrowing one field is an ordinary borrow, not a deconstruction, and stays available whenever the closure does not outlive the source.
+The idiom instead is to destruct the object into owned locals first and let the closure capture those locals, which is precisely the pre-2021 Rust pattern.
+Field-granular *borrow* capture is unaffected: a Read or Mutate closure (CLO-01) borrowing one field is an ordinary borrow, not a destruction, and stays available whenever the closure does not outlive the source.
 
 ### Why ownership annotations are not part of overload identity (OWN-13)
 
@@ -268,7 +268,7 @@ This is RAII order. If you opened `A` then opened `B` that depends on `A`, you s
 
 ### Why drop flags (DROP-04)
 
-Without per-field tracking, deconstruction either has to be forbidden (severely limiting the language) or has to leak undefined behavior on cleanup (catastrophic). Drop flags are the proven solution. Rust uses them, the optimization story is well understood (most flags are statically constant and get optimized away), and the runtime cost in code that doesn't actually unwind is approximately zero.
+Without per-field tracking, destruction either has to be forbidden (severely limiting the language) or has to leak undefined behavior on cleanup (catastrophic). Drop flags are the proven solution. Rust uses them, the optimization story is well understood (most flags are statically constant and get optimized away), and the runtime cost in code that doesn't actually unwind is approximately zero.
 
 ### Why teardown is compiler-orchestrated (DROP-05)
 
@@ -278,7 +278,7 @@ Under DROP-09 only the leaf `final` class can declare a body, so today every ste
 
 ### Why explicit `onDrop()` calls are forbidden (DROP-06)
 
-Once the compiler emits all drop calls — at scope exits (DROP-01), on deconstruction paths (DROP-04), on exception unwind (EXC-02), and through the drop sequence (DROP-05) — there is no remaining use case for user-invoked drop. Allowing it would create a category of bugs (double-drop, mismatched lifetimes, drop-then-use) for no expressive gain.
+Once the compiler emits all drop calls — at scope exits (DROP-01), on destruction paths (DROP-04), on exception unwind (EXC-02), and through the drop sequence (DROP-05) — there is no remaining use case for user-invoked drop. Allowing it would create a category of bugs (double-drop, mismatched lifetimes, drop-then-use) for no expressive gain.
 
 Forbidding it has two payoffs:
 
@@ -303,15 +303,15 @@ The trade against abort-on-throw is that drop-time exceptions are a control-flow
 
 A rule of thumb still holds: `onDrop()` should be best-effort cleanup. Fallible operations whose failure carries semantic meaning belong in an explicit `close()` (THR-05's split) where the caller has a clear handler; letting them escape `onDrop()` is the fallback when no such call site exists, not the primary contract.
 
-### Why a class with `onDrop()` cannot be deconstructed (DROP-08)
+### Why a class with `onDrop()` cannot be destructed (DROP-08)
 
-Deconstruction (OWN-06) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup.
-There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so a body that read a moved-out field would be reading a vacated slot on the deconstruction path.
+Destruction (OWN-06) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup.
+There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so a body that read a moved-out field would be reading a vacated slot on the destruction path.
 The rule that resolves this is the one Rust reaches by the same route (`E0509`): a value whose class implements `onDrop()` is moved atomically, so no field may be moved out of it.
 Among the candidates this is the only one that keeps the destructor's view of its own fields trivially sound.
 
 The discarded candidates fall two ways.
-*Disable cleanup on the deconstruction path* (skip `onDrop()` entirely once any field is moved, dropping only the survivors) is rejected outright: deconstructing one field would silently switch off the whole object's destructor, a quiet correctness hole exactly where resource handling matters most.
+*Disable cleanup on the destruction path* (skip `onDrop()` entirely once any field is moved, dropping only the survivors) is rejected outright: destructing one field would silently switch off the whole object's destructor, a quiet correctness hole exactly where resource handling matters most.
 *Pin only the fields the body reads* (the finer-grained, per-field lock) is rejected as more machinery for less safety.
 Its pinned set is a function of the `onDrop()` body's internals and of every method that body transitively calls on `this`, so the set of fields that may be `give`-n out is invisible at the move site and brittle under refactoring: adding one field read inside cleanup silently breaks a `give` in unrelated code.
 The analysis cost buys little, because a class that carries an `onDrop()` is a resource-owning leaf (DROP-09) such as a lock guard, a handle, or a refcount, and gutting one of its fields while keeping the husk alive is rarely what the programmer means.
@@ -333,7 +333,7 @@ DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `fin
 
 With at most one user `onDrop()` body per instance, several candidate rules collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`. DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
 
-The orthogonal cleanup rules (DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 no deconstruction of `onDrop()` classes, DROP-10 no-escape-of-this, THR-05 no-blocking) all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
+The orthogonal cleanup rules (DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 no destruction of `onDrop()` classes, DROP-10 no-escape-of-this, THR-05 no-blocking) all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
 
 ### Why `this` does not escape `onDrop()` (DROP-10)
 
