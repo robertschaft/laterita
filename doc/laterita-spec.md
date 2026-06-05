@@ -118,7 +118,8 @@ A field may be partially moved only when all of:
 3. the moved field is named by a direct field-access path `obj.field` to an accessible field.
 A method result is never a partial move: a method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields.
 In particular a record's canonical accessor returns a borrow bound to the record (OWN-18), so it cannot be given.
-A record's components are not accessible fields in `.java`, so a `.java` record cannot be deconstructed; in `.lat` its components are public (LAT-08) and deconstruct directly.
+A record's components are not accessible fields in `.java`, so a `.java` record cannot be deconstructed.
+In `.lat` its components are public (LAT-08) and deconstruct directly.
 
 Once any field has been moved out, the object is partially deconstructed and may only be taken further apart:
 
@@ -133,7 +134,7 @@ var s = makeSplit();
 var h = give(s.head);                          // s is now partially deconstructed; tail still owned
 
 s.flush();                                     // ERROR: no method may be called on a partially deconstructed object
-s.tail = makeBuffer();                         // ERROR: its fields may not be assigned
+s.tail = makeBuffer();                         // ERROR: it can't be mutated anymore
 return s;                                      // ERROR: it cannot be returned whole
 var t = give(s.tail);                          // OK: a remaining field may still be moved out
 
@@ -786,7 +787,9 @@ If multiple invocations along a drop path throw — sibling variables (DROP-02),
 
 ### DROP-08 — A class with `onDrop()` cannot be partially moved
 
-No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field. The compiler diagnoses the violation at the move: a `give` of such a field is rejected. The diagnostic identifies the field, the move, and the `onDrop()` declaration that locks it.
+No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field.
+The compiler diagnoses the violation at the move: a `give` of such a field is rejected.
+The diagnostic identifies the field, the move, and the `onDrop()` declaration that locks it.
 
 A class with no `onDrop()` implementation (every POJO, every plain data carrier, and in `.lat` every record) locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04.
 A class that needs both an `onDrop()` and the ability to surrender a part holds that part behind a handle the cleanup path does not touch, or restructures so the part is extracted before the resource-owning husk is built.
@@ -1875,10 +1878,11 @@ The `give`-of-a-component spelling is pure sugar (LAT-00). It desugars through a
 ```java
 record Span(Buffer head, Buffer tail) {}   // .lat
 
-var s = makeSpan();
-// .lat surface:                 desugared .java:
-var h = give(s.head);            // var c = give(s).intoClass();
-var t = give(s.tail);            // var h = give(c.head); var t = give(c.tail);
+var s = makeSpan();        // returns an owned instance
+// .lat surface:              desugared .java:
+                           // Span$AsClass s$class = s.intoClass();
+var h = give(s.head);      // var h = give(s$class.head);
+var t = give(s.tail);      // var t = give(s$class.tail);
 ```
 
 The record keeps its `record` identity in the `.java` mirror, and the deconstruction reduces to a `@consuming` method plus an ordinary POJO partial move — both already in the §1–18 surface — so record deconstruction adds no semantics of its own (LAT-00). `intoClass()` and the companion are generated members like any in §23: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method). A record's `.java` identity therefore no longer depends on whether it is deconstructed.

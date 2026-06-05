@@ -618,7 +618,7 @@ For the two-way split, three shapes were considered — continuation-passing, re
 
 ```java
 var s = arr.splitAt(mid);
-spawnWorker(s.left());            // accessor borrows the left half, bound to s
+var worker = spawnWorker(s.left());      // borrows the left half, bound to s which must survive worker
 processLocally(s.right());
 ```
 

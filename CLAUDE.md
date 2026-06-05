@@ -26,7 +26,7 @@ If a question is resolved, document the reasoning in `doc/laterita-reasoning.md`
 
 Non-language-design items (tooling, migration, roadmap) are tracked as GitHub issues on `robertschaft/laterita`, not in the open-questions document.
 
-## Response style
+## Documentation style
 
 Use one line per sentence.
 Do not use semicolons or em dashes in prose text (code blocks and section heading formats like `### RULE — Title` are exempt).
