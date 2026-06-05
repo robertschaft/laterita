@@ -22,7 +22,7 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
-The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible surface (sections 1–18; COMP-06), nothing else about it has to change to remain parseable by the Java ecosystem.
+The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible surface (COMP-06), nothing else about it has to change to remain parseable by the Java ecosystem.
 
 The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
@@ -34,7 +34,7 @@ Type inference reuses Java's `var`, with the default-immutable rule (MUT-09) ext
 
 Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.
 
-The source surface is therefore split in two rather than dropping either group. `.java` is the Java-compatible subset — sections 1–18 of the spec — and is the migration on-ramp and IDE-compatible form. `.lat` is purely additive: it admits the five forms, and any annotated `.java` source is also a valid `.lat` source. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file.
+The source surface is therefore split in two rather than dropping either group. `.java` is the Java-compatible subset, every topic except `LAT`, and is the migration on-ramp and IDE-compatible form. `.lat` is purely additive: it admits the five forms, and any annotated `.java` source is also a valid `.lat` source. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file.
 
 ### Why the `.lat` surface is pure syntactic sugar (LAT-00)
 
