@@ -99,8 +99,9 @@ That reduces to ordinary slice expressions this rule covers.
 
 Only an owned object with no borrow of it outstanding can be destructed (OWN-03, LIFE-01).
 Destruction consumes the object rather than mutating it, so it requires ownership but not `@mut`.
-At its first destructing operation (DES) the ownership of its fields transfers to the scope where the destruction was initiated.
-Each formerly owned field becomes an independent value owned by that scope, and a `@borrow` field becomes unbound (OWN-09).
+At its first destructing operation (DES) each of its fields transfers to the scope where the destruction was initiated.
+A formerly owned field becomes an independent value owned by that scope.
+A `@borrow` field transfers as a `@bound` value still bound to its original source (OWN-09, LIFE-03), a borrow carried out unchanged rather than converted to ownership.
 
 ### OWN-07 - An unowned value drops at end of statement
 

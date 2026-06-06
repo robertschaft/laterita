@@ -188,6 +188,11 @@ This is the rule Rust enforces, for the same reason: there is no sound `&self` o
 Forbidding field assignment, and forbidding return or storage of the husk, close the remaining ways a half-object could escape and be mistaken for a live one.
 From its first move to the end of its block, the object exists only to be taken apart.
 
+A `@borrow` field is carried out, not discarded.
+It leaves the destructed object as a `@bound` value still tied to its original source (OWN-06, LIFE-03), exactly as moving a reference field out of a Rust struct yields a reference with the same lifetime.
+A borrow owns nothing to transfer, so destruction moves the borrow itself rather than converting it to ownership, and the borrowed data is untouched.
+Discarding the borrow at destruction instead would be gratuitously stricter than Rust and would throw away a still-valid borrow the caller may want.
+
 This is also where the feature stops colliding with closures.
 Field-granular *move* capture, where a closure reaches into a live object and moves one field into its environment as Rust 2021 does (RFC 2229), is not expressible, because a closure captures whole variables rather than declared field paths and a move must name a field path.
 The idiom instead is to destruct the object into owned locals first and let the closure capture those locals, which is precisely the pre-2021 Rust pattern.
