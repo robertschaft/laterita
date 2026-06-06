@@ -13,7 +13,7 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 
 ## OQ-20 — Pattern matching and destructuring under ownership
 
-**Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record patterns, JEP 441) leaves move-vs-borrow implicit.
+**Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record deconstruction patterns, JEP 440) leaves move-vs-borrow implicit.
 
 **The issue.** Laterita inherits Java's pattern `switch` and record patterns. But the borrow checker has to attribute each variable produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or destructing (DROP-04 / OWN-06)? Sealed hierarchies (Rust-style ADTs) make this acute — the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
 
@@ -24,9 +24,14 @@ Non-language-design items — tooling, migration, and roadmap work — are track
 - For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once. Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 
+**Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
+A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
+That is distinct from `DES` destruction, which is the unconditional move form: it always moves an owned object's fields out by `give(p.x)`.
+Keeping the two terms separate is why the move-based take-apart operation was renamed from deconstruct to destruct, leaving deconstruct free for the JEP 440 borrow-into-parts reading.
+
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums; without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
-**Related codes:** OWN-02, OWN-13, OWN-06, DROP-04.
+**Related codes:** OWN-02, OWN-13, OWN-06, DES, DROP-04.
 
 ## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
