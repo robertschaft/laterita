@@ -97,7 +97,8 @@ That reduces to ordinary slice expressions this rule covers.
 
 ### OWN-06 - Destruction transfers an owned object's fields to its scope
 
-Only an owned object can be destructed.
+Only an owned object with no borrow of it outstanding can be destructed (OWN-03, LIFE-01).
+Destruction consumes the object rather than mutating it, so it requires ownership but not `@mut`.
 At its first destructing operation (DES) the ownership of its fields transfers to the scope where the destruction was initiated.
 Each formerly owned field becomes an independent value owned by that scope, and a `@borrow` field becomes unbound (OWN-09).
 
@@ -842,7 +843,7 @@ if (n < 0) broken("n must be non-negative");
 ## DES — Destruction
 
 This topic covers the details of destruction.
-Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-03) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope as independent values (OWN-06) and ends the object's lifetime (DES-03).
+Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-06) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope as independent values (OWN-06) and ends the object's lifetime (DES-03).
 It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
 ### DES-01 — Destruct by `give`-ing a directly accessible field

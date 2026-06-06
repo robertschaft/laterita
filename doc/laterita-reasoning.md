@@ -163,6 +163,11 @@ That is the case that recurs.
 A builder hands out its parts, a `Pair` splits into two owning halves (ARR-04), a state object distributes its resources before it dies.
 Everything in destruction's shape follows from confining the feature to that job and rejecting the temptation to let a destructed object keep behaving like a whole one.
 
+Destruction is gated like a consuming move, not like a mutation.
+It ends the object's lifetime (DES-03), so any borrow of it still live at that point would outlive its source, which LIFE-01 rejects and OWN-03 already prevents while a mutable borrow holds the owner frozen.
+The gate is exclusivity, not mutability.
+Consuming an object is not writing through it, so destruction requires ownership but never `@mut`, and a non-`@mut` owned value is taken apart exactly as a `@mut` one is.
+
 Per-field move state is the enabling bookkeeping.
 The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the destruction path and on exception unwind (DROP-04, EXC-03).
 For that state to be decidable, every move has to name a specific field statically.
