@@ -318,11 +318,6 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}
 // view's lifetime = min(name, count)
 ```
 
-### LIFE-04 - Destruction ends an object's lifetime
-
-The lifetime of a destructed object ends immediately, at its first destructing operation (DES).
-In exchange, destruction gives each of the object's formerly owned fields an independent lifetime, bounded by the scope that now owns it (OWN-06).
-
 ---
 
 ## MUT — Mutability
@@ -707,7 +702,7 @@ Within a scope, variables are dropped in the reverse of their declaration order.
 
 ### DROP-04 — A destructed object's fields drop independently
 
-Destruction (OWN-06) replaces an owned object with its formerly owned fields, each now an independent value owned by the scope, and ends the object's own lifetime (LIFE-04).
+Destruction (OWN-06) replaces an owned object with its formerly owned fields, each now an independent value owned by the scope, and ends the object's own lifetime (DES-03).
 A destructed object is therefore never dropped as a whole.
 Each of those fields drops at scope exit like any other owned variable (DROP-01, DROP-02), unless it has since been moved away.
 The compiler records per field whether it is still owned at each exit point, a drop flag, and emits the drop only for the fields still owned there.
@@ -847,7 +842,7 @@ if (n < 0) broken("n must be non-negative");
 ## DES — Destruction
 
 This topic covers the details of destruction.
-Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-03) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope (OWN-06) and ends the object's lifetime, giving each formerly owned field an independent one (LIFE-04).
+Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-03) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope as independent values (OWN-06) and ends the object's lifetime (DES-03).
 It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
 ### DES-01 — Destruct by `give`-ing a directly accessible field
@@ -882,7 +877,7 @@ var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not 
 
 ### DES-03 — Restrictions for destructed instances
 
-Once any field has been moved out, the object's lifetime has ended (LIFE-04).
+Once any field has been moved out, the object's lifetime has ended.
 It may only be taken further apart, one remaining field at a time:
 
 1. no method may be invoked on it.
