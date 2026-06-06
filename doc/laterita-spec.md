@@ -705,11 +705,13 @@ Within a scope, variables are dropped in the reverse of their declaration order.
 
 `onDrop()` must be invoked on every exit path from a scope: normal completion, return, break, continue, and exceptional unwind.
 
-### DROP-04 — Drop flags for destruction
+### DROP-04 — A destructed object's fields drop independently
 
-When destruction (OWN-06) has left fields moved out, the compiler must emit code that consults per-field move state and invokes `onDrop()` only on the parts still owned at the exit point.
-Implementations may optimize away drop flags when static analysis proves they are constant.
-Only a class that implements no `onDrop()` can be destructed (DROP-08), so this conditional cleanup only ever skips individual fields' drops, never a body-bearing class's own `onDrop()`.
+Destruction (OWN-06) replaces an owned object with its formerly owned fields, each now an independent value owned by the scope, and ends the object's own lifetime (LIFE-04).
+A destructed object is therefore never dropped as a whole.
+Each of those fields drops at scope exit like any other owned variable (DROP-01, DROP-02), unless it has since been moved away.
+The compiler records per field whether it is still owned at each exit point, a drop flag, and emits the drop only for the fields still owned there.
+Implementations may optimize away drop flags when static analysis proves them constant.
 
 ### DROP-05 — Drop sequence
 
@@ -720,10 +722,10 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 3. Step 2 repeated for `B`, then for each superclass up to `Object`.
 4. If the instance is heap-allocated, its storage is released.
 
-Fields that are moved-out (DROP-04), `null` (NULL-09), or `@borrow` (OWN-09) are skipped in steps 2 and 3.
+Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
 The step-1 body runs before any field teardown of that class and may read all of its class's fields.
-DROP-08 forbids moving any field out of a class that implements `onDrop()`, so none can be moved-out when the body runs.
+A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
