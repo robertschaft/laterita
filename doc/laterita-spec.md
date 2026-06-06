@@ -703,7 +703,7 @@ Within a scope, variables are dropped in the reverse of their declaration order.
 
 ### DROP-04 — A destructed object's fields drop independently
 
-Destruction (OWN-06) replaces an owned object with its formerly owned fields, each now an independent value owned by the scope, and ends the object's own lifetime (DES-03).
+Destruction (OWN-06) replaces an owned object with its formerly owned fields, each now an independent value owned by the scope, and ends the object's own lifetime (DES-02).
 A destructed object is therefore never dropped as a whole.
 Each of those fields drops at scope exit like any other owned variable (DROP-01, DROP-02), unless it has since been moved away.
 The compiler records per field whether it is still owned at each exit point, a drop flag, and emits the drop only for the fields still owned there.
@@ -843,7 +843,7 @@ if (n < 0) broken("n must be non-negative");
 ## DES — Destruction
 
 This topic covers the details of destruction.
-Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-06) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope as independent values (OWN-06) and ends the object's lifetime (DES-03).
+Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-06) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope as independent values (OWN-06) and ends the object's lifetime (DES-02).
 It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
 
 ### DES-01 — Destruct by `give`-ing a directly accessible field
@@ -865,18 +865,7 @@ A record's components are directly accessible only in `.lat`, where they are pub
 A `.java` record keeps private components and cannot be destructed.
 A method result is never a destruction: a `give` must name a field, never a call, and a record's canonical accessor returns a borrow rather than the component (OWN-18).
 
-### DES-02 — Per-field move state
-
-Moving a value out of a field leaves that field moved-out while sibling fields remain valid.
-Any subsequent read of a moved-out field is a compile error.
-Every move must resolve statically to one specific field, so a move whose target depends on runtime control flow is rejected.
-
-```java
-var p = makeSplit();
-var x = cond ? give(p.head) : give(p.tail);    // ERROR: the moved field is not statically known
-```
-
-### DES-03 — Restrictions for destructed instances
+### DES-02 — Restrictions for destructed instances
 
 Once any field has been moved out, the object's lifetime has ended.
 It may only be taken further apart, one remaining field at a time:

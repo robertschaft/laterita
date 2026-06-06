@@ -164,14 +164,14 @@ A builder hands out its parts, a `Pair` splits into two owning halves (ARR-04), 
 Everything in destruction's shape follows from confining the feature to that job and rejecting the temptation to let a destructed object keep behaving like a whole one.
 
 Destruction is gated like a consuming move, not like a mutation.
-It ends the object's lifetime (DES-03), so any borrow of it still live at that point would outlive its source, which LIFE-01 rejects and OWN-03 already prevents while a mutable borrow holds the owner frozen.
+It ends the object's lifetime (DES-02), so any borrow of it still live at that point would outlive its source, which LIFE-01 rejects and OWN-03 already prevents while a mutable borrow holds the owner frozen.
 The gate is exclusivity, not mutability.
 Consuming an object is not writing through it, so destruction requires ownership but never `@mut`, and a non-`@mut` owned value is taken apart exactly as a `@mut` one is.
 
 Per-field move state is the enabling bookkeeping.
 The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the destruction path and on exception unwind (DROP-04, EXC-03).
-For that state to be decidable, every move has to name a specific field statically.
-So the moved field is a direct field-access path, and a move whose target depends on runtime control flow (`cond ? give(x.a) : give(x.b)`) is rejected, because it would leave the move state of both fields ambiguous at the join.
+For that state to stay decidable, each move names one specific field through a direct field-access path.
+When control flow moves different fields on different branches, the per-field drop flags that reconcile conditional ownership at a join (DROP-04) carry the differing move states past it, so a form like `cond ? give(x.a) : give(x.b)` needs no special restriction and is accepted.
 The move also has to reach an owned field directly, which is why it reads a field rather than a method result.
 A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields, and letting a call silently destruct its receiver would hide the move behind a method, which is the invisibility `give` exists to prevent.
 This is what keeps a `.java` record off the direct destruction path: its accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
