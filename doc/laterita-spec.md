@@ -755,29 +755,8 @@ If multiple invocations along a drop path throw — sibling variables (DROP-02),
 ### DROP-08 — A class with `onDrop()` cannot be destructed
 
 No field may be moved out of a value whose class implements `onDrop()`, whether or not the `onDrop()` body reads that field.
-The compiler diagnoses the violation at the move: a `give` of such a field is rejected.
-The diagnostic identifies the field, the move, and the `onDrop()` declaration that locks it.
-
-A class with no `onDrop()` implementation (every POJO, every plain data carrier, and in `.lat` every record) locks nothing: its fields may be moved out individually (OWN-06), and cleanup of the survivors follows DROP-04.
-A class that needs both an `onDrop()` and the ability to surrender a part holds that part behind a handle the cleanup path does not touch, or restructures so the part is extracted before the resource-owning husk is built.
-
-```java
-class Holder { Resource left; Resource right; }      // POJO: no onDrop(), fields accessible
-
-var p = makeHolder();
-useLeft(give(p.left));         // OK: Holder has no onDrop(); left field moved out (OWN-06)
-useRight(give(p.right));       // OK: right still owned; nothing of p remains to drop
-
-final class Logged {           // final: required to implement onDrop (DROP-09)
-    Handle h;
-    Buffer buf;
-    @internal void onDrop() { log("closing " + h.id()); }  // reads h, never buf
-}
-
-var x = new Logged(openHandle(), allocBuf());
-useHandle(give(x.h));          // ERROR: Logged implements onDrop(); no field may be moved out
-useBuffer(give(x.buf));        // ERROR: same rule — even though onDrop() never reads buf
-```
+The compiler diagnoses the violation at the destruction site: a `give` of such a field is rejected.
+The diagnostic identifies the field, the destruction, and the `onDrop()` declaration that locks it.
 
 ### DROP-09 — `onDrop()` implementations only on `final` classes
 
