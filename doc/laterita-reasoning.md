@@ -554,7 +554,11 @@ The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries 
 
 ### Why closures carry capture lifetimes (CLO-06)
 
-A closure that borrows `name` cannot outlive `name`. This is the same lifetime-bounded-by-input principle from OWN-17, applied to closures. Without it, you could create a closure, the captured variable would die, and calling the closure would deref freed memory. The standard ownership rules force this, but it's worth calling out as a separate requirement because closures are where it bites people.
+A closure is a struct (FN-03): its captures are fields, a by-borrow capture is a `@borrow` field, and a by-move capture is an owned field.
+Capture lifetimes are therefore not a new principle but LIFE-03 applied to that struct: any `@borrow` capture makes the closure a `@bound` value bound to the intersection of its captured sources, while owned captures contribute nothing.
+A closure that borrows `name` cannot outlive `name`, the same reason an instance with a `@borrow` field cannot outlive its source.
+The relational form (OWN-17) is needed only when the closure escapes through a return and binds to captured parameters, as in `partial`.
+In-scope captures need no annotation, and mixed captures bind only by their borrowed parts, which the field model gives directly and a single OWN-17 framing would miss.
 
 ---
 
@@ -664,7 +668,10 @@ The hazard exists only when the container is *shared* — duplicable into many c
 
 ### Why `@take` needs no degradation for borrows (TARG-05)
 
-`@take` is by-value transfer, not a claim on the referent.
+A `@borrow` value is a reference: an arrow to a value another variable owns.
+`@take` keeps what the slot is given, so `@take @borrow` keeps the arrow, not the value it points at.
+The referent stays owned where it was and is untouched, which is why `@take @borrow` is not the contradiction it first appears to be.
+Underneath, `@take` is by-value transfer, not a claim on the referent.
 Transferring a value costs a copy when the value is freely copyable and a move otherwise, the same copy-versus-move split the language applies everywhere.
 A shared borrow is copyable, so `@take` of one copies it and the caller keeps its own.
 An exclusive `@mut` borrow is not, so `@take` moves it and the caller loses access.

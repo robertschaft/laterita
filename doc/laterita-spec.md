@@ -652,6 +652,7 @@ It accumulates lifetime constraints on a single borrow.
 
 A generic `@take T` parameter monomorphized with a borrowed type argument becomes `@take @borrow T`, or `@take @mut @borrow T` for an exclusive element.
 `@take` transfers the value by value into the slot.
+Because a `@borrow` value is a reference, `@take @borrow` keeps the reference itself, not the value it points at, which stays owned where it was.
 The cost follows copyability: a shared borrow is copied, so the caller keeps its own, and an exclusive `@mut` borrow is moved, so the caller loses access.
 The transferred borrow keeps its original source (LIFE-01), so the slot's enclosing value is `@bound` (OWN-09).
 A bare borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
@@ -1299,7 +1300,10 @@ The SAM *type itself* is invariant under override in the sense that the SAM's un
 
 ### CLO-06 — Capture lifetimes propagate
 
-A closure value carries the lifetimes of every variable it captures by borrow. The closure cannot outlive any captured borrow. Lifetime intersection (LIFE-02) applies when multiple borrows are captured.
+A by-borrow capture is a `@borrow` slot of the synthesized closure (FN-03), and a by-move capture is an owned slot.
+A closure with any `@borrow` capture is therefore a `@bound` value (OWN-09, LIFE-03), bound to the intersection of its captured sources (LIFE-02) and unable to outlive any of them (LIFE-01).
+A closure that captures only by move is owned.
+When the closure escapes through a return, its captured parameters are the `@bound` sources of the return (OWN-17).
 
 ---
 
