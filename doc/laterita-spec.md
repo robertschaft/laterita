@@ -636,12 +636,21 @@ For example, `@bound E` with source `this` (OWN-18), returned from a method on `
 
 ```java
 class ArrayList<E> {
-    @bound E get(int index);                         // return bound to `this`
+    @mutating void add(@take E e);                    // stores a borrow (TARG-05)
+    @bound E get(int index);                          // return bound to `this` (OWN-18)
 }
 
-var list = new ArrayList<@borrow String>();          // elements are borrows, each with its own source
-var got = list.get(0);                               // one borrow
-                                                     // lifetime = min(list, element source)
+String config = "shared";                             // long-lived owner
+var list = new ArrayList<@borrow String>();           // elements are borrows, each with its own source
+list.add(config);                                     // element source: `config`
+
+{
+    String line = readLine();                         // shorter-lived owner
+    list.add(line);                                   // a second borrow, sources intersect (LIFE-02)
+
+    @bound @borrow String got = list.get(0);          // one borrow, not a borrow of a borrow
+                                                      // lifetime = min(list, config, line)
+}                                                     // `line` drops here, so `list` may not be read after this block
 ```
 
 The rule is what lets `Container<@borrow T>` compose through any method whose return is `@bound E`.
