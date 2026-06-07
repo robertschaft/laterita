@@ -648,7 +648,8 @@ list.add(config);                                     // element source: `config
     String line = readLine();                         // shorter-lived owner
     list.add(line);                                   // a second borrow, sources intersect (LIFE-02)
 
-    @bound @borrow String got = list.get(0);          // one borrow, not a borrow of a borrow
+    var got = list.get(0);                            // inferred @bound @borrow String:
+                                                      // one borrow, not a borrow of a borrow,
                                                       // lifetime = min(list, config, line)
 }                                                     // `line` drops here, so `list` may not be read after this block
 ```
