@@ -582,18 +582,16 @@ An override may declare fewer or narrower checked exceptions than the inherited 
 ### TARG-01 - `@borrow` admitted in a type argument
 
 `@borrow` may appear inside a generic type argument.
-It declares that the values substituted for that type parameter are borrows, the same structural role `@borrow` plays on a field (OWN-09).
-A type argument names no source, so it takes the structural `@borrow`, not the relational `@bound`, which names a parameter or `this`.
-A class instance whose generic arguments include any `@borrow`-substituted parameter can only be produced as a `@bound` value.
-Its lifetime follows LIFE-02, with TARG-04 collapse when borrow markers stack.
+It declares that the values substituted for that type parameter are borrows, the same role `@borrow` plays on a field (OWN-09).
+When a `@borrow`-substituted argument is stored in a field, that field becomes a `@borrow` field, so the instance can only be produced as a `@bound` value bound to the sources of the borrowed arguments (OWN-09, LIFE-03).
 No struct-level lifetime parameters are introduced.
-The instance variable carries the lifetime as a `@bound` value, and for a local it follows the right-hand side (OWN-02) without a marker.
+A local holding such an instance follows its initializer (OWN-02) and needs no marker.
 
 ```java
 record Pair<L, R>(L left, R right) {}
 
 Pair<String, Integer>                 p1   = new Pair<>("hello".clone(), 42);
-Pair<@borrow String, @borrow Integer> view = new Pair<>(name, count);
+Pair<@borrow String, @borrow Integer> view = new Pair<>(name, count);   // view bound to name, count
 ```
 
 ### TARG-02 - `@take` rejected in a type argument
