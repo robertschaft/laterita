@@ -58,7 +58,7 @@ A reference that doesn't count toward refcount. Used to break cycles in `Rc` gra
 |------|------|----------|---------|
 | Monomorphization | Yes | Yes (per `COMP-02`) | Each generic instantiation produces separate code |
 | Borrow checker | Core | Core (per `MOVE-04`, `LIFE-01`) | Compile-time verification of lifetime safety |
-| Drop flags | Used internally | Used (per `DROP-04`, `EXC-03`) | Track partial-move state per field |
+| Drop flags | Used internally | Used (per `DROP-04`, `EXC-03`) | Track per-field destruction state |
 | Variance | In generics & override context | In override context (per `MOVE-10`) | How strict/loose parameter modes can be in overrides |
 
 ---
@@ -80,7 +80,7 @@ A reference that doesn't count toward refcount. Used to break cycles in `Rc` gra
 **Cleanup terminology** appears in:
 - Scope exit (`DROP-01`, `DROP-02`, `DROP-03`)
 - Exception unwind (`EXC-02`, `EXC-03`)
-- Partial moves (`DROP-04`)
+- Destruction (`DROP-04`, `DES` topic)
 - Iterators (`STD-08`: invalidating a borrow via iterator mutation)
 - Threads (`THR-06`: `Thread.onDrop()` interruption)
 
@@ -100,7 +100,7 @@ A reference that doesn't count toward refcount. Used to break cycles in `Rc` gra
 ## Concepts Java Has That Laterita Removes or Changes
 
 - **Garbage collection**: Replaced by ownership and refcounting.
-- **`synchronized` keyword**: Replaced by `Mutex<T>` (per §15).
+- **`synchronized` keyword**: Replaced by `Mutex<T>` (the `STD` / `THR` topics).
 - **Checked exceptions**: All exceptions are unchecked (per `EXC-05`); `throws` is documentation.
 - **Reflection**: Removed entirely (per `COMP-05`); replaced by compile-time code generation.
 - **`var` keyword**: Replaced by `let` and `mut` (per `BIND-01`).

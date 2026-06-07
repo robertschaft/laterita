@@ -66,7 +66,7 @@ In `.java` files the same callback is expressed by declaring a nominal functiona
 
 | File | Purpose |
 |---|---|
-| [`doc/laterita-spec.md`](doc/laterita-spec.md) | The normative specification. §1–18 are the Java-compatible surface — every rule expressible as annotated `.java` that `javac` parses. §19 (`LAT-*`) specifies the `.lat` sugar. Each requirement carries a mnemonic code (`BIND-01`, `MOVE-03`, …) grouped by area: bindings, optionality, move/borrow, mutability, lifetimes, cleanup, copying, strings, closures, exceptions, unsafe, standard library, threads, compilation. |
+| [`doc/laterita-spec.md`](doc/laterita-spec.md) | The normative specification. Every topic except `LAT` is the Java-compatible surface, each rule expressible as annotated `.java` that `javac` parses. The `LAT` topic (`LAT-*`) specifies the `.lat` sugar. Each requirement carries a mnemonic code (`OWN-01`, `DES-02`, …) grouped by area: ownership, lifetimes, mutability, class hierarchy, static storage, cleanup, destruction, copying, optionality, exceptions, functional interfaces, closures, strings, arrays, unsafe, standard library, threads, compilation. |
 | [`doc/laterita-reasoning.md`](doc/laterita-reasoning.md) | The design rationale. Section by section, it explains *why* each spec rule reads the way it does — the alternatives considered, the trade-offs taken, and the Java/Rust/Kotlin precedents followed or rejected. |
 | [`doc/laterita-open-questions.md`](doc/laterita-open-questions.md) | Language-design questions raised but not yet resolved (`OQ-NN`). Each entry references the spec codes it touches. |
 | [`doc/resolved-questions.md`](doc/resolved-questions.md) | Registry of closed decisions: rejected alternatives and resolved-OQ tombstones, so settled choices are not re-raised. |
@@ -74,7 +74,7 @@ In `.java` files the same callback is expressed by declaring a nominal functiona
 
 ## Reading order
 
-- New to the project: skim §1–§3 of the spec (bindings, optionality, move/borrow) and §19 (`.lat` forms), then read the matching sections of the reasoning document.
+- New to the project: high-level skim the [`specification`](doc/laterita-spec.md) topics in the order they appear, and look up unknown terms in the [`terminology`](doc/terminology.md).
 - Evaluating a design choice: open the reasoning document at the relevant section; cross-reference the spec codes it cites, and check `resolved-questions.md` for decisions already closed.
 - Looking for what's still undecided: start with the open-questions document.
 

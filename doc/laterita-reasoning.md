@@ -18,11 +18,11 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 ---
 
-## Surface Syntax — annotations and static methods (§20)
+## Surface Syntax — annotations and static methods (RESV)
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions. The language adds no new keywords.
 
-The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible surface (sections 1–18; COMP-06), nothing else about it has to change to remain parseable by the Java ecosystem.
+The migration win is concrete. A `.java`-mode laterita source (COMP-06) is still a `.java` file: `javac` parses it, and IDEs that know nothing about laterita still highlight, navigate, refactor, and complete. The laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific stdlib static methods. As long as the source stays within the Java-compatible surface (COMP-06), nothing else about it has to change to remain parseable by the Java ecosystem.
 
 The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf f(mut bound Buf b)` would have. Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
@@ -30,17 +30,24 @@ Expression-position concepts can't be annotations — `@give x` would not parse 
 
 Type inference reuses Java's `var`, with the default-immutable rule (MUT-09) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable variables.
 
-### Two source surfaces: `.lat` and `.java` (COMP-06, §21)
+### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
 
 Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend. Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.
 
-The source surface is therefore split in two rather than dropping either group. `.java` is the Java-compatible subset — sections 1–18 of the spec — and is the migration on-ramp and IDE-compatible form. `.lat` is purely additive: it admits the five forms, and any annotated `.java` source is also a valid `.lat` source. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file.
+The source surface is therefore split in two rather than dropping either group. `.java` is the Java-compatible subset, every topic except `LAT`, and is the migration on-ramp and IDE-compatible form. `.lat` is purely additive: it admits the five forms, and any annotated `.java` source is also a valid `.lat` source. The compiler is named `latc`, parallel to `javac` and `rustc`, signalling a separate front-end while leaving compiled artifacts unchanged. The cost is one binary syntactic decision per file.
 
 ### Why the `.lat` surface is pure syntactic sugar (LAT-00)
 
-The five `.lat` forms are confined to §21, and §21 carries a hard constraint: every form in it is sugar with an exact desugaring to the §1–20 surface, and none introduces semantics of its own (LAT-00). This keeps the two surfaces from drifting into two languages. A `.lat` source and its desugared `.java` form are the same program; migration tooling rewrites one into the other mechanically in either direction.
+The five `.lat` forms are confined to the `LAT` topic, which carries a hard constraint: every form in it is sugar with an exact desugaring to the Java-compatible surface, and none introduces semantics of its own (LAT-00).
+This keeps the two surfaces from drifting into two languages.
+A `.lat` source and its desugared `.java` form are the same program.
+Migration tooling rewrites one into the other mechanically in either direction.
 
-The constraint also resolves where a future feature belongs. A proposed addition that is genuinely just notation — a shorter spelling for something the annotation-and-intrinsic surface (§20) already expresses — goes in §21. A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar; it belongs in §1–20, expressed through annotations or intrinsics so that the `.java` surface carries it too. Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise — that the surfaces are interchangeable — would quietly fail.
+The constraint also resolves where a future feature belongs.
+A proposed addition that is genuinely just notation, a shorter spelling for something the annotation-and-intrinsic surface (RESV) already expresses, goes in the `LAT` topic.
+A proposed addition that carries new type, ownership, or runtime behavior cannot be sugar.
+It belongs on the Java-compatible surface, expressed through annotations or intrinsics so that the `.java` surface carries it too.
+Without this rule, `.lat` would accumulate semantics that `.java` could not express, and the migration promise that the surfaces are interchangeable would quietly fail.
 
 ### Why `.lat` drops the diamond on constructor calls (LAT-06)
 
@@ -149,15 +156,53 @@ A red-black tree node needs to access `left` and `right` independently while the
 
 Same principle as OWN-04, applied to arrays. The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness. Each reduces to two ordinary slice expressions whose disjointness OWN-05 already covers — no `@unsafe` context is required. This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
-### Why partial-move tracking (OWN-06)
+### Why destruction is restricted to direct field access (DES)
 
-Once you have moves out of fields, you need to know which fields are still alive at every point in the function. This is bookkeeping the compiler does silently, and it pays off both in normal control flow (use-after-move detection on partially-moved values) and during exception unwind (DROP-04, EXC-03). Skipping it would mean making `give(...)` on a field illegal, which would make ownership transfer in real code far more painful.
+Destruction earns its keep in one job: taking a plain object with accessible fields (a POJO) apart into independently owned fields.
+That is the case that recurs.
+A builder hands out its parts, a `Pair` splits into two owning halves (ARR-04), a state object distributes its resources before it dies.
+Everything in destruction's shape follows from confining the feature to that job and rejecting the temptation to let a destructed object keep behaving like a whole one.
+
+Destruction is gated like a consuming move, not like a mutation.
+It ends the object's lifetime (DES-02), so any borrow of it still live at that point would outlive its source, which LIFE-01 rejects and OWN-03 already prevents while a mutable borrow holds the owner frozen.
+The gate is exclusivity, not mutability.
+Consuming an object is not writing through it, so destruction requires ownership but never `@mut`, and a non-`@mut` owned value is taken apart exactly as a `@mut` one is.
+
+Per-field move state is the enabling bookkeeping.
+The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the destruction path and on exception unwind (DROP-04, EXC-03).
+For that state to stay decidable, each move names one specific field through a direct field-access path.
+When control flow moves different fields on different branches, the per-field drop flags that reconcile conditional ownership at a join (DROP-04) carry the differing move states past it, so a form like `cond ? give(x.a) : give(x.b)` needs no special restriction and is accepted.
+The move also has to reach an owned field directly, which is why it reads a field rather than a method result.
+A method returns either an owned value it produced or a borrow, never a handle to one of the receiver's tracked fields, and letting a call silently destruct its receiver would hide the move behind a method, which is the invisibility `give` exists to prevent.
+This is what keeps a `.java` record off the direct destruction path: its accessor is `@bound`, returning a borrow of the component, not the owned component itself, so there is nothing for `give` to take.
+A POJO with accessible fields is the destructable shape.
+The `.lat` `give`-of-a-component spelling (LAT-08) does not add a second shape: it desugars to a generated `@consuming` method that moves the record's components into a companion POJO, which is then taken apart by ordinary destruction.
+Routing through the companion lets records reuse the one destructable shape and keeps the record a `record` in the `.java` mirror, so LAT-00 holds without exception.
+Mirroring a destructed record instead to a `.java` class with public component fields would have made destructability a property of the source surface, namely whether `.lat` code happens to take the record apart.
+That is the one thing LAT-00 forbids: a declaration's identity must not depend on its file extension.
+
+Once a field is gone the object is a husk, and the restrictions keep that fact honest.
+A method receives the whole receiver, part of which no longer exists, so no method may run on a destructed object.
+Only further fields may be moved out, and the husk drops its survivors at block end.
+This is the rule Rust enforces, for the same reason: there is no sound `&self` or `self` to hand a method once a field has moved.
+Forbidding field assignment, and forbidding return or storage of the husk, close the remaining ways a half-object could escape and be mistaken for a live one.
+From its first move to the end of its block, the object exists only to be taken apart.
+
+A `@borrow` field is carried out, not discarded.
+It leaves the destructed object as a `@bound` value still tied to its original source (OWN-06, LIFE-03), exactly as moving a reference field out of a Rust struct yields a reference with the same lifetime.
+A borrow owns nothing to transfer, so destruction moves the borrow itself rather than converting it to ownership, and the borrowed data is untouched.
+Discarding the borrow at destruction instead would be gratuitously stricter than Rust and would throw away a still-valid borrow the caller may want.
+
+This is also where the feature stops colliding with closures.
+Field-granular *move* capture, where a closure reaches into a live object and moves one field into its environment as Rust 2021 does (RFC 2229), is not expressible, because a closure captures whole variables rather than declared field paths and a move must name a field path.
+The idiom instead is to destruct the object into owned locals first and let the closure capture those locals, which is precisely the pre-2021 Rust pattern.
+Field-granular *borrow* capture is unaffected: a Read or Mutate closure (CLO-01) borrowing one field is an ordinary borrow, not a destruction, and stays available whenever the closure does not outlive the source.
 
 ### Why ownership annotations are not part of overload identity (OWN-13)
 
 Two same-name methods that differ only in laterita-introduced annotations (`@take`, `@mut`, `@bound` on a parameter; `@mutating`, `@consuming` on the method) are a duplicate declaration. Three reasons reinforce one answer.
 
-*The Java surface forbids it.* COMP-06 requires §1–20 to parse as annotated `.java` under `javac`, and `javac` ignores annotations when computing the overload signature. A rule that admitted "differs only in `@take`" overloads would be unimplementable in the surface it lives in: `javac` would reject the pair as duplicate methods before any laterita pass saw them.
+*The Java surface forbids it.* COMP-06 requires the Java-compatible surface to parse as annotated `.java` under `javac`, and `javac` ignores annotations when computing the overload signature. A rule that admitted "differs only in `@take`" overloads would be unimplementable in the surface it lives in: `javac` would reject the pair as duplicate methods before any laterita pass saw them.
 
 *There is no caller-side disambiguator.* For `@mut` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates — the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate. `give(...)` exists for `@take` on parameters, but lifting it into overload resolution makes resolution depend on a call-site marker whose primary job (OWN-07) is to mark a move — overloading the marker overloads the rule.
 
@@ -233,7 +278,7 @@ This is RAII order. If you opened `A` then opened `B` that depends on `A`, you s
 
 ### Why drop flags (DROP-04)
 
-Without per-field tracking, partial moves either have to be forbidden (severely limiting the language) or have to leak undefined behavior on cleanup (catastrophic). Drop flags are the proven solution. Rust uses them, the optimization story is well understood (most flags are statically constant and get optimized away), and the runtime cost in code that doesn't actually unwind is approximately zero.
+Without per-field tracking, destruction either has to be forbidden (severely limiting the language) or has to leak undefined behavior on cleanup (catastrophic). Drop flags are the proven solution. Rust uses them, the optimization story is well understood (most flags are statically constant and get optimized away), and the runtime cost in code that doesn't actually unwind is approximately zero.
 
 ### Why teardown is compiler-orchestrated (DROP-05)
 
@@ -243,7 +288,7 @@ Under DROP-09 only the leaf `final` class can declare a body, so today every ste
 
 ### Why explicit `onDrop()` calls are forbidden (DROP-06)
 
-Once the compiler emits all drop calls — at scope exits (DROP-01), on partial-move paths (DROP-04), on exception unwind (EXC-02), and through the drop sequence (DROP-05) — there is no remaining use case for user-invoked drop. Allowing it would create a category of bugs (double-drop, mismatched lifetimes, drop-then-use) for no expressive gain.
+Once the compiler emits all drop calls — at scope exits (DROP-01), on destruction paths (DROP-04), on exception unwind (EXC-02), and through the drop sequence (DROP-05) — there is no remaining use case for user-invoked drop. Allowing it would create a category of bugs (double-drop, mismatched lifetimes, drop-then-use) for no expressive gain.
 
 Forbidding it has two payoffs:
 
@@ -268,17 +313,25 @@ The trade against abort-on-throw is that drop-time exceptions are a control-flow
 
 A rule of thumb still holds: `onDrop()` should be best-effort cleanup. Fallible operations whose failure carries semantic meaning belong in an explicit `close()` (THR-05's split) where the caller has a clear handler; letting them escape `onDrop()` is the fallback when no such call site exists, not the primary contract.
 
-### Why `onDrop()` cannot observe moved-out fields (DROP-08)
+### Why a class with `onDrop()` cannot be destructed (DROP-08)
 
-Partial moves (OWN-06) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup. There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so if that body reads `left` it would be reading a vacated slot on the partial-move path. Three ways out:
+Destruction (OWN-06) and a universal `onDrop()` (DROP-01) collide: after `give(x.left)`, the field is gone, but `x`'s scope exit still has to run `x`'s cleanup.
+There is exactly one `onDrop()` body per class, and it cannot be specialized per drop site, so a body that read a moved-out field would be reading a vacated slot on the destruction path.
+The rule that resolves this is the one Rust reaches by the same route (`E0509`): a value whose class implements `onDrop()` is moved atomically, so no field may be moved out of it.
+Among the candidates this is the only one that keeps the destructor's view of its own fields trivially sound.
 
-1. **Forbid the partial move when `onDrop()` reads the field.** What DROP-08 picks.
-2. **Skip `onDrop()` entirely on a partial-move path, dropping only the survivors.** Rejected: partially moving one field would silently disable the whole object's destructor — a quiet correctness hole exactly where resource handling matters most.
-3. **Run `onDrop()` anyway and make a moved-out field read inside it a separate error.** Same observable rule as (1) — the body still can't touch a possibly-moved field — but the diagnostic surfaces at the `onDrop()` definition rather than at the move. DROP-08 prefers the move site: that's where the programmer made the choice, and the body stays a normal method whose field reads need no special annotation.
+The discarded candidates fall two ways.
+*Disable cleanup on the destruction path* (skip `onDrop()` entirely once any field is moved, dropping only the survivors) is rejected outright: destructing one field would silently switch off the whole object's destructor, a quiet correctness hole exactly where resource handling matters most.
+*Pin only the fields the body reads* (the finer-grained, per-field lock) is rejected as more machinery for less safety.
+Its pinned set is a function of the `onDrop()` body's internals and of every method that body transitively calls on `this`, so the set of fields that may be `give`-n out is invisible at the move site and brittle under refactoring: adding one field read inside cleanup silently breaks a `give` in unrelated code.
+The analysis cost buys little, because a class that carries an `onDrop()` is a resource-owning leaf (DROP-09) such as a lock guard, a handle, or a refcount, and gutting one of its fields while keeping the husk alive is rarely what the programmer means.
+The type-level rule states the contract a reader can see from the class alone: *has `onDrop()` means moved whole*.
+The rare case that genuinely wants both cleanup and a surrenderable part pays a single, explicit idiom: extract the part before the husk is built, or hold it behind a handle the cleanup path does not touch.
 
-Rust resolves the same tension by forbidding *any* move out of a field of a type that implements `Drop` (`E0509`). DROP-08 is the finer-grained version: Rust's prohibition attaches at the *type* level — a `Drop` type has all its fields locked, even those the drop never touches — whereas DROP-08 attaches at the *field* level, locking only fields the `onDrop()` body actually reads. A class without an `onDrop()` declaration (every record, every plain data carrier) reads nothing and stays fully splittable; a class that reads only some of its fields pins only those. The common case keeps Rust-style partial moves with none of Rust's `mem::take`/`Option`/`ManuallyDrop` ceremony. A class that *does* read a field in `onDrop()` pins that field, which is the right trade: if cleanup needs the value, the value has to still be there.
+Diagnosing at the move site (rather than at the `onDrop()` definition) keeps the error where the programmer made the choice, and lets the `onDrop()` body stay an ordinary method whose field reads need no special annotation.
 
-This also explains why `StringBuilder.build()` (OWN-15) — `return this.contents;` — is legal: `StringBuilder` declares no `onDrop()`, so `contents` is unpinned. Give `StringBuilder` an `onDrop()` that reads `contents` and the implicit move of `this.contents` becomes an error, which is the correct signal that the design now needs a different shape (e.g. an explicit `close()` per THR-05's split, or holding the buffer behind a handle that the `build()` path can extract without the husk needing it).
+This also explains why `StringBuilder.build()` (OWN-15), which is `return this.contents;`, is legal: `StringBuilder` declares no `onDrop()`, so it is freely splittable and the move of `this.contents` is fine.
+Give `StringBuilder` an `onDrop()` and that move becomes an error, which is the correct signal that the design now needs a different shape (for example, an explicit `close()` per THR-05's split, or holding the buffer behind a handle the `build()` path can extract without the husk needing it).
 
 ### Why `onDrop()` is confined to `final` classes (DROP-09)
 
@@ -290,7 +343,7 @@ DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `fin
 
 With at most one user `onDrop()` body per instance, several candidate rules collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`. DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
 
-The orthogonal cleanup rules — DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 moved-out fields, DROP-10 no-escape-of-this, THR-05 no-blocking — all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
+The orthogonal cleanup rules (DROP-02 reverse-order, DROP-04/NULL-09 drop flags, DROP-06 `@internal`, DROP-07 throw-continuation, DROP-08 no destruction of `onDrop()` classes, DROP-10 no-escape-of-this, THR-05 no-blocking) all stand unchanged: DROP-09 closes the inheritance axis, none of the others. The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it is `final` (THR-06), and the Java pattern of subclassing `Thread` gives way to passing a `Runnable`/lambda to the constructor.
 
 ### Why `this` does not escape `onDrop()` (DROP-10)
 
@@ -467,7 +520,7 @@ Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory
 
 ### Why functional-interface values are invoked through the SAM (FN-01)
 
-Java has no call-on-variable syntax: a functional-interface value is an object, invoked through its single abstract method (`f.apply(x)`, `r.run()`, `c.accept(x)`). Laterita keeps this. A `fn(args)` form that calls a variable directly would be a sixth non-Java syntactic surface — §20 lists five — bought for no semantic gain, since it desugars to the SAM call anyway, and it works against the "looks and feels like Java" goal. The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
+Java has no call-on-variable syntax: a functional-interface value is an object, invoked through its single abstract method (`f.apply(x)`, `r.run()`, `c.accept(x)`). Laterita keeps this. A `fn(args)` form that calls a variable directly would be a sixth non-Java syntactic surface (the `RESV` topic lists five) bought for no semantic gain, since it desugars to the SAM call anyway, and it works against the "looks and feels like Java" goal. The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
 
 The SAM of an anonymous functional interface is named `apply`, giving the nameless type one fixed, predictable method name, matching `java.util.function.Function`. A fixed name is not optional: LAT-05 desugars the anonymous spelling to a nominal interface, and the `.java` mirror must call a method that exists — without a canonical name there is nothing for either surface to invoke.
 
@@ -515,7 +568,7 @@ Resolution is left-operand-directed with unboxing as the primitive fallback and 
 
 ---
 
-## Code Generation Annotations (§23)
+## Code Generation Annotations (GEN)
 
 ### Why adopt the whole stable Lombok surface natively (GEN-*)
 
@@ -571,7 +624,7 @@ Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tra
 
 ### Why a dedicated section for arrays
 
-Parallel to `String` (§14): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across OWN-05 and stdlib commentary.
+Parallel to `String` (STR): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across OWN-05 and stdlib commentary.
 
 A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving. Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering — exactly the `@unsafe` propagation Laterita is avoiding.
 
@@ -583,8 +636,8 @@ For the two-way split, three shapes were considered — continuation-passing, re
 
 ```java
 var s = arr.splitAt(mid);
-spawnWorker(give(s.left));
-processLocally(give(s.right));
+var worker = spawnWorker(s.left());      // borrows the left half, bound to s which must survive worker
+processLocally(s.right());
 ```
 
 vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind. The multi-return feature would add the most surface for the narrowest benefit. Record wins; `@bound` propagating through record fields is a small generalization of LIFE-02 already implicit in the lifetime rules.

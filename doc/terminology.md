@@ -65,6 +65,9 @@ An overriding method may **require less** of its parameters than the base method
 ### copy constructor
 A constructor that takes a single parameter of the same type as the class being constructed (e.g., `new User(User source)`). Used to duplicate an object. Laterita auto-generates one per `OBJ-01` if not provided.
 
+### destruction
+Taking an owned object apart field by field, by `give`-ing a directly named accessible field (`give(obj.field)`). Works on a POJO in any source, and on a `record` only in `.lat`, where its components are public (`LAT-08`). A record's accessor returns a borrow and cannot be moved. An object is destructed as soon as its first field is moved out: from then on no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart. Its lifetime ends at that point (DES-02) and its formerly owned fields live on independently in the scope that received them (OWN-06). The scope drops each such field at its end like any owned variable, unless the field is moved on first, tracking per field whether it survives (DROP-04). Available only on classes that implement no `onDrop()`. A class with an `onDrop()` body is moved whole (`DROP-08`). See the `DES` topic.
+
 ### divergence point / diverges
 A code path that reaches `broken()` (a static method declared in `laterita.lang.Intrinsics`) that must not be reachable. If the compiler can prove the path is reachable, it reports an error. Code following `broken()` is dead code. The method has return type `Nothing` (the bottom type). See `UNR-01`.
 
@@ -72,7 +75,7 @@ A code path that reaches `broken()` (a static method declared in `laterita.lang.
 To clean up a value when its owning variable leaves scope. The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.). A `final` class implements `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead. See `DROP-01`, `DROP-09`.
 
 ### drop flag
-Compiler bookkeeping tracking whether each field of a partially-moved value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
+Compiler bookkeeping tracking whether each field of a destructed value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
 
 ### exclusive / exclusivity (also "mutual exclusion")
 Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
@@ -99,7 +102,7 @@ The ability to mutate an object's contents through a non-`@mut` (immutable) vari
 An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `HIER-05`. (Contrast with contravariance.)
 
 ### .lat / .java (source file extensions)
-The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in §21 (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
+The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in the `LAT` topic (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
 
 ### latc (laterita compiler)
 The reference laterita compiler. Accepts `.lat` and `.java` in a single compilation unit, dispatches by extension per `COMP-06`, and emits artifacts per `COMP-01`–`COMP-04`. See `COMP-07`.
@@ -144,7 +147,7 @@ A method the compiler invokes to clean up a value. Only a `final` class may impl
 "Open Question." A numbered entry in the open-questions document listing unresolved language-design decisions. Example: OQ-20 (pattern matching and destructuring under ownership). Not part of the normative spec.
 
 ### Pair<L, R>
-General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases — driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves; accessors participate in partial-move tracking, OWN-06) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves). See `ARR-04`.
+General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct component access `give(p.left)` / `give(p.right)` in `.lat`, OWN-06 / LAT-08) and as `@bound Pair<@bound @mut T[], @bound @mut T[]>` by `T[].splitAt` (borrowed mutable halves, read through the accessors). See `ARR-04`.
 
 ### ownership
 Having the right and obligation to drop (clean up) a value when done. An owned variable can move the value to another variable, pass it to a `@take` parameter, or drop it at scope exit. Only one variable can own a value at a time. See `OWN-01`.
@@ -154,9 +157,6 @@ The rules governing whether an overriding method's signature may differ from the
 
 ### parameter mode / ownership mode
 How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `OWN-13`.
-
-### partial move
-Moving a value out of a field while other fields of the same object remain owned. The compiler tracks which fields are moved and which remain, emitting `onDrop()` only on the unmoved fields. See `OWN-06`.
 
 ### poisoned (Mutex)
 A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
@@ -264,6 +264,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `NULL` | Nullable types, null safety |
 | `DROP` | Scope-exit cleanup, `onDrop()` |
 | `OBJ` | Copying, clone semantics |
+| `DES` | Destruction: taking an owned object apart field by field (`give(obj.field)`) |
 | `UNR` | Unreachable paths (`broken()`) |
 | `STR` | String ownership and slicing |
 | `ARR` | Array methods and the `laterita.lang.Arrays` static surface |
@@ -274,6 +275,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `STD` | Standard library types (`Rc<T>`, `Arc<T>`, `Mutex<T>`, `@local` marker, etc.) |
 | `THR` | Threading, interrupts, `Thread.onDrop()`, lock poisoning |
 | `COMP` | Compilation model (monomorphization, reflection, etc.) |
+| `RESV` | Reserved names and the annotation / intrinsic surface |
 | `LAT` | `.lat` surface forms (syntactic sugar over the Java-compatible surface) |
 | `NABI` | Native ABI guarantees |
 | `GEN` | Code generation annotations (Lombok-compatible surface) |
@@ -299,11 +301,3 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `Condition` | `java.util.concurrent.locks.Condition` or `Object.wait`/`notify` | Same API as `j.u.c.l.Condition`; runtime-checks the bound lock is held |
 | `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object; closer to C++ destructors than Java finalizers |
 | `drop` flag | N/A | Java doesn't track per-field move state |
-
----
-
-## Further Reading
-
-Readers new to ownership and borrowing should start with §1–§3 of `laterita-spec.md` (Ownership, Lifetimes, Mutability) and then read the corresponding sections of `laterita-reasoning.md` to understand the design trade-offs.
-
-For specific term definitions, cross-reference the spec code (e.g., `OWN-02`, `MUT-01`) listed in the spec document itself.

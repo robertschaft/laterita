@@ -1,78 +1,96 @@
 ---
-name: Laterita spec structure and ID conventions
-description: File locations, section numbering, all known ID prefix families, tombstone conventions, and recurring mistake patterns for the Laterita spec
+name: Laterita spec structure
+description: File layout, topic order, prefix families, cross-reference conventions, and stale-pattern flags for the Laterita spec under /home/user/laterita/doc/
 type: project
 ---
 
-## File locations (all under /home/user/laterita/doc/)
-- `laterita-spec.md` — normative requirements; defines all spec IDs
-- `laterita-reasoning.md` — design rationale; mirrors spec sections, references IDs but rarely defines new ones
-- `laterita-open-questions.md` — OQ-NN entries (open + resolved tombstone list at end)
-- `terminology.md` — alphabetical glossary; references IDs, never defines them
+# Laterita spec structure
 
-## Section numbering (as of 2026-05-17, after OQ-19 resolution adding §13 Arrays)
-| § | Title |
-|---|-------|
-| 1 | Bindings |
-| 2 | Mutability Rules |
-| 3 | Move and Borrow |
-| 4 | Lifetimes |
-| 5 | Scope-Exit Cleanup |
-| 6 | Unreachability |
-| 7 | Copying |
-| 8 | Optionality |
-| 9 | Exceptions |
-| 10 | Functional Interfaces |
-| 11 | Closures |
-| 12 | Strings |
-| 13 | Arrays  ← NEW (OQ-19 resolution) |
-| 14 | Unsafe |
-| 15 | Standard Library Types |
-| 16 | Threads |
-| 17 | Compilation Model |
-| 18 | Reserved Names |
+**Why:** Institutional knowledge for fast future audits without re-reading every file from scratch.
+**How to apply:** Use this as the baseline when scanning for broken references, stale `§N` citations, or missing prefix definitions.
 
-## Known ID prefix families and their canonical section
-| Prefix | Domain | Defined in |
-|--------|--------|------------|
-| BIND | Local/field bindings, mutation/consumption | §1 |
-| MUT | Mutability rules (transitivity, Cell<T>) | §2 |
-| MOVE | Ownership transfer, borrowing | §3 |
-| LIFE | Lifetime inference, borrow boundaries | §4 |
-| DROP | Scope-exit cleanup, onDrop() | §5 |
-| UNR | Unreachable paths (broken()) | §6 |
-| OBJ | Copying, clone semantics | §7 |
-| NULL | Nullable types, null safety | §8 |
-| EXC | Exception handling and unwind | §9 |
-| FN | Functional interfaces | §10 |
-| CLO | Closures and lambda capture | §11 |
-| STR | String ownership and slicing | §12 |
-| ARR | Array methods, laterita.lang.Arrays | §13 (added 2026-05-17) |
-| UNS | Unsafe code | §14 |
-| STD | Standard library types | §15 |
-| THR | Threading | §16 |
-| COMP | Compilation model | §17 |
-| OQ | Open questions (non-normative) | laterita-open-questions.md |
+## Document paths
 
-## ARR prefix (added with OQ-19 resolution)
-- ARR-01: Array methods on T[] (.lat surface) — spec line 965
-- ARR-02: laterita.lang.Arrays static surface (.java surface) — spec line 994
-- ARR-03: MutableConsumer<T> and MutableReducer<T,R> — spec line 1028
-- ARR is listed in the codes-group header line (line 5 of laterita-spec.md)
-- ARR is listed in terminology.md prefix table
+| File | Role |
+|---|---|
+| `/home/user/laterita/doc/laterita-spec.md` | Normative spec. Defines all spec IDs. |
+| `/home/user/laterita/doc/laterita-reasoning.md` | Explains why each rule holds. References spec IDs but defines none. |
+| `/home/user/laterita/doc/laterita-open-questions.md` | Unresolved design questions (OQ-NN). Defines OQ IDs. |
+| `/home/user/laterita/doc/resolved-questions.md` | Tombstones for closed OQ items + rejected-alternatives table. |
+| `/home/user/laterita/doc/terminology.md` | Defined terms; cites spec IDs but defines none. |
 
-## OQ conventions
-- Open questions: numbered OQ-NN, full entry in open section
-- Resolved: tombstone bullet in "# Resolved Questions" section at end of laterita-open-questions.md
-- Resolved questions also get a section in laterita-reasoning.md
-- Do not renumber existing OQ entries; new ones use unused numbers
-- OQ-19: resolved (ARR-01/02/03), tombstoned, cross-thread case deferred to OQ-21
-- OQ-20: does not exist (number intentionally skipped or unused)
-- OQ-21: currently open (cross-thread ownership of split mut-slices)
-- Highest open OQ as of 2026-05-17: OQ-21
+## Topic order in `laterita-spec.md` (verified 2026-06-05)
 
-## Recurring patterns / mistakes to watch
-- After section renumbering, §-refs in reasoning and open-questions can be left stale (§17→§18 style)
-- ARR prefix not in spec line-5 codes header (minor omission, not a broken reference)
-- ArraySplit<T> record is defined inside ARR-02 body but used in ARR-01 — this is intentional (forward reference within same section)
-- MOVE-06 originally had no ARR cross-reference; the OQ-19 resolution added it correctly
+OWN, LIFE, MUT, HIER, TARG, STAT, DROP, UNR, **DES**, OBJ, NULL, EXC, FN, CLO, STR, ARR, UNS, STD, THR, COMP, **RESV**, LAT, NABI, GEN.
+
+Rule of thumb in the spec intro: every topic except `LAT` is the Java-compatible surface.
+
+## Section numbering: ABOLISHED
+
+Topics no longer carry ordinal section numbers (`§1`, `## 1.`, etc.).
+Each top-level topic is identified by its code prefix in the heading, e.g. `## OWN — Ownership`.
+A prefix is a stable ID, so inserting or moving a topic never renumbers anything.
+
+### Stale references to flag as errors
+
+Any `§N` / `§N–M` citation, or textual "section(s) N" / "sections 1–18" range, is stale and must be flagged.
+Correct replacements:
+- `§21` → "the `LAT` topic"
+- `§20` → "`RESV`"
+- "§1–18 surface" / "§1–20" / "sections 1–18" → "the Java-compatible surface"
+
+As of branch `claude/adoring-fermat-d3KkY` all such references were removed across spec, reasoning, open-questions, resolved-questions, terminology, README, and CLAUDE.md. Any reappearance is a regression.
+
+## Prefix families
+
+| Prefix | Domain |
+|---|---|
+| OWN | Ownership, parameter modes; OWN-06 is a pointer to DES |
+| LIFE | Lifetimes and borrow lifetime intersection |
+| MUT | Mutability |
+| HIER | Class hierarchy, override variance |
+| TARG | Annotations in generic type arguments |
+| STAT | Static storage |
+| DROP | Scope-exit cleanup, onDrop() |
+| UNR | Unreachability (broken()) |
+| DES | Destruction (DES-01…DES-03) |
+| OBJ | Object copying |
+| NULL | Optionality |
+| EXC | Exceptions |
+| FN | Functional interfaces |
+| CLO | Closures |
+| STR | Strings |
+| ARR | Arrays |
+| UNS | Unsafe |
+| STD | Standard library types |
+| THR | Threads |
+| COMP | Compilation model |
+| RESV | Reserved names + the annotation/intrinsic surface (prose + tables, no numbered sub-rules) |
+| LAT | `.lat` surface forms (LAT-00…LAT-08) |
+| NABI | Native ABI guarantees |
+| GEN | Code generation annotations |
+| OQ | Open design questions |
+
+## DES topic — key facts
+
+- Own topic between UNR and OBJ since branch `claude/adoring-fermat-d3KkY`.
+- OWN-06 is now a one-sentence pointer to DES.
+- DROP-04 and DROP-08 reference destruction (DROP-04: "When destruction (OWN-06) has left fields moved out…"; DROP-08: "A class with `onDrop()` cannot be destructed").
+- Reasoning-doc heading: "Why destruction is restricted to direct field access (DES)".
+
+## RESV topic — key facts
+
+- Prefix newly assigned to the formerly-unnamed "Reserved Names" section.
+- No numbered sub-rules; one prose section with annotation and intrinsics tables.
+- Referenced by COMP-06 and LAT-00 as "the annotation and intrinsic surface of the `RESV` topic".
+
+## Terminology changes (branch `claude/adoring-fermat-d3KkY`)
+
+- "partial move" → retired; now "destruction".
+- "partially destructed" → retired; an object is "destructed" from its first field move onward.
+- Reasoning-doc headings renamed from "partial move" wording: "Why destruction is restricted to direct field access", "Why a class with `onDrop()` cannot be destructed".
+
+## Obsolete code groups
+
+- `BIND-NN`, `MOVE-NN` — old codes, superseded by OWN/LIFE/MUT/HIER/TARG/STAT. Any reference is stale.
+- `§N` section numbers — abolished; any occurrence is stale.
