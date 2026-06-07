@@ -650,13 +650,13 @@ A dedicated `reduceChunks` was considered and rejected. Every in-place reduce ex
 
 `MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
-### Why type arguments admit `@bound` and `@mut` but not `@take` (TARG-01, TARG-02, TARG-03)
+### Why type arguments admit `@borrow` and `@mut` but not `@take` (TARG-01, TARG-02, TARG-03)
 
-A type argument may carry `@bound` and `@mut`, but not `@take`.
+A type argument may carry `@borrow` and `@mut`, but not `@take`.
 
 `@take` is a parameter mode — it describes a transfer of ownership *into a slot* at a call site — not a property a value carries. As a type argument it would have no referent: `Pair<@take K, @take V>` cannot say anything, because there is no call and no slot. Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`), so `@take` in argument position is rejected (TARG-02).
 
-`@bound` composes cleanly (TARG-01): an instance whose type arguments include a `@bound` source can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04. The `@bound` variable on the instance carries the lifetime; no struct-level lifetime parameters are needed.
+`@borrow` composes cleanly (TARG-01): a type argument names no source, so it takes the structural `@borrow`, not the relational `@bound` that names a parameter or `this`. An instance whose type arguments include a `@borrow` element can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04. The instance variable carries the lifetime as a `@bound` value, and no struct-level lifetime parameters are needed.
 
 `@mut` in a type argument — `List<@mut Foo>` — is the hard case. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), and the hazard is aliasing: an element accessor `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`, and two coexisting shared borrows of a `List<@mut Foo>` would each call `get(0)` and receive a `@mut Foo` to the same slot. Banning `@mut` from type arguments outright would push the case onto `Cell<T>`, but that is heavier than the hazard requires.
 
@@ -676,7 +676,7 @@ A single owned array must be divisible so the halves are independently usable by
 
 Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mutating` borrow vs `@consuming`), and those annotations are not part of the overload signature (OWN-13) — two same-name methods that differed only in receiver mode would be a duplicate declaration. Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust precedent (`BytesMut::split_off`) and the only spelling that reads unambiguously at every call site.
 
-The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 — `Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@bound @mut T[], @bound @mut T[]>` for the in-thread borrowed return — so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
+The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 — `Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` for the in-thread borrowed return — so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
