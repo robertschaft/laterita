@@ -184,7 +184,7 @@ A **temporary expression** (call result, constructor, literal) is owned at the c
 Illegal cases:
 
 - `give(arg)` to a bare parameter. The caller asks to transfer, but the function will not accept ownership.
-- A bare argument holding only a borrow to a `@take` parameter. There is no ownership to give.
+- A bare argument holding only a borrow to a `@take` parameter whose type is owned. There is no ownership to give. A `@take @borrow` parameter instead expects the borrow itself (TARG-05).
 
 ```java
 var name = makeName();
@@ -649,6 +649,37 @@ var got = list.get(0);                               // one borrow
 The rule is what lets `Container<@borrow T>` compose through any method whose return is `@bound E`.
 The substituted form does not introduce a "borrow of a borrow" indirection.
 It accumulates lifetime constraints on a single borrow.
+
+### TARG-05 - `@take` transfers a borrowed type argument by value
+
+A generic `@take T` parameter monomorphized with a borrowed type argument becomes `@take @borrow T`, or `@take @mut @borrow T` for an exclusive element.
+`@take` transfers the value by value into the slot.
+The cost follows copyability: a shared borrow is copied, so the caller keeps its own, and an exclusive `@mut` borrow is moved, so the caller loses access.
+The transferred borrow keeps its original source (LIFE-01), so the slot's enclosing value is `@bound` (OWN-09).
+A bare borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
+`@take` therefore needs no degradation for borrows.
+
+```java
+@mut class List<T> { @mutating void add(@take T e); }
+
+List<Foo> a;                    // add(@take Foo e): move owned in
+List<@borrow Foo> b;            // add(@take @borrow Foo e): copy a shared borrow in
+@mut List<@mut @borrow Foo> c;  // add(@take @mut @borrow Foo): move an exclusive borrow in
+```
+
+### TARG-06 - `@own` requires an owned type argument
+
+A type parameter declared `@own` rejects a borrowed type argument.
+`@own` is the dual of `@borrow`: `@borrow` admits a borrow in a type argument, `@own` forbids one at the type parameter.
+It marks a type that must own its contents, the role a `'static` bound plays in Rust.
+`Arc` (STD-02) and `Mutex` (STD-09) declare their parameter `@own`.
+
+```java
+@mut class Mutex<@own T> { /* … */ }
+
+Mutex<Config>         ok  = new Mutex<>(loadConfig());   // owned argument
+Mutex<@borrow Config> bad = /* … */;                     // ERROR (TARG-06): borrowed argument
+```
 
 ---
 
@@ -1464,7 +1495,7 @@ A cycle of `Rc<T>` handles whose strong references form a closed loop is not rec
 
 ### STD-02 — `Arc<T>`
 
-The cross-thread analog of `Rc<T>`. reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
+The cross-thread analog of `Rc<T>`. reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries. The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a borrowed type argument is rejected.
 
 ### STD-03 — `WeakReference<T>`
 
@@ -1521,7 +1552,7 @@ Implementations of these operations are permitted (and expected) to use `private
 
 ### STD-09 — `Mutex<T>`
 
-A mutual-exclusion primitive wrapping an owned value. Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
+A mutual-exclusion primitive wrapping an owned value. Access to the protected value is scoped to a closure call rather than mediated by a separately held guard. The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value, so a borrowed type argument is rejected.
 
 **Constructor.** `new Mutex<T>(@take T value)` — wraps `value`, initially unlocked and unpoisoned.
 
@@ -1723,6 +1754,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@bound` | `PARAMETER` | - | Return is bound to this parameter | OWN-17 |
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
 | `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot; enclosing instance must be `@bound` | TARG-01 |
+| `@own` | `TYPE_PARAMETER` | - | Type parameter rejects a borrowed type argument (dual of `@borrow`) | TARG-06 |
 | `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `FIELD`, `METHOD` (return) | - | Variable holds a borrowed value (instance-level marker on a `@borrow`-field or `@borrow`-substituted-generic instance, OWN-09, TARG-01) | OWN-09 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |

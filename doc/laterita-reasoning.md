@@ -662,6 +662,23 @@ A type argument may carry `@borrow` and `@mut`, but not `@take`.
 
 The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (OWN-03): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (TARG-03): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
+### Why `@take` needs no degradation for borrows (TARG-05)
+
+`@take` is by-value transfer, not a claim on the referent.
+Transferring a value costs a copy when the value is freely copyable and a move otherwise, the same copy-versus-move split the language applies everywhere.
+A shared borrow is copyable, so `@take` of one copies it and the caller keeps its own.
+An exclusive `@mut` borrow is not, so `@take` moves it and the caller loses access.
+Degrading `@take` to a bare parameter for borrows fails on storage: a bare borrow parameter is scoped to the call (OWN-14) and cannot be kept, yet a container's `add` must store its element.
+So `@take` stays for every element mode, and `@take @borrow` is the ordinary monomorphization rather than a contradiction.
+
+### Why `@own` rather than reusing `@take` or a bound (TARG-06)
+
+A type that must own its contents needs a way to reject a borrowed type argument at the declaration.
+`@own` is a dedicated marker, the dual of `@borrow`, so the constraint reads at the type parameter exactly where a borrowed argument would otherwise be supplied.
+Reusing `@take` is rejected: `@take` is a call-site transfer mode, and giving it a second meaning on a declaration where no call occurs overloads the token.
+A marker-interface bound such as `T extends Owned` is rejected: ownership is not a supertype or method relationship, so a synthetic bound that every owned type would satisfy carries no real interface.
+`@own` is the analog of a `'static` bound in Rust, applied to the owning containers `Arc` and `Mutex`.
+
 ### Why `T[]` is the canonical contiguous-mut backing
 
 Java array slots write through any variable, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.

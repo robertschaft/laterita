@@ -17,25 +17,31 @@ A local variable, field, or parameter that holds a value. In Laterita, every var
 ### borrow / borrowed variable
 A variable that refers to a value owned elsewhere, rather than owning it itself. A borrowed variable cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`. There are two kinds: shared (immutable) and mutable. See `OWN-03` for the rules.
 
-### @borrow (annotation on fields and record components)
-Declares that a field (or record component) is a borrow slot rather than an owned slot.
-An instance of a class containing any `@borrow` field can only be produced as a `@bound` value, with lifetime intersecting each field's source (LIFE-03).
-Distinct from `@bound`, which marks a borrowed *value* at parameters, returns, and generic type arguments.
-See `OWN-09`, `LIFE-03`.
+### @borrow (annotation on fields, record components, and type arguments)
+Declares that a slot is a borrow slot rather than an owned slot: a field, a record component, or a generic type argument (`TARG-01`).
+An instance of a class containing any `@borrow` slot can only be produced as a `@bound` value, with lifetime intersecting each source (LIFE-03).
+It names no source, the structural role, distinct from `@bound`, which marks a borrowed *value* whose source is named.
+See `OWN-09`, `LIFE-03`, `TARG-01`.
 
-### @bound (annotation on returns, parameters, and type arguments)
+### @bound (annotation on returns and parameters)
 Declares a lifetime relationship between two values.
 On a parameter, declares that the function's return is bound to that parameter (`OWN-17`).
 On a return type, declares that the return is bound to `this` (`OWN-18`).
-In a generic type argument, declares that the substituted type is borrowed and forces the enclosing instance to be `@bound` (`TARG-01`).
-Distinct from `@borrow`, which declares a field as a borrow slot.
+It names a source, the relational role, distinct from `@borrow`, which declares a borrow slot whose source is fixed elsewhere.
+
+### @own (annotation on type parameters)
+Declares that a type parameter rejects a borrowed type argument: `class C<@own T>` admits `C<Foo>` but not `C<@borrow Foo>`.
+The dual of `@borrow`, and the analog of a `'static` bound in Rust.
+Applied to the owning containers `Arc` (`STD-02`) and `Mutex` (`STD-09`).
+See `TARG-06`.
 
 ### variable modifiers
-`@bound`, `@mut`, `@take`, and `@borrow`. Legal positions:
-- `@bound`. Parameter, return, generic type argument. Always allowed in type arguments (`TARG-01`).
-- `@borrow`. Field, record component (`OWN-09`).
+`@bound`, `@mut`, `@take`, `@borrow`, and `@own`. Legal positions:
+- `@bound`. Parameter, return (`OWN-17`, `OWN-18`).
+- `@borrow`. Field, record component, generic type argument (`OWN-09`, `TARG-01`).
 - `@mut`. Local, field, parameter, return. In a type argument only when the enclosing generic is `@mut` (`TARG-03`).
 - `@take`. Parameter only. Rejected on fields, locals, and generic type arguments (`OWN-10`, `TARG-02`).
+- `@own`. Type parameter declaration (`TARG-06`).
 
 
 ### buffer splitting
