@@ -679,6 +679,14 @@ Reusing `@take` is rejected: `@take` is a call-site transfer mode, and giving it
 A marker-interface bound such as `T extends Owned` is rejected: ownership is not a supertype or method relationship, so a synthetic bound that every owned type would satisfy carries no real interface.
 `@own` is the analog of a `'static` bound in Rust, applied to the owning containers `Arc` and `Mutex`.
 
+### Why a bare borrow return binds to its container (TARG-07)
+
+A bare `T` return means owned (OWN-16), but a borrowed type argument turns it into a borrow with no declared source, which OWN-19 and OWN-20 reject.
+The return must therefore name a source.
+Binding it to the container, rather than to the removed element's own origin, is sound because the container's lifetime already intersects every element source (LIFE-03), and it avoids per-element source tracking.
+The cost is precision: a value pulled out cannot be kept past the container, where Rust's element-typed lifetime would allow it.
+That is the same collapse tradeoff TARG-04 accepts, and the rare cases that need the longer lifetime call `.clone()` to obtain an owned value.
+
 ### Why `T[]` is the canonical contiguous-mut backing
 
 Java array slots write through any variable, so `@bound @mut T[]` permits in-place slot mutation without `Cell<T>` and without `@unsafe` propagation. `ArrayList`, `HashMap` buckets, and the array-backed stdlib fit naturally. `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.

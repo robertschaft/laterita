@@ -679,6 +679,21 @@ Mutex<Config>         ok  = new Mutex<>(loadConfig());   // owned argument
 Mutex<@borrow Config> bad = /* … */;                     // ERROR (TARG-06): borrowed argument
 ```
 
+### TARG-07 - A bare `T` return monomorphized to a borrow binds to its container
+
+A method declared with a bare (owned) `T` return, monomorphized with a borrowed type argument, returns a `@bound` value instead of an owned one.
+For an owned type argument the return is owned (OWN-16).
+For a borrowed one the return is the borrow, bound to the receiver (OWN-18), whose lifetime already intersects every element source (LIFE-03).
+This is the return-side counterpart of TARG-05.
+It is the conservative choice: the returned borrow is capped at the container's lifetime rather than the element's own source, which is stricter than necessary but needs no per-element source tracking.
+
+```java
+@mut class List<T> { @mutating T remove(int i); }
+
+List<Foo> a;          // remove(int): returns owned Foo (moved out)
+List<@borrow Foo> b;  // remove(int): returns @bound Foo, bound to the list
+```
+
 ---
 
 ## STAT — Static Storage
