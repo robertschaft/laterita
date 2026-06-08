@@ -322,21 +322,30 @@ EntryView<String, Integer> view = new EntryView<>(name, count);
 
 ### LIFE-04 - `@borrowCapped` caps an instance's drop within its borrow sources
 
-`@borrowCapped` is a class-level annotation, written in modifier position on a `final` class declaration alongside `final`.
-It declares that the class's `onDrop()` may read the instance's `@borrow` fields (DROP-11).
+`@borrowCapped` is a class-level annotation, written in modifier position on a class declaration.
+It is not restricted to `final` classes.
+It declares a lifetime obligation on every instance of the class: each `@borrow` field's source must remain live until the instance goes out of scope, not merely until the instance's last explicit use.
 
 A `@bound` instance whose class is not `@borrowCapped` never touches its `@borrow` fields during the drop sequence: DROP-05 skips them.
-The borrow checker therefore requires each field's source to outlive only the instance's last explicit use, not its scope exit.
-`@borrowCapped` removes that exemption.
-Because the instance reads every borrow at scope exit, scope exit is itself a use of each borrow under LIFE-01.
+The borrow checker therefore requires each field's source to outlive only the instance's last explicit use.
+`@borrowCapped` removes that exemption: because the cleanup reads every borrow at scope exit, scope exit is itself a use of each borrow under LIFE-01.
+
+The obligation is a property of the value, like the `@bound` mode it refines.
+It is fixed by the instance's class at construction and preserved across assignment and upcast, so a `@borrowCapped` instance held through a supertype variable still owes it.
+
+`@borrowCapped` is inherited.
+A subclass of a `@borrowCapped` class is `@borrowCapped`, and a subclass cannot remove the marker.
+A subclass may add `@borrowCapped` that its superclass lacks; the construction site marks the value, and the mark then travels with it.
+The obligation is what lets an `onDrop()` in the hierarchy read `@borrow` fields (DROP-11).
+Because an `onDrop()` body lives only on a `final` class (DROP-09), the body that reads borrows is on a `final` leaf, but the contract it relies on may be declared higher in the hierarchy and inherited.
 
 The compiler must reject any program in which a `@borrowCapped` instance's scope exit is reached after any source of one of its `@borrow` fields has been dropped or moved.
 Equivalently: every borrow held by a `@borrowCapped` instance must still be alive when the instance goes out of scope.
 Within a single scope DROP-02 satisfies this automatically, because a borrower declared after its source is dropped before it.
 
 ```java
-@borrowCapped final class SpanGuard {
-    @borrow Tracer tracer;                 // instance is @bound to tracer (OWN-09)
+@borrowCapped final class SpanGuard {           // common case: the leaf is the contract
+    @borrow Tracer tracer;                       // instance is @bound to tracer (OWN-09)
     long startNanos;
 
     SpanGuard(@bound Tracer tracer) {
@@ -349,8 +358,23 @@ Within a single scope DROP-02 satisfies this automatically, because a borrower d
     }
 }
 
-var tracer = new Tracer();                 // declared first  -> dropped last
-var span = new SpanGuard(tracer);          // declared after  -> dropped first, tracer still live in onDrop()
+var tracer = new Tracer();                       // declared first  -> dropped last
+var span = new SpanGuard(tracer);                // declared after  -> dropped first, tracer still live in onDrop()
+```
+
+```java
+@borrowCapped class Guard {                      // not final: an extensible base carries the contract
+    @borrow Resource res;                         // instances are @bound to res (OWN-09)
+    Guard(@bound Resource res) { this.res = res; }
+}
+
+final class LoggingGuard extends Guard {         // inherits @borrowCapped
+    LoggingGuard(@bound Resource res) { super(res); }
+
+    @internal void onDrop() {
+        res.release();                            // reads the inherited @borrow field: permitted, the class is @borrowCapped
+    }
+}
 ```
 
 ---
@@ -815,7 +839,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
-The step-1 body runs before any field teardown of that class and may read all of its class's owned fields; it may read the class's `@borrow` fields only if the class is `@borrowCapped` (DROP-11).
+The step-1 body runs before any field teardown of that class and may read all owned fields visible to it; it may read `@borrow` fields only if the class is `@borrowCapped`, declared or inherited (DROP-11).
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -877,7 +901,7 @@ Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the cal
 ### DROP-11 — `onDrop()` reads of `@borrow` fields require `@borrowCapped`
 
 An `onDrop()` body may read an owned field freely (DROP-05).
-It may read a `@borrow` field (OWN-09) only if the class is declared `@borrowCapped` (LIFE-04).
+It may read a `@borrow` field (OWN-09), whether the class's own or one inherited from a superclass, only if the class is `@borrowCapped`, declared on the class itself or inherited from a superclass (LIFE-04).
 Reading a `@borrow` field from the `onDrop()` of a class that is not `@borrowCapped` is a compile error, because the borrow's source may already be dropped by the time the instance drops.
 The diagnostic names the field and points to `@borrowCapped`.
 
@@ -1846,7 +1870,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot; enclosing instance must be `@bound` | TARG-01 |
 | `@own` | `TYPE_PARAMETER` | - | Type parameter rejects a borrowed type argument (dual of `@borrow`) | TARG-06 |
 | `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `FIELD`, `METHOD` (return) | - | Variable holds a borrowed value (instance-level marker on a `@borrow`-field or `@borrow`-substituted-generic instance, OWN-09, TARG-01) | OWN-09 |
-| `@borrowCapped` | `TYPE` | `final` class | `onDrop()` may read the instance's `@borrow` fields; every such borrow must outlive the instance's scope exit | LIFE-04, DROP-11 |
+| `@borrowCapped` | `TYPE` | inherited by subclasses | Every `@borrow` source the instance holds must outlive its scope exit, so an `onDrop()` in the hierarchy may read it | LIFE-04, DROP-11 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
