@@ -248,28 +248,24 @@ Treating the receiver as a default contributor — an instance method returning 
 
 ### Why `@borrowCapped` rather than always capping at the borrows (LIFE-04)
 
-A `@bound` instance already cannot outlive its borrow sources while it is used (LIFE-03).
-Cleanup is the special case.
-A class that never reads its borrows at drop does not touch its `@borrow` fields during the drop sequence, because DROP-05 skips them, so the slot is inert and the source is free to die first.
-The moment `onDrop()` reads a borrow, the drop becomes a use of that borrow, and the use happens at scope exit rather than at an earlier statement the checker can already see.
+A `@bound` instance already cannot outlive its borrow sources while it is used (LIFE-03), so cleanup is the only special case.
+A class that never reads its borrows at drop leaves its `@borrow` fields untouched, because DROP-05 skips them, so the source is free to die first.
+The moment `onDrop()` reads a borrow, the drop becomes a use of that borrow at scope exit, later than any statement the checker can otherwise see.
 
-Two simpler rules were weighed and rejected.
-Always permitting borrow reads in `onDrop()` and silently extending every `@borrow` field's required lifetime to scope exit is rejected, because it hides from the reader whether holding a borrow tightens its source's lifetime, and it pessimizes the common leaf that only releases an owned handle with a constraint it does not need.
-Forbidding borrow reads in `onDrop()` outright is rejected too, because lock guards, span timers, and scope-bound writers all need to touch the borrowed thing exactly once, at the end.
-
-`@borrowCapped` resolves both.
-The stronger lifetime obligation is visible on the class, so it is part of the type a reader sees, and it is paid only by the classes that actually read borrows at drop.
-It composes with the order rule: DROP-02 already drops a borrower before the source it was declared after, so within one scope the obligation is met with nothing extra for the programmer to arrange.
+Two simpler rules are rejected.
+Always permitting the read, silently extending every `@borrow` field's required lifetime to scope exit, hides from the reader whether holding a borrow tightens its source's lifetime and pessimizes the common leaf that only releases an owned handle.
+Forbidding the read outright makes lock guards, span timers, and scope-bound writers inexpressible, since each must touch the borrowed thing once, at the end.
+`@borrowCapped` carries the stronger obligation on the class, where a reader sees it, and only the classes that read borrows at drop pay for it.
+DROP-02 then meets it within a scope for free, dropping a borrower before the source it was declared after.
 
 `@borrowCapped` is not confined to `final` classes, even though the `onDrop()` body that consumes it is (DROP-09).
-The two are different things: `final` governs where a cleanup body may live, while `@borrowCapped` is a lifetime contract on the instance, and that contract is meaningful whether or not the class is extensible.
+`final` governs where a cleanup body may live, while `@borrowCapped` is a lifetime contract on the instance, meaningful whether or not the class is extensible.
 Confining it to `final` would force every base whose subclasses' cleanup reads inherited borrows to be a leaf, defeating the composition DROP-09 is built around.
 So the contract may sit on an extensible base and the reading `onDrop()` on the `final` subclass that inherits it.
 
-The contract is inherited downward: a subclass of a `@borrowCapped` class is `@borrowCapped`, and a subclass cannot drop the marker.
-Downward is the only direction that stays sound under upcasting, because a `@borrowCapped` instance viewed through a supertype variable must still owe the obligation, so every subtype must owe at least as much as the type it is viewed through.
-The obligation therefore rides on the value the way `@bound` does, fixed by the class at construction and carried across assignment and upcast, rather than being read off the static class at the drop site.
-A subclass may strengthen a non-capped base by adding `@borrowCapped`, since the value is marked at its own construction and the mark then travels with it.
+The contract is inherited downward, the only direction sound under upcasting: a `@borrowCapped` instance viewed through a supertype variable must still owe the obligation, so every subtype must owe at least as much.
+The obligation therefore rides on the value the way `@bound` does, fixed at construction and carried across assignment and upcast, rather than read off the static class at the drop site.
+A subclass may add `@borrowCapped` to a non-capped base, since the value is marked at its own construction.
 
 ---
 

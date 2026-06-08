@@ -36,12 +36,11 @@ Applied to the owning containers `Arc` (`STD-02`) and `Mutex` (`STD-09`).
 See `TARG-06`.
 
 ### @borrowCapped (annotation on classes)
-A class-level annotation, written in modifier position on a class declaration (any class, not only `final` ones).
-Declares a lifetime obligation on every instance: each borrow the instance holds must still be alive when the instance goes out of scope, so scope-exit cleanup can read it (`LIFE-04`).
-It is what permits an `onDrop()` in the hierarchy to read `@borrow` fields (`DROP-11`); the `onDrop()` body lives on a `final` leaf (`DROP-09`) but the contract may be declared on an extensible base and inherited.
-Inherited: a subclass of a `@borrowCapped` class is `@borrowCapped` and cannot remove the marker.
-A field whose static type is a type parameter counts as a `@borrow` field for this purpose unless the parameter is declared `@own` (`TARG-06`).
-See `LIFE-04`, `DROP-11`, `OWN-09`.
+A class-level annotation, permitted on any class declaration.
+Declares that every borrow the instance holds must remain live until the instance goes out of scope, rather than only until the instance's last use (`LIFE-04`).
+The obligation rides on the value like the `@bound` mode it refines, and is inherited: a subclass of a `@borrowCapped` class is `@borrowCapped` and cannot remove the marker.
+A field whose static type is a type parameter counts as a borrow for this purpose unless the parameter is `@own` (`TARG-06`).
+See `LIFE-04`, `DROP-11`.
 
 ### variable modifiers
 `@bound`, `@mut`, `@take`, `@borrow`, and `@own`. Legal positions:
