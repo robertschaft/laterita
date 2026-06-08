@@ -258,10 +258,8 @@ Forbidding the read outright makes lock guards, span timers, and scope-bound wri
 `@borrowCapped` carries the stronger obligation on the class, where a reader sees it, and only the classes that read borrows at drop pay for it.
 DROP-02 then meets it within a scope for free, dropping a borrower before the source it was declared after.
 
-`@borrowCapped` is not confined to `final` classes, even though the `onDrop()` body that consumes it is (DROP-09).
-`final` governs where a cleanup body may live, while `@borrowCapped` is a lifetime contract on the instance, meaningful whether or not the class is extensible.
-Confining it to `final` would force every base whose subclasses' cleanup reads inherited borrows to be a leaf, defeating the composition DROP-09 is built around.
-So the contract may sit on an extensible base and the reading `onDrop()` on the `final` subclass that inherits it.
+`@borrowCapped` is a lifetime contract on the instance, a separate axis from `final`, which governs only where an `onDrop()` body may live (DROP-09).
+Keeping them apart lets an extensible base carry the contract while the `final` subclass that inherits it reads the borrows.
 
 The contract is inherited downward, the only direction sound under upcasting: a `@borrowCapped` instance viewed through a supertype variable must still owe the obligation, so every subtype must owe at least as much.
 The obligation therefore rides on the value the way `@bound` does, fixed at construction and carried across assignment and upcast, rather than read off the static class at the drop site.
