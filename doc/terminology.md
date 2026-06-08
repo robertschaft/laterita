@@ -35,6 +35,13 @@ The dual of `@borrow`, and the analog of a `'static` bound in Rust.
 Applied to the owning containers `Arc` (`STD-02`) and `Mutex` (`STD-09`).
 See `TARG-06`.
 
+### @borrowCapped (annotation on classes)
+A class-level annotation, written in modifier position on a `final` class declaration alongside `final`.
+Declares that the class's `onDrop()` may read the instance's `@borrow` fields (`DROP-11`).
+It strengthens the lifetime of every instance: each borrow the instance holds must still be alive when the instance goes out of scope, so scope-exit cleanup can read it (`LIFE-04`).
+A field whose static type is a type parameter counts as a `@borrow` field for this purpose unless the parameter is declared `@own` (`TARG-06`).
+See `LIFE-04`, `DROP-11`, `OWN-09`.
+
 ### variable modifiers
 `@bound`, `@mut`, `@take`, `@borrow`, and `@own`. Legal positions:
 - `@bound`. Parameter, return (`OWN-17`, `OWN-18`).

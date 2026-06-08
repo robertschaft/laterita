@@ -224,7 +224,7 @@ On the guarantee side, `@bound` on the return is covariant in strength: an overr
 
 ---
 
-## Lifetimes (LIFE-01 through LIFE-03)
+## Lifetimes (LIFE-01 through LIFE-04)
 
 ### Why mark-borrow on returns (OWN-16, OWN-17, OWN-18)
 
@@ -246,9 +246,24 @@ When a returned borrow is bound to several sources, its lifetime is the shortest
 
 Treating the receiver as a default contributor — an instance method returning a borrow implicitly tied to `this` — would make signatures silent in a way that hides information from the caller. The rule is therefore stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from. The fix is always local to the signature, and the caller-visible contract is always complete.
 
+### Why `@borrowCapped` rather than always capping at the borrows (LIFE-04)
+
+A `@bound` instance already cannot outlive its borrow sources while it is used (LIFE-03).
+Cleanup is the special case.
+A class that never reads its borrows at drop does not touch its `@borrow` fields during the drop sequence, because DROP-05 skips them, so the slot is inert and the source is free to die first.
+The moment `onDrop()` reads a borrow, the drop becomes a use of that borrow, and the use happens at scope exit rather than at an earlier statement the checker can already see.
+
+Two simpler rules were weighed and rejected.
+Always permitting borrow reads in `onDrop()` and silently extending every `@borrow` field's required lifetime to scope exit is rejected, because it hides from the reader whether holding a borrow tightens its source's lifetime, and it pessimizes the common leaf that only releases an owned handle with a constraint it does not need.
+Forbidding borrow reads in `onDrop()` outright is rejected too, because lock guards, span timers, and scope-bound writers all need to touch the borrowed thing exactly once, at the end.
+
+`@borrowCapped` resolves both.
+The stronger lifetime obligation is visible on the class, so it is part of the type a reader sees, and it is paid only by the classes that actually read borrows at drop.
+It composes with the order rule: DROP-02 already drops a borrower before the source it was declared after, so within one scope the obligation is met with nothing extra for the programmer to arrange.
+
 ---
 
-## Cleanup (DROP-01 through DROP-10)
+## Cleanup (DROP-01 through DROP-11)
 
 ### Why universal `onDrop()`, not opt-in (DROP-01)
 
@@ -328,7 +343,7 @@ The analysis cost buys little, because a class that carries an `onDrop()` is a r
 The type-level rule states the contract a reader can see from the class alone: *has `onDrop()` means moved whole*.
 The rare case that genuinely wants both cleanup and a surrenderable part pays a single, explicit idiom: extract the part before the husk is built, or hold it behind a handle the cleanup path does not touch.
 
-Diagnosing at the move site (rather than at the `onDrop()` definition) keeps the error where the programmer made the choice, and lets the `onDrop()` body stay an ordinary method whose field reads need no special annotation.
+Diagnosing at the move site (rather than at the `onDrop()` definition) keeps the error where the programmer made the choice, and lets the `onDrop()` body stay an ordinary method whose owned-field reads need no special annotation (borrow-field reads are gated separately by DROP-11).
 
 This also explains why `StringBuilder.build()` (OWN-15), which is `return this.contents;`, is legal: `StringBuilder` declares no `onDrop()`, so it is freely splittable and the move of `this.contents` is fine.
 Give `StringBuilder` an `onDrop()` and that move becomes an error, which is the correct signal that the design now needs a different shape (for example, an explicit `close()` per THR-05's split, or holding the buffer behind a handle the `build()` path can extract without the husk needing it).
@@ -352,6 +367,17 @@ The once-per-instance guarantee on `onDrop()` (DROP-09) breaks if the body can s
 Most of the work is already done by ordinary borrow-checking: if `this` in `onDrop()` is treated as a borrow bounded by the call, then storing it in a longer-lived location is a lifetime error, just as it would be in any other method. DROP-10 spells out the receiver case explicitly so the question doesn't depend on whether `onDrop()`'s receiver is owned or borrowed in the formal model — `give(this)` is rejected outright, and so is any path that smuggles the receiver into something that outlives the call.
 
 The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantics. Without DROP-10, a thrown exception from the body could leave a smuggled reference to a partially-cleaned-up instance, with no safe way for the runtime to continue. With DROP-10, the field teardown that follows a throw can never be observed by an external reader of `this`, so completing the sequence is sound whether the body returned normally or threw.
+
+### Why borrow reads in `onDrop()` are gated, and generics count as borrows (DROP-11)
+
+DROP-11 is the field-level face of LIFE-04.
+It is the check the compiler performs at the `onDrop()` body, where LIFE-04 is the obligation that check places on every instance's scope exit.
+Gating the read at the body rather than at the call site keeps the diagnostic where the programmer wrote the borrow read, and lets the call-site lifetime check stay ordinary.
+
+A field whose type is a bare type parameter is treated as a borrow unless the parameter is `@own`, because an unconstrained `T` can be monomorphized to a `@borrow` argument (TARG-01) and the `onDrop()` body is checked once, against the most permissive substitution.
+Reading such a field could therefore read a borrow whose source has already died, the exact hazard `@borrowCapped` exists to prevent.
+`@own` (TARG-06) removes that possibility at the type parameter, so an `@own T` field is owned under every substitution and reads at drop like any other owned field.
+The conservative direction is the safe one: a spurious "needs `@borrowCapped`" is a visible annotation the author adds, whereas a spurious "owned" would be a use-after-free.
 
 ---
 
