@@ -685,7 +685,6 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed var
 
 A variable or field may still be *declared* `@mut String`, since `@mut` is general (MUT-01) and rejecting it on one type would be a special case, but it grants nothing.
 `String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-02, MUT-07b), not from `@mut`.
-`StringBuilder` therefore holds a plain non-`final` `String contents` field, reassigned in place by its `@mutating` methods.
 
 ### Why default receiver mode is borrow (STR-08)
 
