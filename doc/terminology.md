@@ -49,7 +49,10 @@ See `LIFE-04`, `DROP-11`.
 
 
 ### buffer splitting
-Dividing a contiguous region into two non-overlapping views. Single-thread: `T[].splitAt` → `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` (borrowed halves); `forEachChunk` → borrowed slices via callback. Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves); `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`. See `ARR-01`, `ARR-02`, `ARR-04`.
+Dividing a contiguous region into two non-overlapping views.
+Single-thread: `T[].splitAt` → `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` (borrowed halves), `forEachChunk` → borrowed slices via callback.
+Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves), `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`.
+See `ARR-01`, `ARR-02`, `ARR-04`.
 
 ### call mode
 A property of a functional-interface *type*: the receiver mode of its single abstract method. **shared-call** (bare SAM — invocable through a shared borrow), **mut-call** (`@mutating` SAM — invocable through a `@mut` variable), or **once-call** (`@consuming` SAM — invocable once, consuming the value). The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM. Distinct from the *variable mode* of the variable that holds the value. See `CLO-03`.
@@ -157,7 +160,10 @@ A method the compiler invokes to clean up a value. Only a `final` class may impl
 "Open Question." A numbered entry in the open-questions document listing unresolved language-design decisions. Example: OQ-20 (pattern matching and destructuring under ownership). Not part of the normative spec.
 
 ### Pair<L, R>
-General-purpose record in `laterita.lang` carrying two values. The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01. Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct component access `give(p.left)` / `give(p.right)` in `.lat`, OWN-06 / LAT-08) and as `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` by `T[].splitAt` (borrowed mutable halves, read through the accessors). See `ARR-04`.
+General-purpose record in `laterita.lang` carrying two values.
+The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01.
+Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct component access `give(p.left)` / `give(p.right)` in `.lat`, OWN-06 / LAT-08) and as `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` by `T[].splitAt` (borrowed mutable halves, read through the accessors).
+See `ARR-04`.
 
 ### ownership
 Having the right and obligation to drop (clean up) a value when done. An owned variable can move the value to another variable, pass it to a `@take` parameter, or drop it at scope exit. Only one variable can own a value at a time. See `OWN-01`.

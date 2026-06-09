@@ -184,7 +184,9 @@ A **temporary expression** (call result, constructor, literal) is owned at the c
 Illegal cases:
 
 - `give(arg)` to a bare parameter. The caller asks to transfer, but the function will not accept ownership.
-- A bare argument holding only a borrow to a `@take` parameter whose type is owned. There is no ownership to give. A `@take @borrow` parameter instead expects the borrow itself (TARG-05).
+- A bare argument holding only a borrow to a `@take` parameter whose type is owned.
+There is no ownership to give.
+A `@take @borrow` parameter instead expects the borrow itself (TARG-05).
 
 ```java
 var name = makeName();
@@ -794,7 +796,6 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
 The step-1 body runs before any field teardown of that class and may read all owned fields visible to it.
-It may read `@borrow` fields only if the class is `@borrowCapped`, declared or inherited (DROP-11).
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -1497,7 +1498,9 @@ public record Pair<L, R>(L left, R right) {}
 Instantiations encountered in this spec:
 
 - `Pair<T[], T[]>` — owned pair, returned by `splitOff`. The accessors `left()` and `right()` return borrows bound to the pair (OWN-18). To obtain the owning halves the pair is destructed by direct component access — `give(p.left)`, `give(p.right)` — a destruction (OWN-06) available in `.lat`, where record components are public (LAT-08). `Pair` declares no `onDrop()`, so DROP-08 does not apply, and each half becomes an independently owned `T[]`. A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors.
-- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing variable is `@bound` because the instance contains `@borrow`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03); its lifetime is the intersection of the field sources (LIFE-02).
+- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>` — pair of mutable borrows, returned by `splitAt`.
+The enclosing variable is `@bound` because the instance contains `@borrow`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03).
+Its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
@@ -1563,7 +1566,10 @@ A cycle of `Rc<T>` handles whose strong references form a closed loop is not rec
 
 ### STD-02 — `Arc<T>`
 
-The cross-thread analog of `Rc<T>`. reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries. The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a borrowed type argument is rejected.
+The cross-thread analog of `Rc<T>`, with atomic reference-count operations.
+The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump.
+`Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
+The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a borrowed type argument is rejected.
 
 ### STD-03 — `WeakReference<T>`
 
@@ -1620,7 +1626,9 @@ Implementations of these operations are permitted (and expected) to use `private
 
 ### STD-09 — `Mutex<T>`
 
-A mutual-exclusion primitive wrapping an owned value. Access to the protected value is scoped to a closure call rather than mediated by a separately held guard. The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value, so a borrowed type argument is rejected.
+A mutual-exclusion primitive wrapping an owned value.
+Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
+The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value, so a borrowed type argument is rejected.
 
 **Constructor.** `new Mutex<T>(@take T value)` — wraps `value`, initially unlocked and unpoisoned.
 
