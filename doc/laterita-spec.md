@@ -793,7 +793,8 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
-The step-1 body runs before any field teardown of that class and may read all owned fields visible to it; it may read `@borrow` fields only if the class is `@borrowCapped`, declared or inherited (DROP-11).
+The step-1 body runs before any field teardown of that class and may read all owned fields visible to it.
+It may read `@borrow` fields only if the class is `@borrowCapped`, declared or inherited (DROP-11).
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -856,7 +857,8 @@ Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the cal
 
 An `onDrop()` body may read an owned field freely (DROP-05).
 It may read a `@borrow` field (OWN-09), its own or an inherited one, only if the class is `@borrowCapped`, declared or inherited (LIFE-04).
-Reading a `@borrow` field otherwise is a compile error; the diagnostic names the field and points to `@borrowCapped`.
+Reading a `@borrow` field otherwise is a compile error.
+The diagnostic names the field and points to `@borrowCapped`.
 
 A field whose static type is a type parameter counts as a `@borrow` field for this rule unless the parameter is `@own` (TARG-06), since an unconstrained `T` may be substituted with a `@borrow` argument (TARG-01).
 
