@@ -723,7 +723,11 @@ vs. the continuation-passing form which forces a lambda for an otherwise straigh
 
 For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
 
-A dedicated `reduceChunks` was considered and rejected. Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...);` — the closure captures `acc` as a Mutate-mode variable (CLO-01) and the `@mut` body slot accepts mutating closures (FN-01). The only case `reduceChunks` covers uniquely is "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms. Dropping it kept the surface at three methods instead of four; callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
+A dedicated `reduceChunks` was considered and rejected.
+Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, reassigning a non-`final` slot) and the `@mut` body slot accepts mutating closures (FN-01).
+The only case `reduceChunks` covers uniquely is "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms.
+Dropping it kept the surface at three methods instead of four.
+Callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 

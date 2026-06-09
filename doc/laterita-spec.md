@@ -1478,7 +1478,11 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 }
 ```
 
-`splitAt` re-borrows the receiver (MUT-10); the returned record is `@bound` to the receiver's source and the receiver is frozen until both halves expire (LIFE-02). `forEachChunkExact` skips the trailing partial chunk; `forEachChunk` does not. Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction. No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by OWN-05. Fold-style reductions express by capturing a `@mut` local in the body lambda; no dedicated reducer primitive is provided.
+`splitAt` re-borrows the receiver (MUT-10), and the returned record is `@bound` to the receiver's source, so the receiver is frozen until both halves expire (LIFE-02).
+`forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
+Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction.
+No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by OWN-05.
+Fold-style reductions express by capturing a mutable local in the body lambda (MUT-02), and no dedicated reducer primitive is provided.
 
 `splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows OWN-13 (annotation-only differences are duplicate declarations).
 
