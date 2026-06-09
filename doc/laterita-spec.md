@@ -80,10 +80,10 @@ They are permitted, including when both are mutable.
 The compiler performs this disjointness analysis.
 
 ```java
-@mut class Pair { int left; int right; }
-@mut Pair p = new Pair();
-@mut int l = p.left;
-@mut int r = p.right;       // OK: disjoint fields
+@mut class Tree { @mut Node left; @mut Node right; }
+@mut Tree t = makeTree();
+@mut Node l = t.left;
+@mut Node r = t.right;       // OK: disjoint fields, both mutable borrows
 ```
 
 ### OWN-05 - Disjoint slice borrows are permitted
@@ -1270,8 +1270,8 @@ Closures are classified by how they use captured variables:
 - **Mutate** — captured variables include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
 - **Consume** — captured variables include a moved value; closure may be invoked exactly once.
 
-Reassigning a captured local is a write to its slot and counts as Mutate.
-It requires only a non-`final` slot (MUT-02), not `@mut` on the variable.
+Reassigning a captured local is a write to its slot and counts as Mutate: the captured local needs a non-`final` slot (MUT-02), not `@mut`.
+The closure is then a mut-call value (CLO-04), invocable only through a `@mut` variable (CLO-03).
 
 ### CLO-02 — Capture mode is inferred
 
