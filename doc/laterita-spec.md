@@ -476,6 +476,11 @@ Within a constructor, `@mutating` methods may be called on `this` and inherited 
 This is the initialization phase.
 The value-class freeze takes effect when the constructor returns.
 
+An `onDrop()` body (DROP-05) is exempt in the symmetric way.
+Its receiver is `@mut` regardless of class kind, so it may reassign or mutate-through `@mut` fields and call `@mutating` methods on `this`.
+This is the teardown phase, and it is sound because `this` is uniquely owned there: no borrow of it is live (DROP-10).
+The value-class freeze remains in effect, so on a value class every field is immutable and the body is read-only.
+
 ```java
 var counter = new Counter();
 counter.inc();              // ERROR: counter is not @mut
@@ -795,7 +800,8 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
-The step-1 body runs before any field teardown of that class and may read all owned fields visible to it.
+The step-1 body runs before any field teardown of that class.
+It may read every owned field visible to it, and may reassign or mutate-through those that are `@mut` (MUT-10).
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -854,11 +860,11 @@ abstract class Resource {
 
 Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the call. It may not be given (`give(this)`) to another function, returned, stored in a field or global, or otherwise made reachable after the body returns. This is the rule that makes the once-per-instance guarantee on `onDrop()` (DROP-09) and the storage release in DROP-05 step 4 sound — no external reference to the value can survive into field teardown or beyond, so the drop sequence is safe to complete even when the body throws (DROP-07).
 
-### DROP-11 — `onDrop()` reads of `@borrow` fields require `@borrowCapped`
+### DROP-11 — `onDrop()` access to `@borrow` fields requires `@borrowCapped`
 
-An `onDrop()` body may read an owned field freely (DROP-05).
-It may read a `@borrow` field (OWN-09), its own or an inherited one, only if the class is `@borrowCapped`, declared or inherited (LIFE-04).
-Reading a `@borrow` field otherwise is a compile error.
+An `onDrop()` body may access an owned field freely (DROP-05).
+It may access a `@borrow` field (OWN-09), its own or an inherited one, only if the class is `@borrowCapped`, declared or inherited (LIFE-04).
+Accessing a `@borrow` field otherwise is a compile error.
 The diagnostic names the field and points to `@borrowCapped`.
 
 A field whose static type is a type parameter counts as a `@borrow` field for this rule unless the parameter is `@own` (TARG-06), since an unconstrained `T` may be substituted with a `@borrow` argument (TARG-01).
@@ -867,7 +873,7 @@ A field whose static type is a type parameter counts as a `@borrow` field for th
 final class Logger {
     @borrow Sink sink;
     @internal void onDrop() {
-        sink.flush();              // ERROR: reads a @borrow field without @borrowCapped
+        sink.flush();              // ERROR: accesses a @borrow field without @borrowCapped
     }
 }
 

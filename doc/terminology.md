@@ -36,7 +36,7 @@ Applied to the owning containers `Arc` (`STD-02`) and `Mutex` (`STD-09`).
 See `TARG-06`.
 
 ### @borrowCapped (annotation on classes)
-Marks a class whose instance keeps its borrows live until the instance goes out of scope, so `onDrop()` may read them.
+Marks a class whose instance keeps its borrows live until the instance goes out of scope, so `onDrop()` may access them.
 See `LIFE-04`, `DROP-11`.
 
 ### variable modifiers

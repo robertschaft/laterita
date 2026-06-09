@@ -372,6 +372,27 @@ Most of the work is already done by ordinary borrow-checking: if `this` in `onDr
 
 The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantics. Without DROP-10, a thrown exception from the body could leave a smuggled reference to a partially-cleaned-up instance, with no safe way for the runtime to continue. With DROP-10, the field teardown that follows a throw can never be observed by an external reader of `this`, so completing the sequence is sound whether the body returned normally or threw.
 
+### Why `onDrop()`'s receiver is mutable (MUT-10)
+
+Cleanup routinely writes: flush a buffer, reset a flag, decrement a count.
+Rust's `Drop::drop` takes `&mut self` for exactly this reason, and an `onDrop()` body needs the same capability.
+
+`onDrop()` runs in the teardown phase, the dual of the constructor's initialization phase.
+In both phases `this` is uniquely owned, so granting a mutable receiver introduces no aliased mutation: no borrow of the instance is live at drop, which DROP-10 secures by forbidding the receiver from escaping the body.
+The receiver is therefore `@mut` regardless of class kind, with no `@mutating` annotation written by the author.
+
+Making destructor mutation opt-in, by requiring `@mutating` on `onDrop()` and a `@mut` class to carry it, is rejected.
+It would diverge from Rust, where every drop is mutation-capable, and it would impose ceremony on the most ordinary cleanup bodies.
+
+The value-class boundary is preserved rather than pierced.
+The freeze takes effect when the constructor returns and stays in effect through teardown, so a value class's fields remain immutable in `onDrop()` and the body is read-only.
+The mutable receiver is thus inert on a value class and supplies the cleanup capability only where mutation is already part of the type's surface.
+This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a `@mut` class, not a value class.
+
+Field-level immutability still applies.
+The mutable receiver only unlocks `@mut` fields (MUT-08), so a non-`@mut` or `final` field is no more writable in `onDrop()` than in any other method.
+`onDrop()` is an ordinary method body in every respect except that its receiver mode is fixed by the teardown phase rather than declared.
+
 ### Why borrow reads in `onDrop()` are gated, and generics count as borrows (DROP-11)
 
 DROP-11 is the field-level face of LIFE-04.
