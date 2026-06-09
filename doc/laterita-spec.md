@@ -71,6 +71,12 @@ A value's borrow state at any point is one of:
 - **shared borrows** — any number of readers may coexist (including the owner). No mutation is allowed, not even by the owner.
 - **one mutable borrow** — that borrow has exclusive access. The owner is frozen until the borrow ends.
 
+A mutable borrow is exclusive in one of two forms, by what it writes:
+
+- **referent-write** — mutation through the value, requiring the source to be `@mut` (MUT-01) or the borrow to sit inside a `@mutating` method of the same object.
+- **slot-write** — reassignment of the borrowed binding itself, requiring the source slot to be non-`final` (MUT-02), the form a closure that captures and reassigns a local relies on (CLO-01).
+
+Both forms obey this exclusivity, subject to the disjoint-borrow exceptions of OWN-04 and OWN-05.
 The compiler must reject programs that violate this.
 
 ### OWN-04 - Disjoint field borrows are permitted
