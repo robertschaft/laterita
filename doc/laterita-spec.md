@@ -476,9 +476,9 @@ Within a constructor, `@mutating` methods may be called on `this` and inherited 
 This is the initialization phase.
 The value-class freeze takes effect when the constructor returns.
 
-An `onDrop()` body (DROP-05) is exempt in the symmetric way.
+An `onDrop()` body (DROP-05) is exempt in the same way.
 Its receiver is `@mut` regardless of class kind, so it may reassign or mutate-through `@mut` fields and call `@mutating` methods on `this`.
-This is the teardown phase, and it is sound because `this` is uniquely owned there: no borrow of it is live (DROP-10).
+This is the teardown phase.
 The value-class freeze remains in effect, so on a value class every field is immutable and the body is read-only.
 
 ```java
@@ -871,14 +871,14 @@ A field whose static type is a type parameter counts as a `@borrow` field for th
 
 ```java
 final class Logger {
-    @borrow Sink sink;
+    @mut @borrow Sink sink;
     @internal void onDrop() {
         sink.flush();              // ERROR: accesses a @borrow field without @borrowCapped
     }
 }
 
 @borrowCapped final class Logger {
-    @borrow Sink sink;
+    @mut @borrow Sink sink;
     @internal void onDrop() {
         sink.flush();              // OK: @borrowCapped, sink live at scope exit (LIFE-04)
     }
