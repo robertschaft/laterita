@@ -74,9 +74,9 @@ Keeping them separate lines each axis up with the marker that already means it: 
 The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
 Reassigning a slot repoints a name and mutates no object, so it is not a borrow-safety concern, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
 
-### Why fields default to immutable (OWN-09)
+### Why fields default to immutable (OWN-09, MUT-07)
 
-Rust's transitivity insight: immutability is only meaningful if it propagates. If a `var` variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee. Making fields immutable by default forces an explicit choice for mutation, exactly where Effective Java has been recommending we make that choice for years (favor immutability, favor records over JavaBeans).
+Rust's transitivity insight: immutability is only meaningful if it propagates. If a bare variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee. So mutation *through* a field, the referent axis, is opt-in and needs `@mut` on the field, exactly the explicit choice Effective Java has recommended for years (favor immutability, favor records over JavaBeans). Reassigning a field is the orthogonal slot axis (MUT-07), reachable only inside a `@mut` class through a `@mut` receiver, so a value class, the default kind, still exposes no field mutation of either sort after construction.
 
 ### Why methods declare mutation in the signature (MUT-08)
 
