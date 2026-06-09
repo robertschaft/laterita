@@ -152,8 +152,8 @@ A local's mode follows its RHS (OWN-02).
 ### OWN-11 - Constructor initializes every field exactly once
 
 Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked.
-Fields without `@mut`, and `@mut final` fields (MUT-03), can be assigned only in constructors.
-`@mut` non-`final` fields can also be reassigned in `@mutating` methods (MUT-08).
+`final` fields, with or without `@mut`, can be assigned only in constructors.
+Non-`final` fields can also be reassigned in `@mutating` methods (MUT-07, MUT-08), which requires a `@mut` class and a `@mut` receiver.
 
 ### OWN-12 - Record components follow field rules
 
@@ -342,56 +342,78 @@ The compiler must reject any program in which a `@borrowCapped` instance's scope
 ### MUT-01 - `@mut` is the unified mutability marker
 
 `@mut` denotes mutability everywhere it appears: locals (MUT-02), fields (MUT-07), parameters (MUT-04), and return types.
+On a binding it grants *referent mutability*: the right to mutate the value through the binding, calling `@mutating` methods or writing through it.
+This is orthogonal to reassignment of the binding itself, the *slot*, which is on by default and locked by `final` (MUT-02, MUT-03).
 On a class or interface declaration it marks a mutable surface (MUT-05).
 A method declares mutation of its receiver with `@mutating` (MUT-08).
 These are the only surface forms for mutability.
 
 ### MUT-02 - Local declaration forms
 
-| Form | Meaning |
-|---|---|
-| `T name = expr` | immutable local |
-| `@mut T name = expr` | mutable local |
+A local has two independent capabilities, each with its own marker.
 
-`@mut` grants two capabilities at once: reassigning the variable and mutating the value through it.
+- Reassignment of the slot, rebinding the name to another value, is granted by default and locked by `final`.
+- Mutation through the referent, calling `@mutating` methods or mutating state reached through it, is off by default and granted by `@mut`.
 
-Java's `var` is used as in Java for inferred types.
-It does not change mutability.
-`var x = expr` is immutable.
-`@mut var x = expr` is mutable.
-
-```java
-String greeting = "hello";
-var count = items.size();
-@mut var sb = new StringBuilder();
-@mut int retries = 0;
-```
-
-### MUT-03 - `final` composes with `@mut`
-
-Java's `final` locks reassignment.
-On an immutable local it is redundant.
-On a `@mut` local it produces a third state: the value may still be mutated, but the variable cannot be reassigned.
+| Form | Reassign slot | Mutate through |
+|---|---|---|
+| `final T x = e` | no | no |
+| `final @mut T x = e` | no | yes |
+| `T x = e` | yes | no |
+| `@mut T x = e` | yes | yes |
 
 ```java
-@mut final Properties config = loadConfig();
-config.setProperty("verbose", "true");   // OK: mutate through
-config = loadConfig();                   // ERROR: final locks reassignment
+final List<Option> a = makeList();            // neither: no reassignment, no a.add()
+final @mut List<Option> b = new ArrayList();  // mutate-through only: b.add() OK, b = ... rejected
+List<Option> c = makeList();                  // reassign only: c = ... OK, c.add() rejected
+@mut List<Option> d = new ArrayList();        // both: d = ... and d.add() OK
 ```
+
+A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
+Reassigning a slot that owns its value drops the previous value first (DROP-01).
+
+Java's `var` infers the type and changes neither axis.
+`var x = e` is reassignable and not mutate-through.
+`@mut var x = e` adds mutate-through.
+`final var x = e` locks the slot.
+
+```java
+var count = items.size();           // reassignable, value-class slot
+@mut var sb = new StringBuilder();  // mutate-through: sb.append(...) OK
+final var pi = 3.14159;             // locked
+```
+
+### MUT-03 - `final` locks the slot, orthogonal to `@mut`
+
+`final` is Java's slot lock.
+It forbids reassignment and nothing else.
+It composes with `@mut` along the orthogonal axis (MUT-02): `final` governs the slot, `@mut` governs the referent.
+
+```java
+final @mut Properties config = loadConfig();
+config.setProperty("verbose", "true");   // OK: @mut grants mutate-through
+config = loadConfig();                   // ERROR: final locks the slot
+```
+
+Because the bare slot is reassignable by default, `final` is never redundant on a local: it removes the reassignment the slot would otherwise grant.
+The slot axis therefore behaves exactly as Java's `final` does.
 
 ### MUT-04 - Parameter mutability modes
 
-Extending OWN-13:
+Extending OWN-13.
+A parameter slot is always `final`: the parameter name cannot be reassigned in the body.
+A `@take` parameter may still be moved onward with `give` (OWN-07), which consumes the value rather than rebinding the slot.
+`@mut` grants referent mutability: a mutable borrow, or, with `@take`, ownership with mutate-through.
 
 | Form | Meaning |
 |---|---|
 | `@mut T name` | parameter receives a mutable borrow |
-| `@take @mut T name` | parameter receives ownership, slot is reassignable in the body |
+| `@take @mut T name` | parameter receives ownership and may mutate through it |
 
 A bare argument passed to a `@mut` parameter produces a mutable borrow.
 The source variable must be `@mut` (owned or mutably borrowed).
 A temporary fills a `@mut` parameter directly.
-An immutable variable passed to a `@mut` parameter is rejected.
+A non-`@mut` source passed to a `@mut` parameter is rejected.
 There is no mutable access to lend.
 
 ### MUT-05 - `@mut` class declaration
@@ -419,27 +441,40 @@ Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are valu
 A `record` and an `enum` may not carry `@mut`.
 Both are value classes by construction.
 
-### MUT-07 - `@mut` field requires a `@mut` class
+### MUT-07 - Field mutability: `@mut` is referent, `final` is slot
 
+A field carries the same two orthogonal axes as a local (MUT-02), gated by the enclosing instance.
+Reassigning a field mutates the instance, so it requires the class to be `@mut` and the receiver to be `@mut` (MUT-08, MUT-10): in practice a constructor or a `@mutating` method.
+
+- Reassignment of the field slot is granted by default and locked by `final`.
+A non-`final` field is reassignable only where the receiver is `@mut`.
+A value class has no such receiver after construction (MUT-10), so its non-`final` fields are set once in the constructor and never again.
+- Mutation through the field is off by default and granted by `@mut`.
 A `@mut` field may be *declared* only in a class declared `@mut`.
-A value class may *inherit* `@mut` fields from a `@mut` ancestor (HIER-03) but may not declare new ones.
-The declared type of a `@mut` field is unrestricted.
-A `@mut` field whose type is a value class is permitted and grants reassignment of the field without granting mutation through it.
+A value class may *inherit* a `@mut` field from a `@mut` ancestor (HIER-03) but may not declare one.
+The declared type is unrestricted.
+On a value-class-typed field `@mut` grants nothing observable, since the referent has no mutating surface, and is redundant.
 
-A field without `@mut` cannot be reassigned and cannot be mutated through.
-`@mut final` permits mutation-through but not reassignment.
+| Field form | Reassign (receiver `@mut`) | Mutate through |
+|---|---|---|
+| `final T f` | no | no |
+| `final @mut T f` | no | yes |
+| `T f` | yes | no |
+| `@mut T f` | yes | yes |
 
 ```java
 @mut class User {
-    String name;           // immutable, owned field
-    @mut int loginCount;   // mutable, owned field
+    final String id;                    // set once in the constructor, never reassigned
+    String name;                        // reassignable in a @mutating method, not mutated through
+    int loginCount;                     // reassignable; @mut would be redundant on an int
+    final @mut List<Session> sessions;  // sessions.add() OK, sessions = ... rejected
 }
 ```
 
 ### MUT-08 - `@mutating` declares receiver mutation
 
 A method annotated `@mutating` may mutate `this`.
-It may reassign or mutate-through `@mut` fields, and call other `@mutating` methods on `this`.
+It may reassign the instance's non-`final` fields, mutate through its `@mut` fields, and call other `@mutating` methods on `this`.
 A method without it cannot.
 `@mutating` sits in modifier position.
 It is orthogonal to `@consuming` (OWN-15).
@@ -450,7 +485,7 @@ Override variance is HIER-05.
 
 ```java
 @mut class Counter {
-    @mut int n;
+    int n;                                            // reassignable; @mut redundant on an int
     public int read()                    { return n; }
     public @mutating void inc()          { n = n + 1; }
     public final @mutating void reset()  { n = 0; }
@@ -472,12 +507,12 @@ A `@mutating` method is callable on a receiver only when both conditions hold, e
 When the static type is a `@mut` interface, the `@mut`-variable requirement together with HIER-04 guarantees the dynamic class is `@mut`.
 
 A constructor is exempt.
-Within a constructor, `@mutating` methods may be called on `this` and inherited `@mut` fields assigned regardless of class kind.
+Within a constructor, `@mutating` methods may be called on `this` and inherited non-`final` fields assigned regardless of class kind.
 This is the initialization phase.
 The value-class freeze takes effect when the constructor returns.
 
 An `onDrop()` body (DROP-05) is exempt in the same way.
-Its receiver is `@mut` regardless of class kind, so it may reassign or mutate-through `@mut` fields and call `@mutating` methods on `this`.
+Its receiver is `@mut` regardless of class kind, so it may reassign its non-`final` fields, mutate through its `@mut` fields, and call `@mutating` methods on `this`.
 This is the teardown phase.
 The value-class freeze remains in effect, so on a value class every field is immutable and the body is read-only.
 
@@ -518,7 +553,7 @@ Examples include a collection, a configuration holder, or a builder, derived wit
 
 ```java
 @mut class Counter {
-    @mut int n;
+    int n;
     Counter(int start) { this.n = start; }
     @mutating void inc() { n = n + 1; }
     int read()           { return n; }
@@ -801,7 +836,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
 The step-1 body runs before any field teardown of that class.
-It may read every owned field visible to it, and may reassign or mutate-through those that are `@mut` (MUT-10).
+It may read every owned field visible to it, and on a `@mut` class may reassign its non-`final` fields and mutate through its `@mut` fields (MUT-10).
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -1166,9 +1201,9 @@ Two anonymous FI types are *identical* — the same compile-time type — only w
 For most code, identity is the wrong question: anonymous types can't be reflected on or compared at runtime. What matters is *assignability* — when a value of FI type `A` may flow into a slot of FI type `B`. This is HIER-05's override variance applied to the SAM: read the slot `B` as the base declaration and the value `A` as the override. `A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s — its call mode is `≤` `B`'s (CLO-04 containment), a `@mut` or `@bound` parameter may be dropped, `@take` is invariant, a `@bound` return may be strengthened to owned, and the underlying parameter and return types agree.
 
 ```java
-(@mut Record) -> String           // type α — slot
-(Record)      -> String           // type β — value
-(Record)      -> @bound String    // type γ — slot
+(@mut Job) -> String           // type α — slot
+(Job)      -> String           // type β — value
+(Job)      -> @bound String    // type γ — slot
 
 // β flows into α:  parameter drops @mut (contravariant) ✓
 // β flows into γ:  return owned satisfies @bound (covariant) ✓
@@ -1226,6 +1261,9 @@ Closures are classified by how they use captured variables:
 - **Read** — captured variables are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `@local` rules of STD-07).
 - **Mutate** — captured variables include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
 - **Consume** — captured variables include a moved value; closure may be invoked exactly once.
+
+Reassigning a captured local is a write to its slot and counts as Mutate.
+It requires only a non-`final` slot (MUT-02), not `@mut` on the variable.
 
 ### CLO-02 — Capture mode is inferred
 
@@ -1320,8 +1358,8 @@ Assignability concerns the value only. Whether the variable that receives the va
 ```java
 @mut interface Doubler { @mutating int apply(int x); }   // mut-call
 
-@mut int calls = 0;
-Doubler counting = (x) -> { calls = calls + 1; return x * 2; };  // mutate lambda → mut-call type: OK
+int calls = 0;                                                   // non-final slot, write-captured below
+Doubler counting = (x) -> { calls = calls + 1; return x * 2; };  // reassigns calls → mutate lambda → mut-call: OK
 Doubler pure     = (x) -> x * 2;                                 // read lambda → shared-call ≤ mut-call: OK
 
 // Doubler bad   = (x) -> { give(resource); return x; };          // ERROR: a consume lambda (once-call)
@@ -1369,7 +1407,9 @@ When the closure escapes through a return, its captured parameters are the `@bou
 
 ### STR-07 — `String` is a value class
 
-`String` is a value class (MUT-05): no `@mutating` method exists or can be added by extension (HIER-01). A variable or field may still be declared `@mut String` — `@mut` then grants reassignment per MUT-07 — but no `String` method mutates in place. Bulk text construction belongs in `StringBuilder`, which is `@mut`.
+`String` is a value class (MUT-05): no `@mutating` method exists or can be added by extension (HIER-01).
+A non-`final` `String` field in a `@mut` class is reassignable (MUT-07), and a non-`final` `String` local is reassignable (MUT-02), but `@mut String` is redundant since no `String` method mutates in place.
+Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per variable
 
@@ -1824,8 +1864,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
 | `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-05 |
-| `@mut` | `LOCAL_VARIABLE` | - | Local variable is mutable (reassignable; mutation-through when the type is `@mut`) | MUT-02 |
-| `@mut` | `FIELD` | only in a `@mut` class | Field is mutable | MUT-07 |
+| `@mut` | `LOCAL_VARIABLE` | - | Local may mutate through the referent (reassignment is the default slot, locked by `final`) | MUT-02 |
+| `@mut` | `FIELD` | only in a `@mut` class | Field may mutate through the referent (reassignment is the non-`final` default) | MUT-07 |
 | `@mut` | `PARAMETER` | on `@mut` types | Mutable parameter (mutable borrow) | MUT-04 |
 | `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` variable | MUT-01 |
 | `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | TARG-03 |
@@ -1871,7 +1911,9 @@ The annotations are declared in `laterita.lang.annotation`. Stdlib static method
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
-Type inference uses Java's `var` keyword. In laterita mode every variable is immutable unless annotated `@mut`, so `var x = expr` is immutable; `@mut var x = expr` is mutable. Java's `final` locks reassignment on a `@mut` variable (MUT-02); it is otherwise redundant.
+Type inference uses Java's `var` keyword.
+It does not change either mutability axis (MUT-02): `var x = expr` is reassignable and not mutate-through, `@mut var x = expr` adds mutate-through, and `final var x = expr` locks the slot.
+This matches Java, where a `var` local is reassignable unless declared `final`.
 
 Java's `synchronized` keyword is not supported: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block. Mutual exclusion is provided exclusively through `Mutex<T>` (STD-09) for data-bound locking and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less / multi-condition cases. The associated `Object.wait()`/`notify()`/`notifyAll()` methods are likewise not provided. Condition-variable-style coordination uses `Condition` (STD-12) bound to a `ReentrantLock`.
 
@@ -2114,7 +2156,10 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 
 ### GEN-14 — `val` and `var`
 
-`val` is unsupported in laterita, while `var` has a slightly different meaning. Lombok's `val` is an immutable inferred local, identical to laterita `var` (immutable by default, RESV). Lombok's `var` is a mutable inferred local, identical to laterita `@mut var`. See OQ-31.
+`val` is unsupported in laterita.
+Lombok's `val` is an immutable inferred local, which laterita spells `final var` (MUT-02, MUT-03).
+Lombok's `var` is a reassignable inferred local, whose reassignment maps to laterita's `var` unchanged, since a laterita `var` is reassignable by default (MUT-02), though laterita additionally gates mutation through the local behind `@mut`.
+See OQ-31.
 
 ### GEN-15 — `@StandardException`
 

@@ -94,7 +94,7 @@ Compiler bookkeeping tracking whether each field of a destructed value is still 
 Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
 
 ### field (in a struct/class)
-A named member variable of a class. Laterita distinguishes between immutable fields (default) and mutable fields (annotated `@mut`). Fields are initialized exactly once in constructors and follow ownership rules like variables. See `OWN-09`.
+A named member variable of a class. A field has the same two orthogonal mutability axes as a local (`MUT-07`): its slot is reassignable unless `final` (and only where the class and receiver are `@mut`), and it is mutable-through only when annotated `@mut`. Every field is initialized exactly once in a constructor (`OWN-11`) and follows ownership rules like a variable. See `OWN-09`, `MUT-07`.
 
 ### functional interface (also "function type")
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`. The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04); fields and declared local types use a nominal functional interface instead. `.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position. The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode — its call mode (CLO-03). Laterita treats nominal and anonymous forms uniformly. Used for callbacks, functional operations, and closure types. See `FN-01`.
@@ -130,10 +130,10 @@ Declared on a class to express its relationship to threads. `@local` (or `@local
 The compile-time process of specializing generic code. Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation. See `COMP-02`.
 
 ### @mut (annotation)
-The unified marker for variable mutability. Appears on: variables (`@mut var x = ...`), fields (`@mut int count`), parameters (`@mut T param`), and class declarations (`@mut class C`, `MUT-05`). Conveys "this can change." A `@mut` class has a mutable surface; a class without the marker is a value class. A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `MUT-01`, `MUT-08`, `MUT-05`.
+The marker for *referent mutability*: the right to mutate a value through the binding, by calling `@mutating` methods or writing through it. Appears on variables, fields, parameters, and return types, and on class declarations (`@mut class C`, `MUT-05`). It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-02`, `MUT-03`). On a value-class-typed binding `@mut` is redundant, since the referent has no mutating surface. A `@mut` class has a mutable surface. A class without the marker is a value class. A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`. See `MUT-01`, `MUT-02`, `MUT-07`, `MUT-08`, `MUT-05`.
 
 ### @mutating (annotation)
-Declares that a method may mutate its receiver — reassign or mutate-through the receiver's `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like variable mutability. By `MUT-10` a `@mutating` method is callable only on a `@mut` receiver. See `MUT-08`.
+Declares that a method may mutate its receiver — reassign the receiver's non-`final` fields, mutate through its `@mut` fields, and call other `@mutating` methods on `this`. A declaration annotation on the method, kept a distinct token from `@mut` so receiver mutation is not spelled like variable mutability. By `MUT-10` a `@mutating` method is callable only on a `@mut` receiver. See `MUT-08`.
 
 ### mutable borrow / mut borrow
 A borrow that grants both read and write access to the borrowed value. Only one mutable borrow may be active at a time; no immutable borrows may coexist with it. A mutable borrow requires the source variable to be `@mut` or the borrow to occur within a `@mutating` method of the same object. See `OWN-13`, `OWN-03`.
@@ -172,7 +172,7 @@ Having the right and obligation to drop (clean up) a value when done. An owned v
 The rules governing whether an overriding method's signature may differ from the base method's. One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse. `@take` on a parameter is invariant; `@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added. The FI-slot call-mode axis inverts surface direction — override may *strengthen* the slot (bare → `@mutating` → `@consuming`) — because the annotation governs closure acceptance, not parameter variable. See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
-How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and the slot is reassignable). See `OWN-13`.
+How a parameter receives its argument: bare (borrows the argument), `@mut` (borrows mutably), `@take` (receives ownership), or `@take @mut` (receives ownership and may mutate through it). Every parameter slot is `final`: the name cannot be reassigned in the body (`MUT-04`). See `OWN-13`, `MUT-04`.
 
 ### poisoned (Mutex)
 A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section. Subsequent attempts to acquire the lock throw `PoisonedException`. The mutex can only be recovered by replacing it entirely. See `THR-10`.
@@ -232,10 +232,10 @@ Declares that a parameter receives ownership of its argument (consumed upon call
 A type or resource bound to a specific thread and cannot safely be moved to another thread. In Laterita, expressed via the `@local` annotation. Examples: `Rc<T>`, `Thread.local` storage. See `STD-07`.
 
 ### transitivity (of mutability)
-Immutability propagates through a variable. A bare (immutable) variable cannot call `@mutating` methods on the held object and cannot mutate its fields. To mutate, every level of access must be `@mut`. See `MUT-10`, `MUT-09`.
+Immutability propagates through a variable. A bare (non-`@mut`) variable cannot call `@mutating` methods on the held object and cannot mutate its fields, even if its own slot is reassignable. To mutate through, every level of access must be `@mut`. See `MUT-10`, `MUT-09`.
 
 ### type-inferred variable
-A variable whose type is inferred from the RHS expression rather than written explicitly. Forms: `var name = expr` (immutable, inferred), `@mut var name = expr` (mutable, inferred). In laterita mode `var` is immutable by default; the `@mut` annotation opts in to mutability. See `MUT-02`.
+A variable whose type is inferred from the RHS expression rather than written explicitly. Forms: `var name = expr` (reassignable, inferred), `@mut var name = expr` (adds mutation-through), `final var name = expr` (slot locked). A laterita `var` is reassignable by default, exactly as in Java, and `@mut` opts in to mutation through the referent. See `MUT-02`.
 
 ### type narrowing / smart cast
 Refining a variable's type along a conditional path. Most common with nullable types: after `if (x != null) { ... }`, the variable `x` is narrowed from `T?` to `T` within the block, and methods on `T` are callable without further checks. See `NULL-06`.
@@ -308,7 +308,7 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `Arc<T>` (multi-threaded) | Variable (with atomic refcount) | Like `Rc<T>`, but thread-safe; less common in Java due to GC |
 | Ownership + `give(...)` | Explicit transfer | Java has no ownership concept; all variables are borrows |
 | Borrow (`&`) | Variable | Similar to Java; lifetime rules are stricter |
-| `@mut` (mutable borrow) | Non-final reference to mutable object | Like Java, but enforced at compile time |
+| `@mut` (mutate-through) | Reference used to mutate the object | Java allows mutation through any reference; laterita gates it on `@mut`, with reassignment the separate `final` axis |
 | `@mut class` vs. value class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes; Laterita opts *in* to mutable classes — the value class is the default |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |

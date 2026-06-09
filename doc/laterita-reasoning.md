@@ -28,7 +28,7 @@ The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf 
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`, with the default-immutable rule (MUT-09) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable variables.
+Type inference reuses Java's `var`: a `var x = expr` is reassignable and not mutate-through, exactly as a Java `var`, and `@mut var x = expr` adds mutation-through (MUT-02). No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
 
@@ -63,9 +63,16 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 `@mut` denotes mutability uniformly across variables, fields, and parameters, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
 
-### Why `final` composes with `@mut` (MUT-02)
+### Why slot and referent mutability are separate axes (MUT-02, MUT-03)
 
-`@mut` grants two capabilities at once — rebinding the name and mutating the value through it — but the most common Java pattern wants only the second: a `final` field holding a mutable object, `private final List<Item> items`. Rather than add a third annotation for "mutable but not reassignable," Laterita reuses Java's `final`, which already means precisely "this variable is not reassignable." `@mut final` is then the exact spelling of that pattern — mutation-through kept, reassignment locked — and `final` on an already-immutable variable is simply redundant, so nothing needs to reject it.
+A binding has two capabilities that Java keeps apart: rebinding the name to another value, the slot, and mutating the value reached through the name, the referent.
+Laterita keeps them apart, with one marker each.
+`final` locks the slot, exactly its Java meaning, so a Java local that is reassigned keeps working with no annotation and a Java `final` keeps its force.
+`@mut` grants referent mutability, the property that actually needs guarding: the right to call a `@mutating` method or write through the binding.
+Folding both onto a single `@mut` would force an annotation onto every reassigned-but-not-mutated local, which Java writes bare, and would leave the common "mutable object, locked slot" pattern, `private final List<Item> items`, reading as `@mut final` undoing half of what `@mut` granted.
+Keeping them separate lines each axis up with the marker that already means it: `final` for the slot, `@mut` for the referent, every combination spellable and none redundant.
+The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
+Reassigning a slot repoints a name and mutates no object, so it is not a borrow-safety concern, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
 
 ### Why fields default to immutable (OWN-09)
 
@@ -92,6 +99,14 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 ---
 
 ## Mutability (MUT-01 through MUT-11)
+
+### Why a parameter slot is always final (MUT-04)
+
+A parameter name is a slot the caller filled.
+Rebinding it inside the body discards the link to what the caller passed, a move Java permits but style guides routinely forbid.
+Laterita locks every parameter slot rather than offer a per-parameter `final` opt-in, because the body has no reason the caller can see to repoint the name: it reads the argument, mutates through it when `@mut`, or moves it onward when `@take`.
+Moving a `@take` parameter onward with `give` consumes the value and does not rebind the slot, so the lock takes nothing the ownership model wanted.
+The referent axis is untouched: `@mut` on a parameter still lends a mutable borrow, and `@take @mut` still owns and mutates through.
 
 ### Why `Cell<T>` is the only escape hatch (MUT-11)
 
@@ -440,7 +455,7 @@ C++ uses `= delete` as a definition syntax (`Foo() = delete;`). An equivalent at
 
 Ownership rules force the question: when a function needs an owned value but the caller has a borrow, *something* has to produce a duplicate. Without a defined story, every type author would invent their own — `User.copy()`, `Cart.duplicate()`, `Order.snapshot()` — with subtly different contracts. The clean answer is two layered mechanisms:
 
-- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where immutable fields can be initialized (OWN-11), so duplication composes with the rest of the language without special pleading.
+- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where `final` fields can be initialized (OWN-11), so duplication composes with the rest of the language without special pleading.
 - **`clone()` method (OBJ-02).** A public wrapper that calls the copy constructor. This is the API generic and polymorphic code uses. `element.clone()` virtually dispatches to the actual class's `clone()`, which calls that class's copy constructor.
 
 ### Why the synthesized copy constructor calls `field.clone()`, not `new FieldType(source.field)`
@@ -661,7 +676,9 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed var
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
-A variable may still be *declared* `@mut String` — `@mut` is general (MUT-01), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mutating` method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
+A variable or field may still be *declared* `@mut String`, since `@mut` is general (MUT-01) and rejecting it on one type would be a special case, but it grants nothing.
+`String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-02, MUT-07), not from `@mut`.
+`StringBuilder` therefore holds a plain non-`final` `String contents` field, reassigned in place by its `@mutating` methods.
 
 ### Why default receiver mode is borrow (STR-08)
 
