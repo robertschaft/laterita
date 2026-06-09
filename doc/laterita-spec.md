@@ -133,7 +133,7 @@ The field is dropped with the enclosing instance (DROP-05).
 
 `@borrow` on a field or record component declares that the field holds a borrow rather than an owned value.
 An instance of a class with any `@borrow` field can only be produced as a `@bound` value.
-This includes the case where the `@borrow` arises via a `@bound`-substituted generic argument (TARG-01).
+This includes the case where the `@borrow` arises via a `@borrow`-substituted generic argument (TARG-01).
 `@bound` marks the value as a borrow rather than owned.
 The source is fixed by the producer.
 See OWN-17 and OWN-18 for returns, and LIFE-02 for intersection across multiple sources.
@@ -184,7 +184,9 @@ A **temporary expression** (call result, constructor, literal) is owned at the c
 Illegal cases:
 
 - `give(arg)` to a bare parameter. The caller asks to transfer, but the function will not accept ownership.
-- A bare argument holding only a borrow to a `@take` parameter. There is no ownership to give.
+- A bare argument holding only a borrow to a `@take` parameter whose type is owned.
+There is no ownership to give.
+A `@take @borrow` parameter instead expects the borrow itself (TARG-05).
 
 ```java
 var name = makeName();
@@ -316,9 +318,22 @@ The instance is usable only while every field's source remains live.
 ```java
 record EntryView<K, V>(@borrow K key, @borrow V value) {}
 
-@bound EntryView<String, Integer> view = new EntryView<>(name, count);
+EntryView<String, Integer> view = new EntryView<>(name, count);
 // view's lifetime = min(name, count)
 ```
+
+### LIFE-04 - `@borrowCapped` caps an instance's lifetime within its borrow sources
+
+`@borrowCapped` is a class-level annotation, permitted on any class declaration.
+It declares that every `@borrow` field's source must remain live until the instance goes out of scope, not only until the instance's last explicit use (LIFE-03).
+
+The obligation is a property of the value, like the `@bound` mode it refines: it is fixed by the instance's class at construction and preserved across assignment and upcast.
+
+`@borrowCapped` is inherited.
+A subclass of a `@borrowCapped` class is `@borrowCapped` and cannot remove the marker.
+A subclass may add `@borrowCapped` that its superclass lacks.
+
+The compiler must reject any program in which a `@borrowCapped` instance's scope exit is reached after a source of one of its `@borrow` fields has been dropped or moved.
 
 ---
 
@@ -461,6 +476,11 @@ Within a constructor, `@mutating` methods may be called on `this` and inherited 
 This is the initialization phase.
 The value-class freeze takes effect when the constructor returns.
 
+An `onDrop()` body (DROP-05) is exempt in the same way.
+Its receiver is `@mut` regardless of class kind, so it may reassign or mutate-through `@mut` fields and call `@mutating` methods on `this`.
+This is the teardown phase.
+The value-class freeze remains in effect, so on a value class every field is immutable and the body is read-only.
+
 ```java
 var counter = new Counter();
 counter.inc();              // ERROR: counter is not @mut
@@ -579,19 +599,19 @@ An override may declare fewer or narrower checked exceptions than the inherited 
 
 ## TARG — Annotations in Generic Type Arguments
 
-### TARG-01 - `@bound` admitted in a type argument
+### TARG-01 - `@borrow` admitted in a type argument
 
-`@bound` may appear inside a generic type argument.
-A class instance whose generic arguments include any `@bound`-substituted parameter can only be produced as a `@bound` value.
-Its lifetime follows LIFE-02, with TARG-04 idempotence when `@bound` stacks.
+`@borrow` may appear inside a generic type argument.
+It declares that the values substituted for that type parameter are borrows, the same role `@borrow` plays on a field (OWN-09).
+When a `@borrow`-substituted argument is stored in a field, that field becomes a `@borrow` field, so the instance can only be produced as a `@bound` value bound to the sources of the borrowed arguments (OWN-09, LIFE-03).
 No struct-level lifetime parameters are introduced.
-The `@bound` variable on the instance carries the lifetime.
+A local holding such an instance follows its initializer (OWN-02) and needs no marker.
 
 ```java
 record Pair<L, R>(L left, R right) {}
 
-Pair<String, Integer>                       p1 = new Pair<>("hello".clone(), 42);
-@bound Pair<@bound String, @bound Integer> view = new Pair<>(name, count);
+Pair<String, Integer>                 p1   = new Pair<>("hello".clone(), 42);
+Pair<@borrow String, @borrow Integer> view = new Pair<>(name, count);   // view bound to name, count
 ```
 
 ### TARG-02 - `@take` rejected in a type argument
@@ -626,27 +646,85 @@ Two simultaneous element borrows are then a borrow-check error rather than alias
 A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05).
 The `@unsafe` cost is visible at the storage site.
 
-### TARG-04 - `@bound` is idempotent under stacking
+### TARG-04 - Stacked borrow markers collapse to one borrow
 
-`@bound` is a variable-mode marker, not a type constructor.
-It carries no "layer" to stack.
-When `@bound` appears in stacked position, typically through generic substitution, the resulting form denotes the same shape as a single `@bound T`.
-For example, `@bound E` returned from a method on `Container<@bound T>` substitutes to `@bound @bound T`, which is one `@bound T`.
-Each `@bound` position contributes its source to LIFE-02's intersection.
+`@bound` and `@borrow` are variable-mode markers, not type constructors.
+They carry no "layer" to stack.
+When they stack through generic substitution, in any combination such as `@bound @borrow T` or `@borrow @borrow T`, the result denotes a single borrow rather than a borrow of a borrow.
+Each stacked marker contributes its source to LIFE-02's intersection.
+For example, `@bound E` with source `this` (OWN-18), returned from a method on `Container<@borrow T>`, substitutes to `@bound @borrow T`, one borrow bound to both the receiver and the element's source.
 
 ```java
 class ArrayList<E> {
-    @bound E get(int index);                         // outer @bound: bound to `this`
+    @mutating void add(@take E e);                    // stores a borrow (TARG-05) when E is a @borrow
+    @bound E get(int index);                          // return bound to `this` (OWN-18)
 }
 
-var list = new ArrayList<@bound String>();           // inner @bound: bound to element source
-var got = list.get(0);                               // shape is @bound String
-                                                     // lifetime = min(list, source-of-element)
+String config = "shared";                             // long-lived owner
+var list = new ArrayList<@borrow String>();           // elements are borrows, each with its own source
+list.add(config);                                     // element source: `config`
+
+{
+    String line = readLine();                         // shorter-lived owner
+    list.add(line);                                   // binds list to a second borrow, reduces lifetime of list (LIFE-02)
+
+    var got = list.get(0);                            // inferred @bound @borrow String:
+                                                      // one borrow, not a borrow of a borrow,
+                                                      // lifetime = min(list, config, line)
+}   // `line` drops here: `list` becomes unreadable (LIFE-01), but is not
+    // dropped until the outer scope; its drop skips the borrowed elements (DROP-05)
 ```
 
-The rule is what lets `Container<@bound T>` compose through any method whose return is `@bound E`.
-The doubly-marked form arising from substitution does not introduce a "borrow of a borrow" indirection.
+The rule is what lets `Container<@borrow T>` compose through any method whose return is `@bound E`.
+The substituted form does not introduce a "borrow of a borrow" indirection.
 It accumulates lifetime constraints on a single borrow.
+
+### TARG-05 - `@take` transfers a borrowed type argument by value
+
+A generic `@take T` parameter monomorphized with a borrowed type argument becomes `@take @borrow T`, or `@take @mut @borrow T` for an exclusive element.
+`@take` transfers the value by value into the slot.
+Because a `@borrow` value is a reference, `@take @borrow` keeps the reference itself, not the value it points at, which stays owned where it was.
+The cost follows copyability: a shared borrow is copied, so the caller keeps its own, and an exclusive `@mut` borrow is moved, so the caller loses access.
+The transferred borrow keeps its original source (LIFE-01), so the slot's enclosing value is `@bound` (OWN-09).
+A bare borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
+`@take` therefore needs no degradation for borrows.
+
+```java
+@mut class List<T> { @mutating void add(@take T e); }
+
+List<Foo> a;                    // add(@take Foo e): move owned in
+List<@borrow Foo> b;            // add(@take @borrow Foo e): copy a shared borrow in
+@mut List<@mut @borrow Foo> c;  // add(@take @mut @borrow Foo): move an exclusive borrow in
+```
+
+### TARG-06 - `@own` requires an owned type argument
+
+A type parameter declared `@own` rejects a borrowed type argument.
+`@own` is the dual of `@borrow`: `@borrow` admits a borrow in a type argument, `@own` forbids one at the type parameter.
+It marks a type that must own its contents, the role a `'static` bound plays in Rust.
+`Arc` (STD-02) and `Mutex` (STD-09) declare their parameter `@own`.
+
+```java
+@mut class Mutex<@own T> { /* … */ }
+
+Mutex<Config>         ok  = new Mutex<>(loadConfig());   // owned argument
+Mutex<@borrow Config> bad = /* … */;                     // ERROR (TARG-06): borrowed argument
+```
+
+### TARG-07 - A bare `T` return monomorphized to a borrow binds to its container
+
+A method declared with a bare (owned) `T` return, monomorphized with a borrowed type argument, returns a `@bound` value instead of an owned one.
+For an owned type argument the return is owned (OWN-16).
+For a borrowed one the return is the borrow, bound to the receiver (OWN-18), whose lifetime already intersects every element source (LIFE-03).
+This is the return-side counterpart of TARG-05.
+It is the conservative choice: the returned borrow is capped at the container's lifetime rather than the element's own source, which is stricter than necessary but needs no per-element source tracking.
+
+```java
+@mut class List<T> { @mutating T remove(int i); }
+
+List<Foo> a;          // remove(int): returns owned Foo (moved out)
+List<@borrow Foo> b;  // remove(int): returns @bound Foo, bound to the list
+```
 
 ---
 
@@ -697,6 +775,7 @@ Every variable triggers the drop of its value when the variable leaves scope; th
 ### DROP-02 — Reverse declaration order
 
 Within a scope, variables are dropped in the reverse of their declaration order.
+Equivalently, when several locals leave scope at the same point, the shortest-living is dropped first.
 
 ### DROP-03 — Cleanup on all exit paths
 
@@ -721,7 +800,8 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
-The step-1 body runs before any field teardown of that class and may read all of its class's fields.
+The step-1 body runs before any field teardown of that class.
+It may read every owned field visible to it, and may reassign or mutate-through those that are `@mut` (MUT-10).
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -779,6 +859,31 @@ abstract class Resource {
 ### DROP-10 — `this` does not escape `onDrop()`
 
 Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the call. It may not be given (`give(this)`) to another function, returned, stored in a field or global, or otherwise made reachable after the body returns. This is the rule that makes the once-per-instance guarantee on `onDrop()` (DROP-09) and the storage release in DROP-05 step 4 sound — no external reference to the value can survive into field teardown or beyond, so the drop sequence is safe to complete even when the body throws (DROP-07).
+
+### DROP-11 — `onDrop()` access to `@borrow` fields requires `@borrowCapped`
+
+An `onDrop()` body may access an owned field freely (DROP-05).
+It may access a `@borrow` field (OWN-09), its own or an inherited one, only if the class is `@borrowCapped`, declared or inherited (LIFE-04).
+Accessing a `@borrow` field otherwise is a compile error.
+The diagnostic names the field and points to `@borrowCapped`.
+
+A field whose static type is a type parameter counts as a `@borrow` field for this rule unless the parameter is `@own` (TARG-06), since an unconstrained `T` may be substituted with a `@borrow` argument (TARG-01).
+
+```java
+final class Logger {
+    @mut @borrow Sink sink;
+    @internal void onDrop() {
+        sink.flush();              // ERROR: accesses a @borrow field without @borrowCapped
+    }
+}
+
+@borrowCapped final class Logger {
+    @mut @borrow Sink sink;
+    @internal void onDrop() {
+        sink.flush();              // OK: @borrowCapped, sink live at scope exit (LIFE-04)
+    }
+}
+```
 
 ---
 
@@ -1253,7 +1358,10 @@ The SAM *type itself* is invariant under override in the sense that the SAM's un
 
 ### CLO-06 — Capture lifetimes propagate
 
-A closure value carries the lifetimes of every variable it captures by borrow. The closure cannot outlive any captured borrow. Lifetime intersection (LIFE-02) applies when multiple borrows are captured.
+A by-borrow capture is a `@borrow` slot of the synthesized closure (FN-03), and a by-move capture is an owned slot.
+A closure with any `@borrow` capture is therefore a `@bound` value (OWN-09, LIFE-03), bound to the intersection of its captured sources (LIFE-02) and unable to outlive any of them (LIFE-01).
+A closure that captures only by move is owned.
+When the closure escapes through a return, its captured parameters are the `@bound` sources of the return (OWN-17).
 
 ---
 
@@ -1310,7 +1418,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 
 ```java
 @mut class T[] {
-    @mutating @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(int mid);
+    @mutating @bound Pair<@borrow @mut T[], @borrow @mut T[]> splitAt(int mid);
 
     @mutating void forEachChunk(int chunkSize,
             @mut @mutating (@mut T[]) -> void body);
@@ -1349,7 +1457,7 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> @mut @bound Pair<@bound @mut T[], @bound @mut T[]> splitAt(
+    public static <T> @mut @bound Pair<@borrow @mut T[], @borrow @mut T[]> splitAt(
             @bound @mut T[] arr, int mid);
 
     public static <T> void forEachChunk(
@@ -1396,7 +1504,9 @@ public record Pair<L, R>(L left, R right) {}
 Instantiations encountered in this spec:
 
 - `Pair<T[], T[]>` — owned pair, returned by `splitOff`. The accessors `left()` and `right()` return borrows bound to the pair (OWN-18). To obtain the owning halves the pair is destructed by direct component access — `give(p.left)`, `give(p.right)` — a destruction (OWN-06) available in `.lat`, where record components are public (LAT-08). `Pair` declares no `onDrop()`, so DROP-08 does not apply, and each half becomes an independently owned `T[]`. A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors.
-- `@mut @bound Pair<@bound @mut T[], @bound @mut T[]>` — pair of mutable borrows, returned by `splitAt`. The enclosing variable is `@bound` because the instance contains `@bound`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03); its lifetime is the intersection of the field sources (LIFE-02).
+- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>` — pair of mutable borrows, returned by `splitAt`.
+The enclosing variable is `@bound` because the instance contains `@borrow`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03).
+Its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
@@ -1462,7 +1572,10 @@ A cycle of `Rc<T>` handles whose strong references form a closed loop is not rec
 
 ### STD-02 — `Arc<T>`
 
-The cross-thread analog of `Rc<T>`. reference count operations are atomic. The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump. `Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
+The cross-thread analog of `Rc<T>`, with atomic reference-count operations.
+The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump.
+`Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
+The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a borrowed type argument is rejected.
 
 ### STD-03 — `WeakReference<T>`
 
@@ -1519,7 +1632,9 @@ Implementations of these operations are permitted (and expected) to use `private
 
 ### STD-09 — `Mutex<T>`
 
-A mutual-exclusion primitive wrapping an owned value. Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
+A mutual-exclusion primitive wrapping an owned value.
+Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
+The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value, so a borrowed type argument is rejected.
 
 **Constructor.** `new Mutex<T>(@take T value)` — wraps `value`, initially unlocked and unpoisoned.
 
@@ -1720,8 +1835,10 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |
 | `@bound` | `PARAMETER` | - | Return is bound to this parameter | OWN-17 |
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
-| `@bound` | `TYPE_USE` | in type arguments | Instances substituted for this type argument are borrowed; enclosing instance must be `@bound` | TARG-01 |
-| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `FIELD`, `METHOD` (return) | - | Variable holds a borrowed value (instance-level marker on a `@borrow`-field or `@bound`-substituted-generic instance, OWN-09, TARG-01) | OWN-09 |
+| `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot; enclosing instance must be `@bound` | TARG-01 |
+| `@own` | `TYPE_PARAMETER` | - | Type parameter rejects a borrowed type argument (dual of `@borrow`) | TARG-06 |
+| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `FIELD`, `METHOD` (return) | - | Variable holds a borrowed value (instance-level marker on a `@borrow`-field or `@borrow`-substituted-generic instance, OWN-09, TARG-01) | OWN-09 |
+| `@borrowCapped` | `TYPE` | inherited by subclasses | Every `@borrow` source the instance holds must stay live until its scope exit | LIFE-04, DROP-11 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |

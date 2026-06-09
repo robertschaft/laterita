@@ -224,7 +224,7 @@ On the guarantee side, `@bound` on the return is covariant in strength: an overr
 
 ---
 
-## Lifetimes (LIFE-01 through LIFE-03)
+## Lifetimes (LIFE-01 through LIFE-04)
 
 ### Why mark-borrow on returns (OWN-16, OWN-17, OWN-18)
 
@@ -246,9 +246,28 @@ When a returned borrow is bound to several sources, its lifetime is the shortest
 
 Treating the receiver as a default contributor — an instance method returning a borrow implicitly tied to `this` — would make signatures silent in a way that hides information from the caller. The rule is therefore stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from. The fix is always local to the signature, and the caller-visible contract is always complete.
 
+### Why `@borrowCapped` rather than always capping at the borrows (LIFE-04)
+
+A `@bound` instance already cannot outlive its borrow sources while it is used (LIFE-03), so cleanup is the only special case.
+A class that never reads its borrows at drop leaves its `@borrow` fields untouched, because DROP-05 skips them, so the source is free to die first.
+The moment `onDrop()` reads a borrow, the drop becomes a use of that borrow at scope exit, later than any statement the checker can otherwise see.
+
+Two simpler rules are rejected.
+Always permitting the read, silently extending every `@borrow` field's required lifetime to scope exit, hides from the reader whether holding a borrow tightens its source's lifetime and pessimizes the common leaf that only releases an owned handle.
+Forbidding the read outright makes lock guards, span timers, and scope-bound writers inexpressible, since each must touch the borrowed thing once, at the end.
+`@borrowCapped` carries the stronger obligation on the class, where a reader sees it, and only the classes that read borrows at drop pay for it.
+DROP-02 then meets it within a scope for free, dropping a borrower before the source it was declared after.
+
+`@borrowCapped` is a lifetime contract on the instance, a separate axis from `final`, which governs only where an `onDrop()` body may live (DROP-09).
+Keeping them apart lets an extensible base carry the contract while the `final` subclass that inherits it reads the borrows.
+
+The contract is inherited downward, the only direction sound under upcasting: a `@borrowCapped` instance viewed through a supertype variable must still owe the obligation, so every subtype must owe at least as much.
+The obligation therefore rides on the value the way `@bound` does, fixed at construction and carried across assignment and upcast, rather than read off the static class at the drop site.
+A subclass may add `@borrowCapped` to a non-capped base, since the value is marked at its own construction.
+
 ---
 
-## Cleanup (DROP-01 through DROP-10)
+## Cleanup (DROP-01 through DROP-11)
 
 ### Why universal `onDrop()`, not opt-in (DROP-01)
 
@@ -328,7 +347,7 @@ The analysis cost buys little, because a class that carries an `onDrop()` is a r
 The type-level rule states the contract a reader can see from the class alone: *has `onDrop()` means moved whole*.
 The rare case that genuinely wants both cleanup and a surrenderable part pays a single, explicit idiom: extract the part before the husk is built, or hold it behind a handle the cleanup path does not touch.
 
-Diagnosing at the move site (rather than at the `onDrop()` definition) keeps the error where the programmer made the choice, and lets the `onDrop()` body stay an ordinary method whose field reads need no special annotation.
+Diagnosing at the move site (rather than at the `onDrop()` definition) keeps the error where the programmer made the choice, and lets the `onDrop()` body stay an ordinary method whose owned-field reads need no special annotation (borrow-field reads are gated separately by DROP-11).
 
 This also explains why `StringBuilder.build()` (OWN-15), which is `return this.contents;`, is legal: `StringBuilder` declares no `onDrop()`, so it is freely splittable and the move of `this.contents` is fine.
 Give `StringBuilder` an `onDrop()` and that move becomes an error, which is the correct signal that the design now needs a different shape (for example, an explicit `close()` per THR-05's split, or holding the buffer behind a handle the `build()` path can extract without the husk needing it).
@@ -352,6 +371,38 @@ The once-per-instance guarantee on `onDrop()` (DROP-09) breaks if the body can s
 Most of the work is already done by ordinary borrow-checking: if `this` in `onDrop()` is treated as a borrow bounded by the call, then storing it in a longer-lived location is a lifetime error, just as it would be in any other method. DROP-10 spells out the receiver case explicitly so the question doesn't depend on whether `onDrop()`'s receiver is owned or borrowed in the formal model — `give(this)` is rejected outright, and so is any path that smuggles the receiver into something that outlives the call.
 
 The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantics. Without DROP-10, a thrown exception from the body could leave a smuggled reference to a partially-cleaned-up instance, with no safe way for the runtime to continue. With DROP-10, the field teardown that follows a throw can never be observed by an external reader of `this`, so completing the sequence is sound whether the body returned normally or threw.
+
+### Why `onDrop()`'s receiver is mutable (MUT-10)
+
+Cleanup routinely writes: flush a buffer, reset a flag, decrement a count.
+Rust's `Drop::drop` takes `&mut self` for exactly this reason, and an `onDrop()` body needs the same capability.
+
+`onDrop()` runs in the teardown phase, the dual of the constructor's initialization phase.
+In both phases `this` is uniquely owned, so granting a mutable receiver introduces no aliased mutation: no borrow of the instance is live at drop, which DROP-10 secures by forbidding the receiver from escaping the body.
+The receiver is therefore `@mut` regardless of class kind, with no `@mutating` annotation written by the author.
+
+Making destructor mutation opt-in, by requiring `@mutating` on `onDrop()` and a `@mut` class to carry it, is rejected.
+It would diverge from Rust, where every drop is mutation-capable, and it would impose ceremony on the most ordinary cleanup bodies.
+
+The value-class boundary is preserved rather than pierced.
+The freeze takes effect when the constructor returns and stays in effect through teardown, so a value class's fields remain immutable in `onDrop()` and the body is read-only.
+The mutable receiver is thus inert on a value class and supplies the cleanup capability only where mutation is already part of the type's surface.
+This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a `@mut` class, not a value class.
+
+Field-level immutability still applies.
+The mutable receiver only unlocks `@mut` fields (MUT-08), so a non-`@mut` or `final` field is no more writable in `onDrop()` than in any other method.
+`onDrop()` is an ordinary method body in every respect except that its receiver mode is fixed by the teardown phase rather than declared.
+
+### Why borrow reads in `onDrop()` are gated, and generics count as borrows (DROP-11)
+
+DROP-11 is the field-level face of LIFE-04.
+It is the check the compiler performs at the `onDrop()` body, where LIFE-04 is the obligation that check places on every instance's scope exit.
+Gating the read at the body rather than at the call site keeps the diagnostic where the programmer wrote the borrow read, and lets the call-site lifetime check stay ordinary.
+
+A field whose type is a bare type parameter is treated as a borrow unless the parameter is `@own`, because an unconstrained `T` can be monomorphized to a `@borrow` argument (TARG-01) and the `onDrop()` body is checked once, against the most permissive substitution.
+Reading such a field could therefore read a borrow whose source has already died, the exact hazard `@borrowCapped` exists to prevent.
+`@own` (TARG-06) removes that possibility at the type parameter, so an `@own T` field is owned under every substitution and reads at drop like any other owned field.
+The conservative direction is the safe one: a spurious "needs `@borrowCapped`" is a visible annotation the author adds, whereas a spurious "owned" would be a use-after-free.
 
 ---
 
@@ -554,7 +605,11 @@ The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries 
 
 ### Why closures carry capture lifetimes (CLO-06)
 
-A closure that borrows `name` cannot outlive `name`. This is the same lifetime-bounded-by-input principle from OWN-17, applied to closures. Without it, you could create a closure, the captured variable would die, and calling the closure would deref freed memory. The standard ownership rules force this, but it's worth calling out as a separate requirement because closures are where it bites people.
+A closure is a struct (FN-03): its captures are fields, a by-borrow capture is a `@borrow` field, and a by-move capture is an owned field.
+Capture lifetimes are therefore not a new principle but LIFE-03 applied to that struct: any `@borrow` capture makes the closure a `@bound` value bound to the intersection of its captured sources, while owned captures contribute nothing.
+A closure that borrows `name` cannot outlive `name`, the same reason an instance with a `@borrow` field cannot outlive its source.
+The relational form (OWN-17) is needed only when the closure escapes through a return and binds to captured parameters, as in `partial`.
+In-scope captures need no annotation, and mixed captures bind only by their borrowed parts, which the field model gives directly and a single OWN-17 framing would miss.
 
 ---
 
@@ -650,17 +705,46 @@ A dedicated `reduceChunks` was considered and rejected. Every in-place reduce ex
 
 `MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for `@mut`-narrowing overrides. The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable. So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
-### Why type arguments admit `@bound` and `@mut` but not `@take` (TARG-01, TARG-02, TARG-03)
+### Why type arguments admit `@borrow` and `@mut` but not `@take` (TARG-01, TARG-02, TARG-03)
 
-A type argument may carry `@bound` and `@mut`, but not `@take`.
+A type argument may carry `@borrow` and `@mut`, but not `@take`.
 
 `@take` is a parameter mode — it describes a transfer of ownership *into a slot* at a call site — not a property a value carries. As a type argument it would have no referent: `Pair<@take K, @take V>` cannot say anything, because there is no call and no slot. Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`), so `@take` in argument position is rejected (TARG-02).
 
-`@bound` composes cleanly (TARG-01): an instance whose type arguments include a `@bound` source can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04. The `@bound` variable on the instance carries the lifetime; no struct-level lifetime parameters are needed.
+`@borrow` composes cleanly (TARG-01): a type argument names no source, so a borrow slot is exactly what it is.
+An instance that stores a `@borrow`-substituted argument can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04, and no struct-level lifetime parameters are needed.
 
 `@mut` in a type argument — `List<@mut Foo>` — is the hard case. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), and the hazard is aliasing: an element accessor `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`, and two coexisting shared borrows of a `List<@mut Foo>` would each call `get(0)` and receive a `@mut Foo` to the same slot. Banning `@mut` from type arguments outright would push the case onto `Cell<T>`, but that is heavier than the hazard requires.
 
 The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (OWN-03): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (TARG-03): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
+
+### Why `@take` needs no degradation for borrows (TARG-05)
+
+A `@borrow` value is a reference: an arrow to a value another variable owns.
+`@take` keeps what the slot is given, so `@take @borrow` keeps the arrow, not the value it points at.
+The referent stays owned where it was and is untouched, which is why `@take @borrow` is not the contradiction it first appears to be.
+Underneath, `@take` is by-value transfer, not a claim on the referent.
+Transferring a value costs a copy when the value is freely copyable and a move otherwise, the same copy-versus-move split the language applies everywhere.
+A shared borrow is copyable, so `@take` of one copies it and the caller keeps its own.
+An exclusive `@mut` borrow is not, so `@take` moves it and the caller loses access.
+Degrading `@take` to a bare parameter for borrows fails on storage: a bare borrow parameter is scoped to the call (OWN-14) and cannot be kept, yet a container's `add` must store its element.
+So `@take` stays for every element mode, and `@take @borrow` is the ordinary monomorphization rather than a contradiction.
+
+### Why `@own` rather than reusing `@take` or a bound (TARG-06)
+
+A type that must own its contents needs a way to reject a borrowed type argument at the declaration.
+`@own` is a dedicated marker, the dual of `@borrow`, so the constraint reads at the type parameter exactly where a borrowed argument would otherwise be supplied.
+Reusing `@take` is rejected: `@take` is a call-site transfer mode, and giving it a second meaning on a declaration where no call occurs overloads the token.
+A marker-interface bound such as `T extends Owned` is rejected: ownership is not a supertype or method relationship, so a synthetic bound that every owned type would satisfy carries no real interface.
+`@own` is the analog of a `'static` bound in Rust, applied to the owning containers `Arc` and `Mutex`.
+
+### Why a bare borrow return binds to its container (TARG-07)
+
+A bare `T` return means owned (OWN-16), but a borrowed type argument turns it into a borrow with no declared source, which OWN-19 and OWN-20 reject.
+The return must therefore name a source.
+Binding it to the container, rather than to the removed element's own origin, is sound because the container's lifetime already intersects every element source (LIFE-03), and it avoids per-element source tracking.
+The cost is precision: a value pulled out cannot be kept past the container, where Rust's element-typed lifetime would allow it.
+That is the same collapse tradeoff TARG-04 accepts, and the rare cases that need the longer lifetime call `.clone()` to obtain an owned value.
 
 ### Why `T[]` is the canonical contiguous-mut backing
 
@@ -676,13 +760,19 @@ A single owned array must be divisible so the halves are independently usable by
 
 Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mutating` borrow vs `@consuming`), and those annotations are not part of the overload signature (OWN-13) — two same-name methods that differed only in receiver mode would be a duplicate declaration. Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust precedent (`BytesMut::split_off`) and the only spelling that reads unambiguously at every call site.
 
-The candidate options for cross-thread split alone — (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata — were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway. Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice — `T[]` *is* the owning slice. The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 — `Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@bound @mut T[], @bound @mut T[]>` for the in-thread borrowed return — so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
+The candidate options for cross-thread split alone were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway: (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata.
+Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice, because `T[]` *is* the owning slice.
+The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 (`Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` for the in-thread borrowed return), so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
 
 ### Why method-level only, not classes or blocks (UNS-01)
 
 `@unsafe` only marks private methods, so the audit boundary is the method signature: a reviewer reads each `private @unsafe` method, verifies its preconditions, and trusts that the public API is safe by composition.
 
-This is *tighter* than Rust. Rust allows `unsafe { }` blocks deep inside public functions, where the audit boundary can be hard to find. Forcing extraction into a named private method makes every unsafe operation in a codebase trivially enumerable (`grep "private @unsafe"`). The compiler inlines the helper back, so the runtime cost is zero; the slight visual heft is arguably a feature — unsafe operations can't be buried inline in a 200-line public method.
+This is *tighter* than Rust.
+Rust allows `unsafe { }` blocks deep inside public functions, where the audit boundary can be hard to find.
+Forcing extraction into a named private method makes every unsafe operation in a codebase trivially enumerable (`grep "private @unsafe"`).
+The compiler inlines the helper back, so the runtime cost is zero.
+The slight visual heft is arguably a feature: unsafe operations can't be buried inline in a 200-line public method.
 
 ### Why a fixed list of operations (UNS-02)
 
