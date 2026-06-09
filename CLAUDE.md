@@ -30,3 +30,5 @@ Non-language-design items (tooling, migration, roadmap) are tracked as GitHub is
 
 Use one line per sentence.
 Do not use semicolons or em dashes in prose text (code blocks and section heading formats like `### RULE — Title` are exempt).
+When a line is modified for a PR, fix its style fully even if the change is only a single character: one sentence per line, no semicolons, no em dashes.
+Leave untouched lines as they are.

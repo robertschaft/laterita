@@ -28,7 +28,8 @@ The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf 
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`: a `var x = expr` is reassignable and not mutate-through, exactly as a Java `var`, and `@mut var x = expr` adds mutation-through (MUT-02). No separate keyword for type-inferred locals.
+Type inference reuses Java's `var`: a `var x = expr` is reassignable and not mutate-through, exactly as a Java `var`, and `@mut var x = expr` adds mutation-through (MUT-02).
+No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
 
@@ -74,9 +75,12 @@ Keeping them separate lines each axis up with the marker that already means it: 
 The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
 Reassigning a slot repoints a name and mutates no object, so it is not a borrow-safety concern, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
 
-### Why fields default to immutable (OWN-09, MUT-07)
+### Why fields default to immutable (OWN-09, MUT-07a)
 
-Rust's transitivity insight: immutability is only meaningful if it propagates. If a bare variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee. So mutation *through* a field, the referent axis, is opt-in and needs `@mut` on the field, exactly the explicit choice Effective Java has recommended for years (favor immutability, favor records over JavaBeans). Reassigning a field is the orthogonal slot axis (MUT-07), reachable only inside a `@mut` class through a `@mut` receiver, so a value class, the default kind, still exposes no field mutation of either sort after construction.
+Rust's transitivity insight: immutability is only meaningful if it propagates.
+If a bare variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee.
+So mutation *through* a field, the referent axis, is opt-in and needs `@mut` on the field, exactly the explicit choice Effective Java has recommended for years (favor immutability, favor records over JavaBeans).
+Reassigning a field is the orthogonal slot axis (MUT-07b), reachable only inside a `@mut` class through a `@mut` receiver, so a value class, the default kind, still exposes no field mutation of either sort after construction.
 
 ### Why methods declare mutation in the signature (MUT-08)
 
@@ -455,7 +459,10 @@ C++ uses `= delete` as a definition syntax (`Foo() = delete;`). An equivalent at
 
 Ownership rules force the question: when a function needs an owned value but the caller has a borrow, *something* has to produce a duplicate. Without a defined story, every type author would invent their own — `User.copy()`, `Cart.duplicate()`, `Order.snapshot()` — with subtly different contracts. The clean answer is two layered mechanisms:
 
-- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where `final` fields can be initialized (OWN-11), so duplication composes with the rest of the language without special pleading.
+- **Copy constructor (OBJ-01).**
+  The actual duplication mechanism.
+  Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields.
+  Constructors are already the only context where `final` fields can be initialized (OWN-11), so duplication composes with the rest of the language without special pleading.
 - **`clone()` method (OBJ-02).** A public wrapper that calls the copy constructor. This is the API generic and polymorphic code uses. `element.clone()` virtually dispatches to the actual class's `clone()`, which calls that class's copy constructor.
 
 ### Why the synthesized copy constructor calls `field.clone()`, not `new FieldType(source.field)`
@@ -677,7 +684,7 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed var
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
 A variable or field may still be *declared* `@mut String`, since `@mut` is general (MUT-01) and rejecting it on one type would be a special case, but it grants nothing.
-`String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-02, MUT-07), not from `@mut`.
+`String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-02, MUT-07b), not from `@mut`.
 `StringBuilder` therefore holds a plain non-`final` `String contents` field, reassigned in place by its `@mutating` methods.
 
 ### Why default receiver mode is borrow (STR-08)

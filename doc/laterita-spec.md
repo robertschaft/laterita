@@ -59,6 +59,10 @@ print(a);                   // OK
 print(b);                   // OK
 ```
 
+Reassigning a non-`final` local (MUT-02) re-applies this rule to the new RHS.
+The slot's owned-or-borrowed status, and for a borrow its source, are taken from the most recent assignment and checked flow-sensitively (LIFE-01).
+This is independent of `@mut`, which governs only mutation through the value, not the slot.
+
 ### OWN-03 - Borrow exclusivity
 
 A value's borrow state at any point is one of:
@@ -76,7 +80,7 @@ They are permitted, including when both are mutable.
 The compiler performs this disjointness analysis.
 
 ```java
-@mut class Pair { @mut int left; @mut int right; }
+@mut class Pair { int left; int right; }
 @mut Pair p = new Pair();
 @mut int l = p.left;
 @mut int r = p.right;       // OK: disjoint fields
@@ -153,7 +157,7 @@ A local's mode follows its RHS (OWN-02).
 
 Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked.
 `final` fields, with or without `@mut`, can be assigned only in constructors.
-Non-`final` fields can also be reassigned in `@mutating` methods (MUT-07, MUT-08), which requires a `@mut` class and a `@mut` receiver.
+Non-`final` fields can also be reassigned in `@mutating` methods (MUT-07b, MUT-08), which requires a `@mut` class and a `@mut` receiver.
 
 ### OWN-12 - Record components follow field rules
 
@@ -341,7 +345,7 @@ The compiler must reject any program in which a `@borrowCapped` instance's scope
 
 ### MUT-01 - `@mut` is the unified mutability marker
 
-`@mut` denotes mutability everywhere it appears: locals (MUT-02), fields (MUT-07), parameters (MUT-04), and return types.
+`@mut` denotes mutability everywhere it appears: locals (MUT-02), fields (MUT-07a, MUT-07b), parameters (MUT-04), and return types.
 On a binding it grants *referent mutability*: the right to mutate the value through the binding, calling `@mutating` methods or writing through it.
 This is orthogonal to reassignment of the binding itself, the *slot*, which is on by default and locked by `final` (MUT-02, MUT-03).
 On a class or interface declaration it marks a mutable surface (MUT-05).
@@ -420,11 +424,12 @@ There is no mutable access to lend.
 
 A class, abstract class, or interface may be declared `@mut`: `@mut class C`, `@mut abstract class C`, `@mut interface I`.
 The marker declares a *mutable surface*.
-`@mut` fields may be declared in it (MUT-07, classes only).
+`@mut` fields may be declared in it (MUT-07a, classes only).
 `@mutating` methods may be declared on it (MUT-08).
 
 A type not declared `@mut` is a *value class*.
 No `@mutating` method may be declared on it.
+In a non-`@mut` class, all fields are treated like `final` (MUT-07b).
 A non-`@mut` interface may declare only methods without `@mutating`.
 Because no mutation is observable through a value-class variable, a copy of a value-class instance is interchangeable with a borrow under the same lifetime constraints.
 The compiler may substitute either.
@@ -441,19 +446,22 @@ Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are valu
 A `record` and an `enum` may not carry `@mut`.
 Both are value classes by construction.
 
-### MUT-07 - Field mutability: `@mut` is referent, `final` is slot
+### MUT-07a - `@mut` field grants mutation through the referent
 
-A field carries the same two orthogonal axes as a local (MUT-02), gated by the enclosing instance.
-Reassigning a field mutates the instance, so it requires the class to be `@mut` and the receiver to be `@mut` (MUT-08, MUT-10): in practice a constructor or a `@mutating` method.
-
-- Reassignment of the field slot is granted by default and locked by `final`.
-A non-`final` field is reassignable only where the receiver is `@mut`.
-A value class has no such receiver after construction (MUT-10), so its non-`final` fields are set once in the constructor and never again.
-- Mutation through the field is off by default and granted by `@mut`.
+`@mut` on a field grants *referent mutability*: mutation through the field, by calling `@mutating` methods on its value or writing through it.
+Without `@mut` a field cannot be mutated through.
 A `@mut` field may be *declared* only in a class declared `@mut`.
 A value class may *inherit* a `@mut` field from a `@mut` ancestor (HIER-03) but may not declare one.
 The declared type is unrestricted.
 On a value-class-typed field `@mut` grants nothing observable, since the referent has no mutating surface, and is redundant.
+
+### MUT-07b - Non-`final` field is reassignable through a `@mut` receiver
+
+Reassigning a field, rebinding its slot, is the slot axis (MUT-02): granted by default and locked by `final`.
+Reassigning a field mutates the enclosing instance, so a non-`final` field is reassignable only where the class is `@mut` and the receiver is `@mut` (MUT-08, MUT-10), in practice a constructor or a `@mutating` method.
+A value class has no `@mut` receiver after construction (MUT-05, MUT-10), so its fields are treated like `final`: set once in a constructor and never reassigned.
+
+The two axes are independent, giving four field forms.
 
 | Field form | Reassign (receiver `@mut`) | Mutate through |
 |---|---|---|
@@ -1304,7 +1312,7 @@ A functional-interface type used as a parameter or return combines modifiers fro
 |---|---|---|
 | Inside the type — the SAM's parameters and return | `@take`, `@mut`, `@bound` | OWN-13, OWN-17, OWN-18 |
 | The SAM's receiver — the type's call mode | bare / `@mutating` / `@consuming` | this rule |
-| The variable holding the value | `@mut`, `@take`, `@bound`, ownership | MUT-02, MUT-04, MUT-07, OWN-13, OWN-17, OWN-18 |
+| The variable holding the value | `@mut`, `@take`, `@bound`, ownership | MUT-02, MUT-04, MUT-07a, OWN-13, OWN-17, OWN-18 |
 
 ```java
 @mut interface F<T, R> { @mutating R apply(@take T); }   // call mode mut-call; SAM parameter @take T
@@ -1408,7 +1416,7 @@ When the closure escapes through a return, its captured parameters are the `@bou
 ### STR-07 — `String` is a value class
 
 `String` is a value class (MUT-05): no `@mutating` method exists or can be added by extension (HIER-01).
-A non-`final` `String` field in a `@mut` class is reassignable (MUT-07), and a non-`final` `String` local is reassignable (MUT-02), but `@mut String` is redundant since no `String` method mutates in place.
+A non-`final` `String` field in a `@mut` class is reassignable (MUT-07b), and a non-`final` `String` local is reassignable (MUT-02), but `@mut String` is redundant since no `String` method mutates in place.
 Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per variable
@@ -1865,7 +1873,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 |---|---|---|---|---|
 | `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-05 |
 | `@mut` | `LOCAL_VARIABLE` | - | Local may mutate through the referent (reassignment is the default slot, locked by `final`) | MUT-02 |
-| `@mut` | `FIELD` | only in a `@mut` class | Field may mutate through the referent (reassignment is the non-`final` default) | MUT-07 |
+| `@mut` | `FIELD` | only in a `@mut` class | Field may mutate through the referent (reassignment is the non-`final` default) | MUT-07a |
 | `@mut` | `PARAMETER` | on `@mut` types | Mutable parameter (mutable borrow) | MUT-04 |
 | `@mut` | `METHOD` | on `@mut` types | Return is a `@mut` variable | MUT-01 |
 | `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | TARG-03 |
@@ -2159,7 +2167,7 @@ Under EXC-05 a body may already throw any exception without a `throws` clause, s
 `val` is unsupported in laterita.
 Lombok's `val` is an immutable inferred local, which laterita spells `final var` (MUT-02, MUT-03).
 Lombok's `var` is a reassignable inferred local, whose reassignment maps to laterita's `var` unchanged, since a laterita `var` is reassignable by default (MUT-02), though laterita additionally gates mutation through the local behind `@mut`.
-See OQ-31.
+See OQ-34.
 
 ### GEN-15 — `@StandardException`
 

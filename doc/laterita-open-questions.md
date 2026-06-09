@@ -106,7 +106,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ---
 
-## OQ-31 — `val` and `var` as first-class aliases
+## OQ-34 — `val` and `var` as first-class aliases
 
 **Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a laterita spelling.
 
@@ -156,4 +156,4 @@ The `OWN` model of variables-as-ownership-disciplined-slots only holds for refer
 Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
-**Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07, STD-04, STD-05.
+**Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
