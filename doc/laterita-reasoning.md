@@ -260,8 +260,9 @@ The known cost is overlap with Java's "upper bound / lower bound" generics termi
 ### Why a parameter can store a borrow into `this` (OWN-21)
 
 A generic container already stores borrows: `List<@borrow Foo>.add` monomorphizes to `@take @borrow` and caps the list at each element's source (TARG-04, TARG-05).
-A non-generic method storing a borrow into a `@borrow` field had no spelling, so a setter like GEN-02's `setBorrowed` installed a borrow with no lifetime account.
-Admitting `@take @borrow` in parameter position gives that the direct spelling, and the cap falls out of LIFE-02 and LIFE-03 with no new machinery: the stored source joins `this`'s intersection.
+A non-generic method storing a borrow into a `@borrow` field would otherwise have no spelling, and a setter like GEN-02's `setBorrowed` would install a borrow with no lifetime account.
+Admitting `@take @borrow` in parameter position gives that the direct spelling, and the cap falls out of LIFE-02 and LIFE-03 with no new machinery: the caller-side check is exactly the one TARG-05 already requires, as in Rust, where the signature alone relates the borrow to the receiver.
+The cap binds by signature rather than by inspecting the body: narrowing `this` is always sound even if the body never stores the borrow, the caller never depends on the callee's implementation, and storing without the cap stays impossible.
 Named lifetimes stay rejected, since the relationship rides the existing `@take` and `@borrow` markers, not a lifetime variable.
 
 ### Why intersection on multiple bounds (LIFE-02)

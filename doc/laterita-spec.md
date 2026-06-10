@@ -302,11 +302,12 @@ The compiler reports an error when:
 
 The diagnostic identifies the contributing source the body actually uses.
 
-### OWN-21 - A `@take @borrow` parameter stores a borrow into `this`
+### OWN-21 - A `@take @borrow` parameter caps `this` at its source
 
-A `@take @borrow` parameter receives a borrow and retains it, the form a `@mutating` method uses to store a borrow into a `@borrow` field (OWN-09, MUT-07b).
-It is the directly written spelling of the form TARG-05 synthesizes for a generic `@take T` parameter given a borrowed argument.
-Storing the borrow makes the parameter's source a source of `this` (LIFE-02, LIFE-03), so from the call onward `this` may not outlive it (LIFE-01), checked flow-sensitively.
+A `@take @borrow` parameter receives a borrow and retains it.
+The cap is part of the signature: from the call onward the parameter's source is a source of `this` (LIFE-02, LIFE-03), so `this` may not outlive it (LIFE-01), whether or not the body actually stores the borrow.
+It is the same caller-side check TARG-05 applies to a generic `@take T` parameter given a borrowed argument, and the directly written spelling of that form.
+Storing a borrow into a `@borrow` field of `this` requires this parameter form (the assignment itself additionally requires `@mutating`, MUT-07b), but declaring it does not require `@mutating`: a non-mutating method may declare `@take @borrow` and merely narrow the caller's `this`.
 On a `@borrowCapped` class the source must stay live until the instance's scope exit, not only its last use (LIFE-04).
 A bare `@borrow` parameter without `@take` retains nothing and equals a plain borrow parameter (OWN-13).
 A constructor is the exception: it stores its `@borrow` components as the producer's fixed source (OWN-09, LIFE-03), the construction-time counterpart of this rule.
@@ -402,6 +403,7 @@ List<Option> c = makeList();                  // reassign only: c = ... OK, c.ad
 ```
 
 A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
+For a reassigned local the same analysis applies flow-sensitively, treating the slot as locked between reassignments.
 Reassigning a slot that owns its value drops the previous value first (DROP-01).
 
 Java's `var` infers the type and changes neither axis.
@@ -759,7 +761,7 @@ The cost follows copyability: a shared borrow is copied, so the caller keeps its
 The transferred borrow keeps its original source (LIFE-01), so the slot's enclosing value is `@bound` (OWN-09).
 A bare borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
 `@take` therefore needs no degradation for borrows.
-Written directly on a non-generic parameter, `@take @borrow` is the stored-borrow form of OWN-21.
+Written directly on a non-generic parameter, `@take @borrow` is the retained-borrow form of OWN-21, applying the same caller-side cap.
 
 ```java
 @mut class List<T> { @mutating void add(@take T e); }
@@ -1914,7 +1916,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
 | `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |
-| `@borrow` | `PARAMETER` | meaningful with `@take` | Stored-borrow parameter, capping `this` at the parameter's source (bare equals a plain borrow) | OWN-21 |
+| `@borrow` | `PARAMETER` | meaningful with `@take` | Retained-borrow parameter, capping `this` at the parameter's source (bare equals a plain borrow) | OWN-21 |
 | `@bound` | `PARAMETER` | - | Return is bound to this parameter | OWN-17 |
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
 | `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot; enclosing instance must be `@bound` | TARG-01 |

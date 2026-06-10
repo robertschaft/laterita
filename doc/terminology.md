@@ -20,7 +20,7 @@ A variable that refers to a value owned elsewhere, rather than owning it itself.
 ### @borrow (annotation on fields, record components, type arguments, and parameters)
 Declares that a slot is a borrow slot rather than an owned slot: a field, a record component, or a generic type argument (`TARG-01`).
 An instance of a class containing any `@borrow` slot can only be produced as a `@bound` value, with lifetime intersecting each source (LIFE-03).
-On a parameter it is meaningful only with `@take`: a `@take @borrow` parameter stores the borrow into `this` and caps `this` at the parameter's source (`OWN-21`), while a bare `@borrow` parameter equals a plain borrow.
+On a parameter it is meaningful only with `@take`: a `@take @borrow` parameter retains the borrow and caps `this` at the parameter's source by signature (`OWN-21`), while a bare `@borrow` parameter equals a plain borrow.
 It names no source, the structural role, distinct from `@bound`, which marks a borrowed *value* whose source is named.
 See `OWN-09`, `OWN-21`, `LIFE-03`, `TARG-01`.
 
