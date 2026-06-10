@@ -91,6 +91,11 @@ To clean up a value when its owning variable leaves scope. The compiler automati
 ### drop flag
 Compiler bookkeeping tracking whether each field of a destructed value is still owned. Used to emit correct `onDrop()` calls when only some fields remain. See `DROP-04`.
 
+### effectively final
+A non-`final` local that is never reassigned.
+Its slot is fixed, so borrow analysis treats it as locked, and a reassigned local is treated the same way between reassignments (`MUT-02`).
+Java uses the same term for the locals a lambda may capture, a rule whose interaction with laterita's captures is open (`OQ-35`).
+
 ### exclusive / exclusivity (also "mutual exclusion")
 Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
 
@@ -141,7 +146,7 @@ On a value-class-typed binding `@mut` is redundant, since the referent has no mu
 A `@mut` class has a mutable surface.
 A class without the marker is a value class.
 A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`.
-See `MUT-01`, `MUT-02`, `MUT-07a`, `MUT-08`, `MUT-05`.
+See `MUT-01`, `MUT-02`, `MUT-05`, `MUT-07a`, `MUT-08`.
 
 ### @mutating (annotation)
 Declares that a method may mutate its receiver: reassign the receiver's non-`final` fields, mutate through its `@mut` fields, and call other `@mutating` methods on `this`.

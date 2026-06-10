@@ -58,11 +58,27 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 ---
 
-## Ownership (OWN-01 through OWN-20)
+## Ownership (OWN-01 through OWN-21)
 
-### Why `@mut` is the *single* mutability marker (MUT-01)
+### Why methods declare consumption of `this` with `@consuming` (OWN-15)
 
-`@mut` denotes mutability uniformly across variables, fields, and parameters, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+Receiver mutation and receiver consumption are the two non-bare receiver modes. Both are declared the same way: a modifier-position annotation on the method, reading like `public` or `final`. The two compose (`@mutating @consuming` for a method that does both), and either alone narrows the visible API surface to receivers whose variable mode supports it.
+
+### Why static fields are immutable (STAT-01, STAT-03)
+
+A static slot is reachable from every thread for the program's lifetime; no variable-level borrow check can hand out exclusive access to it. Allowing `@mut static` would either bake in undefined behavior — Rust's `static mut` posture, which the language now actively discourages — or demand a runtime synchronization mechanism the safe surface does not have. Forbidding it outright costs nothing: the cases that genuinely need shared mutable program-wide state already have a clean expression as a `Mutex<T>`, `Arc<T>`, or atomic primitive held in an immutable static, where the synchronization sits inside the wrapper and the static slot itself never changes.
+
+Const-only initialization keeps the AOT story honest. There is no classloader (COMP-01), so no per-class init lock to serialize arbitrary initializers, no observable initialization order to specify across compilation units, and no static-init-order fiasco to inherit from C++. Initializers that genuinely require runtime work go through a once-init wrapper held in the static slot, which serializes its first-access work behind its own internal synchronization. The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread leak: a thread-affine handle in a process-global slot would, by definition, reach every thread.
+
+---
+
+## Mutability (MUT-01 through MUT-11)
+
+### Why `@mut` is the *single* referent-mutability marker (MUT-01)
+
+`@mut` denotes referent mutability uniformly across locals, fields, parameters, and returns, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver.
+Each expresses the same underlying idea: this path can change the value it reaches.
+The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
 
 ### Why slot and referent mutability are separate axes (MUT-02, MUT-03)
 
@@ -75,34 +91,12 @@ Keeping them separate lines each axis up with the marker that already means it: 
 The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
 Reassigning a slot repoints a name and mutates no object, so it is not a borrow-safety concern, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
 
-### Why fields default to immutable (OWN-09, MUT-07a)
+### Why fields default to immutable (MUT-07a, MUT-07b)
 
 Rust's transitivity insight: immutability is only meaningful if it propagates.
 If a bare variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee.
 So mutation *through* a field, the referent axis, is opt-in and needs `@mut` on the field, exactly the explicit choice Effective Java has recommended for years (favor immutability, favor records over JavaBeans).
 Reassigning a field is the orthogonal slot axis (MUT-07b), reachable only inside a `@mut` class through a `@mut` receiver, so a value class, the default kind, still exposes no field mutation of either sort after construction.
-
-### Why methods declare mutation in the signature (MUT-08)
-
-A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. By MUT-10 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
-
-### Why methods declare consumption of `this` with `@consuming` (OWN-15)
-
-Receiver mutation and receiver consumption are the two non-bare receiver modes. Both are declared the same way: a modifier-position annotation on the method, reading like `public` or `final`. The two compose (`@mutating @consuming` for a method that does both), and either alone narrows the visible API surface to receivers whose variable mode supports it.
-
-### Why mutability is transitive (MUT-10)
-
-If a `var`-declared local could call `@mutating` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
-
-### Why static fields are immutable (STAT-01, STAT-03)
-
-A static slot is reachable from every thread for the program's lifetime; no variable-level borrow check can hand out exclusive access to it. Allowing `@mut static` would either bake in undefined behavior — Rust's `static mut` posture, which the language now actively discourages — or demand a runtime synchronization mechanism the safe surface does not have. Forbidding it outright costs nothing: the cases that genuinely need shared mutable program-wide state already have a clean expression as a `Mutex<T>`, `Arc<T>`, or atomic primitive held in an immutable static, where the synchronization sits inside the wrapper and the static slot itself never changes.
-
-Const-only initialization keeps the AOT story honest. There is no classloader (COMP-01), so no per-class init lock to serialize arbitrary initializers, no observable initialization order to specify across compilation units, and no static-init-order fiasco to inherit from C++. Initializers that genuinely require runtime work go through a once-init wrapper held in the static slot, which serializes its first-access work behind its own internal synchronization. The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread leak: a thread-affine handle in a process-global slot would, by definition, reach every thread.
-
----
-
-## Mutability (MUT-01 through MUT-11)
 
 ### Why a parameter slot is always final (MUT-04)
 
@@ -111,6 +105,20 @@ Rebinding it inside the body discards the link to what the caller passed, a move
 Laterita locks every parameter slot rather than offer a per-parameter `final` opt-in, because the body has no reason the caller can see to repoint the name: it reads the argument, mutates through it when `@mut`, or moves it onward when `@take`.
 Moving a `@take` parameter onward with `give` consumes the value and does not rebind the slot, so the lock takes nothing the ownership model wanted.
 The referent axis is untouched: `@mut` on a parameter still lends a mutable borrow, and `@take @mut` still owns and mutates through.
+
+### Why methods declare mutation in the signature (MUT-08)
+
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?"
+Today you read the body or hope the documentation is accurate.
+With `@mutating` on the method, the compiler knows and the caller knows.
+By MUT-10 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+
+### Why mutability is transitive (MUT-10)
+
+If a bare (non-`@mut`) local could call `@mutating` methods, immutability would mean nothing.
+The transitivity rule is what makes "this object is read-only" a real guarantee.
+It also means handing someone a bare variable to a complex object graph is genuinely safe: they cannot change anything, anywhere, through it.
+This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ### Why `Cell<T>` is the only escape hatch (MUT-11)
 
@@ -416,8 +424,8 @@ The freeze takes effect when the constructor returns and stays in effect through
 The mutable receiver is thus inert on a value class and supplies the cleanup capability only where mutation is already part of the type's surface.
 This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a `@mut` class, not a value class.
 
-Field-level immutability still applies.
-The mutable receiver only unlocks `@mut` fields (MUT-08), so a non-`@mut` or `final` field is no more writable in `onDrop()` than in any other method.
+Field-level rules still apply.
+The mutable receiver only unlocks what any `@mut` receiver gets (MUT-07b, MUT-10): reassignment of non-`final` fields and mutation through `@mut` fields, so a `final` field is no more writable in `onDrop()` than in a `@mutating` method.
 `onDrop()` is an ordinary method body in every respect except that its receiver mode is fixed by the teardown phase rather than declared.
 
 ### Why borrow reads in `onDrop()` are gated, and generics count as borrows (DROP-11)

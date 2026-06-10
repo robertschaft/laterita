@@ -114,11 +114,12 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 Under MUT-02 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
 The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
 Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
-The tension is that `val` is not a Java keyword, so admitting it in a `.java` file widens the surface beyond what `javac` parses.
+The tension is that `val` is not a Java keyword.
+Lombok makes `val x = ...` compile by shipping `val` as an importable type that `javac` resolves, so a `.java`-surface `val` would need the same importable-type trick, while a `.lat`-only form is plain LAT-topic sugar for `final var`.
 
 **The question.**
 - Should `val` be accepted as sugar for `final var` (immutable inferred local)?
-- If so, only in `.lat` files (a LAT-topic form), or in `.java` too?
+- If so, only in `.lat` files (a LAT-topic form), or in `.java` too through an importable `val` type the compiler special-cases?
 
 **Related codes:** MUT-02, MUT-03, GEN-14, LAT-00.
 
@@ -157,3 +158,21 @@ Without explicit rules excluding primitives from the borrow surface, every reade
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
 **Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
+
+## OQ-35 — Captures of reassigned locals vs. Java's effectively-final rule
+
+**Surfaced when:** CLO-01 classified reassignment of a captured local as a Mutate capture, a slot-write borrow (OWN-03) requiring only a non-`final` slot (MUT-02).
+
+**The issue.**
+`javac` rejects a lambda or anonymous class that uses a local variable which is not final or effectively final (JLS 15.27.2).
+That rejects the slot-write capture itself (CLO-04's `calls` example, ARR-01's fold-accumulator idiom) and also any read capture of a local the enclosing method reassigns elsewhere.
+Laterita's flow-sensitive slot analysis (MUT-02, OWN-02) is fine with both, but the Java-compatible surface is supposed to stay acceptable to `javac` and Java-aware IDEs (COMP-06), and the overload-identity reasoning already treats a `javac` rejection as disqualifying for a Java-surface rule (OWN-13).
+Java's own idiom for the same need is a holder object, which in laterita terms is a referent-write capture of a `final` `@mut` holder and raises no conflict.
+
+**The question.**
+- Does the `.java` surface accept these captures, weakening COMP-06 from "javac-clean" to "javac-parseable" at this one point?
+- Or are they `.lat`-only, desugaring to a compiler-generated `@mut` holder so the `.java` mirror stays javac-clean (precedent: LAT-08's generated companion class)?
+- Or are they rejected outright, matching Java, with folds written through an explicit `@mut` accumulator object?
+- If they are not Java-surface forms, do OWN-03's slot-write borrows stay in the core model, or do they dissolve into referent writes on the holder?
+
+**Related codes:** CLO-01, CLO-04, OWN-03, MUT-02, ARR-01, COMP-06, LAT-00.
