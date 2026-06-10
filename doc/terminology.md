@@ -17,11 +17,12 @@ A local variable, field, or parameter that holds a value. In Laterita, every var
 ### borrow / borrowed variable
 A variable that refers to a value owned elsewhere, rather than owning it itself. A borrowed variable cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`. There are two kinds: shared (immutable) and mutable. See `OWN-03` for the rules.
 
-### @borrow (annotation on fields, record components, and type arguments)
+### @borrow (annotation on fields, record components, type arguments, and parameters)
 Declares that a slot is a borrow slot rather than an owned slot: a field, a record component, or a generic type argument (`TARG-01`).
 An instance of a class containing any `@borrow` slot can only be produced as a `@bound` value, with lifetime intersecting each source (LIFE-03).
+On a parameter it is meaningful only with `@take`: a `@take @borrow` parameter stores the borrow into `this` and caps `this` at the parameter's source (`OWN-21`), while a bare `@borrow` parameter equals a plain borrow.
 It names no source, the structural role, distinct from `@bound`, which marks a borrowed *value* whose source is named.
-See `OWN-09`, `LIFE-03`, `TARG-01`.
+See `OWN-09`, `OWN-21`, `LIFE-03`, `TARG-01`.
 
 ### @bound (annotation on returns and parameters)
 Declares a lifetime relationship between two values.
@@ -42,7 +43,7 @@ See `LIFE-04`, `DROP-11`.
 ### variable modifiers
 `@bound`, `@mut`, `@take`, `@borrow`, and `@own`. Legal positions:
 - `@bound`. Parameter, return (`OWN-17`, `OWN-18`).
-- `@borrow`. Field, record component, generic type argument (`OWN-09`, `TARG-01`).
+- `@borrow`. Field, record component, generic type argument, and parameter with `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
 - `@mut`. Local, field, parameter, return. In a type argument only when the enclosing generic is `@mut` (`TARG-03`).
 - `@take`. Parameter only. Rejected on fields, locals, and generic type arguments (`OWN-10`, `TARG-02`).
 - `@own`. Type parameter declaration (`TARG-06`).

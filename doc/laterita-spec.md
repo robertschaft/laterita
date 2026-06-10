@@ -146,7 +146,7 @@ The field is dropped with the enclosing instance (DROP-05).
 An instance of a class with any `@borrow` field can only be produced as a `@bound` value.
 This includes the case where the `@borrow` arises via a `@borrow`-substituted generic argument (TARG-01).
 `@bound` marks the value as a borrow rather than owned.
-The source is fixed by the producer.
+The source is fixed by the producer, or updated when a `@mutating` method stores a new borrow into a `@borrow` field (OWN-21).
 See OWN-17 and OWN-18 for returns, and LIFE-02 for intersection across multiple sources.
 
 ```java
@@ -302,6 +302,26 @@ The compiler reports an error when:
 
 The diagnostic identifies the contributing source the body actually uses.
 
+### OWN-21 - A `@take @borrow` parameter stores a borrow into `this`
+
+A `@take @borrow` parameter receives a borrow and retains it, the form a `@mutating` method uses to store a borrow into a `@borrow` field (OWN-09, MUT-07b).
+It is the directly written spelling of the form TARG-05 synthesizes for a generic `@take T` parameter given a borrowed argument.
+Storing the borrow makes the parameter's source a source of `this` (LIFE-02, LIFE-03), so from the call onward `this` may not outlive it (LIFE-01), checked flow-sensitively.
+On a `@borrowCapped` class the source must stay live until the instance's scope exit, not only its last use (LIFE-04).
+A bare `@borrow` parameter without `@take` retains nothing and equals a plain borrow parameter (OWN-13).
+A constructor is the exception: it stores its `@borrow` components as the producer's fixed source (OWN-09, LIFE-03), the construction-time counterpart of this rule.
+
+```java
+@mut class Cursor {
+    @borrow Buffer buf;
+    @mutating void retarget(@take @borrow Buffer b) { this.buf = b; }   // stores the borrow into this
+}
+
+@mut Cursor cur = openOn(mainBuf);
+Buffer scratch = makeBuffer();
+cur.retarget(scratch);     // from here cur may not outlive scratch (LIFE-01, LIFE-02)
+```
+
 ---
 
 ## LIFE — Lifetimes
@@ -325,6 +345,7 @@ It is bounded by the shortest-lived marked source.
 
 A `@bound` instance produced from `@borrow` fields takes each field's source into LIFE-02's intersection.
 The instance is usable only while every field's source remains live.
+A borrow stored into a `@borrow` field after construction (OWN-21) joins the same intersection from the point of storage.
 
 ```java
 record EntryView<K, V>(@borrow K key, @borrow V value) {}
@@ -738,6 +759,7 @@ The cost follows copyability: a shared borrow is copied, so the caller keeps its
 The transferred borrow keeps its original source (LIFE-01), so the slot's enclosing value is `@bound` (OWN-09).
 A bare borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
 `@take` therefore needs no degradation for borrows.
+Written directly on a non-generic parameter, `@take @borrow` is the stored-borrow form of OWN-21.
 
 ```java
 @mut class List<T> { @mutating void add(@take T e); }
@@ -1892,6 +1914,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
 | `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |
+| `@borrow` | `PARAMETER` | meaningful with `@take` | Stored-borrow parameter, capping `this` at the parameter's source (bare equals a plain borrow) | OWN-21 |
 | `@bound` | `PARAMETER` | - | Return is bound to this parameter | OWN-17 |
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
 | `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot; enclosing instance must be `@bound` | TARG-01 |
@@ -2108,9 +2131,9 @@ A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 g
 
 ```java
 @Setter T owned;
-public @mutating void setOwned(@take @mut T value);
+public @mutating void setOwned(@take T value);
 @Setter @borrow S borrowed;
-public @mutating void setBorrowed(@mut S value);
+public @mutating void setBorrowed(@take @borrow S value);   // stores the borrow into this, caps the instance (OWN-21)
 ```
 
 ### GEN-03 — Constructor generators

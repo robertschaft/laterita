@@ -257,6 +257,13 @@ Rust's `'a` notation looks like a syntax error to newcomers and introduces an en
 
 The known cost is overlap with Java's "upper bound / lower bound" generics terminology; the syntactic positions don't overlap and a reader is unlikely to confuse them after the first encounter.
 
+### Why a parameter can store a borrow into `this` (OWN-21)
+
+A generic container already stores borrows: `List<@borrow Foo>.add` monomorphizes to `@take @borrow` and caps the list at each element's source (TARG-04, TARG-05).
+A non-generic method storing a borrow into a `@borrow` field had no spelling, so a setter like GEN-02's `setBorrowed` installed a borrow with no lifetime account.
+Admitting `@take @borrow` in parameter position gives that the direct spelling, and the cap falls out of LIFE-02 and LIFE-03 with no new machinery: the stored source joins `this`'s intersection.
+Named lifetimes stay rejected, since the relationship rides the existing `@take` and `@borrow` markers, not a lifetime variable.
+
 ### Why intersection on multiple bounds (LIFE-02)
 
 When a returned borrow is bound to several sources, its lifetime is the shortest of them. The intuition is the same as Rust's lifetime intersection: the borrow can only be valid while *all* of its sources are valid. The compiler enforces this; the user doesn't reason about it explicitly unless they want a tighter bound, in which case they remove a `@bound` marker.
