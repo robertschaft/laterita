@@ -76,6 +76,7 @@ A mutable borrow is exclusive in one of two forms, by what it writes:
 - **referent-write** — mutation through the value, requiring the source to be `@mut` (MUT-01) or the borrow to sit inside a `@mutating` method of the same object.
 - **slot-write** — reassignment of the borrowed binding itself, requiring the source slot to be non-`final` (MUT-02), the form a closure that captures and reassigns a local relies on (CLO-01).
 
+A borrow of a value also borrows the slot that holds it (OWN-02), so while any borrow of `x` is live a slot-write of `x` is excluded: reassigning `x` would drop the borrowed value.
 Both forms obey this exclusivity, subject to the disjoint-borrow exceptions of OWN-04 and OWN-05.
 The compiler must reject programs that violate this.
 
