@@ -93,7 +93,7 @@ Compiler bookkeeping tracking whether each field of a destructed value is still 
 
 ### effectively final
 A non-`final` local that is never reassigned.
-Its slot is fixed, so borrow analysis treats it as locked, and a reassigned local is treated the same way between reassignments (`MUT-02`).
+Its slot is fixed, so borrow analysis treats it as locked (`MUT-02`).
 A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
 
 ### exclusive / exclusivity (also "mutual exclusion")

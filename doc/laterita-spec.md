@@ -402,7 +402,6 @@ List<String> c = makeList();                    // reassign only: c = ... OK, c.
 ```
 
 A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
-For a reassigned local the same analysis applies flow-sensitively, treating the slot as locked between reassignments.
 Only an effectively final local may be captured by a closure (CLO-01).
 Reassigning a slot that owns its value drops the previous value first (DROP-01).
 
