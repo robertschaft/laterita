@@ -94,7 +94,7 @@ Compiler bookkeeping tracking whether each field of a destructed value is still 
 ### effectively final
 A non-`final` local that is never reassigned.
 Its slot is fixed, so borrow analysis treats it as locked, and a reassigned local is treated the same way between reassignments (`MUT-02`).
-Java uses the same term for the locals a lambda may capture, a rule whose interaction with laterita's captures is open (`OQ-35`).
+A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
 
 ### exclusive / exclusivity (also "mutual exclusion")
 Only one mutable borrow may exist at a time. No other borrows (mutable or immutable) may coexist with a mutable borrow. This prevents data races and iterator invalidation at compile time. See `OWN-03`.
@@ -155,11 +155,10 @@ By `MUT-10` a `@mutating` method is callable only on a `@mut` receiver.
 See `MUT-08`.
 
 ### mutable borrow / mut borrow
-A borrow with exclusive write access, in one of two forms (`OWN-03`).
-A **referent-write** borrow mutates through the value and requires the source to be `@mut`, or the borrow to occur within a `@mutating` method of the same object.
-A **slot-write** borrow reassigns the borrowed binding itself and requires the source slot to be non-`final` (`MUT-02`), the form a closure capturing and reassigning a local relies on (`CLO-01`).
+A borrow that grants read and write access through the borrowed value.
 Only one mutable borrow may be active at a time, and no other borrow may coexist with it.
-See `OWN-03`, `OWN-13`, `MUT-02`, `CLO-01`.
+A mutable borrow requires the source variable to be `@mut`, or the borrow to occur within a `@mutating` method of the same object.
+See `OWN-03`, `OWN-13`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value. Access is scoped to a closure: `with(@mut @mutating (@mut T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result. The action slot is mut-call so the closure may capture state by mutable borrow. The mutex is poisoned (`THR-10`) if the closure throws. See `STD-09`.

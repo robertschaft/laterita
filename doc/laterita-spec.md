@@ -71,14 +71,10 @@ A value's borrow state at any point is one of:
 - **shared borrows** — any number of readers may coexist (including the owner). No mutation is allowed, not even by the owner.
 - **one mutable borrow** — that borrow has exclusive access. The owner is frozen until the borrow ends.
 
-A mutable borrow is exclusive in one of two forms, by what it writes:
-
-- **referent-write** — mutation through the value, requiring the source to be `@mut` (MUT-01) or the borrow to sit inside a `@mutating` method of the same object.
-- **slot-write** — reassignment of the borrowed binding itself, requiring the source slot to be non-`final` (MUT-02), the form a closure that captures and reassigns a local relies on (CLO-01).
-
+A mutable borrow writes through the value: it requires the source to be `@mut` (MUT-01) or the borrow to sit inside a `@mutating` method of the same object.
 A borrow of a value also borrows the slot that holds it, the source variable its RHS names (OWN-02).
-While any borrow of `x` is live, a slot-write of `x` is therefore excluded: it would pull the value out from under the borrow, and where `x` owns the value, drop it (DROP-01).
-Both forms obey this exclusivity, subject to the disjoint-borrow exceptions of OWN-04 and OWN-05.
+While any borrow of `x` is live, reassigning `x` is therefore excluded: it would pull the value out from under the borrow, and where `x` owns the value, drop it (DROP-01).
+This exclusivity is subject to the disjoint-borrow exceptions of OWN-04 and OWN-05.
 The compiler must reject programs that violate this.
 
 ### OWN-04 - Disjoint field borrows are permitted
@@ -407,6 +403,7 @@ List<String> c = makeList();                    // reassign only: c = ... OK, c.
 
 A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
 For a reassigned local the same analysis applies flow-sensitively, treating the slot as locked between reassignments.
+Only an effectively final local may be captured by a closure (CLO-01).
 Reassigning a slot that owns its value drops the previous value first (DROP-01).
 
 Java's `var` infers the type and changes neither axis.
@@ -1305,9 +1302,10 @@ Closures are classified by how they use captured variables:
 - **Mutate** — captured variables include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
 - **Consume** — captured variables include a moved value; closure may be invoked exactly once.
 
-Reassigning a captured local is a write to its slot and counts as Mutate: the captured local needs a non-`final` slot (MUT-02), not `@mut`.
-The closure is then a mut-call value (CLO-04), invocable only through a `@mut` variable (CLO-03).
-Whether this form can appear in `.java` sources, where `javac` requires captured locals to be effectively final, is open (OQ-35).
+A captured local must be effectively final (MUT-02): neither the closure body nor the enclosing method may reassign it.
+This is Java's own lambda-capture rule (JLS 15.27.2), kept so that every closure form remains expressible on the `.java` surface (COMP-06).
+Mutation of captured state therefore always goes through the referent axis: the closure captures a `@mut` local and mutates through it, the checked form of Java's holder idiom.
+Such a closure is a mut-call value (CLO-04), invocable only through a `@mut` variable (CLO-03).
 
 ### CLO-02 — Capture mode is inferred
 
@@ -1331,7 +1329,7 @@ interface MissResolver<T> { T resolve(String key); }                // shared-ca
 interface Finalizer         { @consuming void run(); }              // once-call
 ```
 
-**Variable mode** is a property of the *variable* that holds the value. A functional-interface variable follows the ordinary variable rules with no special case: a field owns its value by default (OWN-08); a parameter receives ownership with `@take` or a borrow otherwise (OWN-13); `@mut` grants mutability (MUT-02); `@borrow` marks a borrowed field (OWN-09); `@bound` marks a borrowed return (OWN-17, OWN-18); a local follows its RHS (OWN-02).
+**Variable mode** is a property of the *variable* that holds the value. A functional-interface variable follows the ordinary variable rules with no special case: a field owns its value by default (OWN-08); a parameter receives ownership with `@take` or a borrow otherwise (OWN-13); `@mut` grants referent mutability (MUT-02); `@borrow` marks a borrowed field (OWN-09); `@bound` marks a borrowed return (OWN-17, OWN-18); a local follows its RHS (OWN-02).
 
 Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-15): invoking a mut-call SAM requires the variable to be `@mut`; invoking a once-call SAM requires the variable to own the value, and the call consumes it (a destruction per OWN-06 when the variable is a field). Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, independently of the call mode — a value may be held in a variable from which its SAM cannot be invoked.
 
@@ -1402,12 +1400,12 @@ Assignability concerns the value only. Whether the variable that receives the va
 ```java
 @mut interface Doubler { @mutating int apply(int x); }   // mut-call
 
-int calls = 0;                                                   // non-final slot, write-captured below
-Doubler counting = (x) -> { calls = calls + 1; return x * 2; };  // reassigns calls → mutate lambda → mut-call: OK
-Doubler pure     = (x) -> x * 2;                                 // read lambda → shared-call ≤ mut-call: OK
+@mut List<Integer> seen = new ArrayList<>();               // effectively final slot, @mut referent
+Doubler counting = (x) -> { seen.add(x); return x * 2; };  // mutates through seen → mutate lambda → mut-call: OK
+Doubler pure     = (x) -> x * 2;                           // read lambda → shared-call ≤ mut-call: OK
 
-// Doubler bad   = (x) -> { give(resource); return x; };          // ERROR: a consume lambda (once-call)
-//                                                               //        is not a value of a mut-call type
+// Doubler bad   = (x) -> { give(resource); return x; };    // ERROR: a consume lambda (once-call)
+//                                                         //        is not a value of a mut-call type
 ```
 
 ### CLO-05 — Override variance for FI parameters
@@ -1518,7 +1516,7 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 `forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
 Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction.
 No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by OWN-05.
-Fold-style reductions express by capturing and reassigning a non-`final` local in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
+Fold-style reductions express by capturing a `@mut` accumulator in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
 
 `splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows OWN-13 (annotation-only differences are duplicate declarations).
 

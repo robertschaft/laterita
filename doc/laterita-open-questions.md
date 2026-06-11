@@ -158,21 +158,3 @@ Without explicit rules excluding primitives from the borrow surface, every reade
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
 **Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
-
-## OQ-35 — Captures of reassigned locals vs. Java's effectively-final rule
-
-**Surfaced when:** CLO-01 classified reassignment of a captured local as a Mutate capture, a slot-write borrow (OWN-03) requiring only a non-`final` slot (MUT-02).
-
-**The issue.**
-`javac` rejects a lambda or anonymous class that uses a local variable which is not final or effectively final (JLS 15.27.2).
-That rejects the slot-write capture itself (CLO-04's `calls` example, ARR-01's fold-accumulator idiom) and also any read capture of a local the enclosing method reassigns elsewhere.
-Laterita's flow-sensitive slot analysis (MUT-02, OWN-02) is fine with both, but the Java-compatible surface is supposed to stay acceptable to `javac` and Java-aware IDEs (COMP-06), and the overload-identity reasoning already treats a `javac` rejection as disqualifying for a Java-surface rule (OWN-13).
-Java's own idiom for the same need is a holder object, which in laterita terms is a referent-write capture of a `final` `@mut` holder and raises no conflict.
-
-**The question.**
-- Does the `.java` surface accept these captures, weakening COMP-06 from "javac-clean" to "javac-parseable" at this one point?
-- Or are they `.lat`-only, desugaring to a compiler-generated `@mut` holder so the `.java` mirror stays javac-clean (precedent: LAT-08's generated companion class)?
-- Or are they rejected outright, matching Java, with folds written through an explicit `@mut` accumulator object?
-- If they are not Java-surface forms, do OWN-03's slot-write borrows stay in the core model, or do they dissolve into referent writes on the holder?
-
-**Related codes:** CLO-01, CLO-04, OWN-03, MUT-02, ARR-01, COMP-06, LAT-00.

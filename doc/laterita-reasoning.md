@@ -89,7 +89,7 @@ Laterita keeps them apart, with one marker each.
 Folding both onto a single `@mut` would force an annotation onto every reassigned-but-not-mutated local, which Java writes bare, and would leave the common "mutable object, locked slot" pattern, `private final List<Item> items`, reading as `@mut final` undoing half of what `@mut` granted.
 Keeping them separate lines each axis up with the marker that already means it: `final` for the slot, `@mut` for the referent, every combination spellable and none redundant.
 The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
-Reassigning a slot repoints a name and mutates no object, so it is not a borrow-safety concern, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
+Reassigning a slot repoints a name and mutates no object, so it needs no `@mut` guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
 
 ### Why fields default to immutable (MUT-07a, MUT-07b)
 
@@ -619,6 +619,14 @@ The SAM of an anonymous functional interface is named `apply`, giving the namele
 
 Laterita keeps Rust's three capture categories (read / mutate / consume = `Fn` / `FnMut` / `FnOnce`) but infers them from the body rather than asking the user to declare them.
 
+### Why a captured local must be effectively final (CLO-01)
+
+Rust's `FnMut` closures may reassign a captured variable, and the borrow checker would have no problem with the laterita equivalent: the capture would be an exclusive borrow of the slot for the closure's lifetime (OWN-03).
+The Java-compatible surface rules the form out anyway: `javac` rejects a lambda that uses a local which is not final or effectively final (JLS 15.27.2), so a reassigning capture cannot be written in a `.java` source, the same bar that keeps annotation-only overloads out of the language (OWN-13).
+A `.lat`-only spelling that desugars to a compiler-generated `@mut` holder was considered and rejected: the desugaring would rewrite every later use of the local in the enclosing method, not just the closure body, stretching LAT-00's pure-sugar promise for marginal ergonomics.
+Java's idiom already expresses the need directly, and laterita checks it: capture a `@mut` holder and mutate through it, the referent axis doing what the slot axis cannot.
+Adopting Java's capture rule keeps every closure form expressible on both surfaces and costs only what Java already costs.
+
 ### Why call mode and variable mode are separate (CLO-03)
 
 A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held? The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (MUT-08) and `@consuming` (OWN-15) with no new vocabulary. The second is the *variable mode* — ordinary ownership and `@mut`, identical to every other variable.
@@ -739,7 +747,7 @@ vs. the continuation-passing form which forces a lambda for an otherwise straigh
 For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
 
 A dedicated `reduceChunks` was considered and rejected.
-Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, reassigning a non-`final` slot) and the `@mut` body slot accepts mutating closures (FN-01).
+Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, mutating through the `@mut` capture) and the `@mut` body slot accepts mutating closures (FN-01).
 The only case `reduceChunks` covers uniquely is "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms.
 Dropping it kept the surface at three methods instead of four.
 Callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
