@@ -114,11 +114,12 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 Under MUT-02 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
 The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
 Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
-The tension is that `val` is not a Java keyword, so admitting it in a `.java` file widens the surface beyond what `javac` parses.
+The tension is that `val` is not a Java keyword.
+Lombok makes `val x = ...` compile by shipping `val` as an importable type that `javac` resolves, so a `.java`-surface `val` would need the same importable-type trick, while a `.lat`-only form is plain LAT-topic sugar for `final var`.
 
 **The question.**
 - Should `val` be accepted as sugar for `final var` (immutable inferred local)?
-- If so, only in `.lat` files (a LAT-topic form), or in `.java` too?
+- If so, only in `.lat` files (a LAT-topic form), or in `.java` too through an importable `val` type the compiler special-cases?
 
 **Related codes:** MUT-02, MUT-03, GEN-14, LAT-00.
 
