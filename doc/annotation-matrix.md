@@ -17,7 +17,6 @@ Each matrix is symmetric, and a diagonal cell `X × X` is the modifier `X` used 
 | 🔴 ~~CODE~~ | Forbidden by the named rule. |
 | ⬛ ~~RESV~~ | The modifier does not target this position, or the pair is unlisted, so it does not compile (RESV). |
 | 🟧 ↔ | Forbidden because the two modifiers are opposite intents. |
-| 🟡 ? | Underspecified in the current spec, treated as unsettled. |
 
 ---
 
@@ -90,17 +89,18 @@ The other receiver mode `@consuming` (OWN-15) is outside this eight-modifier set
 
 | · | bare | final | @mut | @mutating | @take | @own | @borrow | @bound |
 |---|---|---|---|---|---|---|---|---|
-| **bare** | ⬜ default | 🟢 OWN-11 | 🟢 MUT-07a | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 | 🟡 ? (a) |
-| **final** | 🟢 OWN-11 | 🟢 OWN-11 | 🟢 MUT-07b | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 | 🟡 ? (a) |
-| **@mut** | 🟢 MUT-07a | 🟢 MUT-07b | 🟢 MUT-07a | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 MUT-07a (b) | 🟡 ? (a) |
+| **bare** | ⬜ default | 🟢 OWN-11 | 🟢 MUT-07a | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 | ⬛ ~~RESV~~ (a) |
+| **final** | 🟢 OWN-11 | 🟢 OWN-11 | 🟢 MUT-07b | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 | ⬛ ~~RESV~~ (a) |
+| **@mut** | 🟢 MUT-07a | 🟢 MUT-07b | 🟢 MUT-07a | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 MUT-07a (b) | ⬛ ~~RESV~~ (a) |
 | **@mutating** | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ |
 | **@take** | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ | 🔴 ~~OWN-10~~ |
 | **@own** | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ |
-| **@borrow** | 🟢 OWN-09 | 🟢 OWN-09 | 🟢 OWN-09 MUT-07a (b) | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 | 🟡 ? (a) |
-| **@bound** | 🟡 ? (a) | 🟡 ? (a) | 🟡 ? (a) | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟡 ? (a) | 🟡 ? (a) |
+| **@borrow** | 🟢 OWN-09 | 🟢 OWN-09 | 🟢 OWN-09 MUT-07a (b) | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | 🟢 OWN-09 | ⬛ ~~RESV~~ (a) |
+| **@bound** | ⬛ ~~RESV~~ (a) | ⬛ ~~RESV~~ (a) | ⬛ ~~RESV~~ (a) | ⬛ ~~RESV~~ | 🔴 ~~OWN-10~~ | ⬛ ~~RESV~~ | ⬛ ~~RESV~~ (a) | ⬛ ~~RESV~~ (a) |
 
 Notes.
-(a) `@bound` is listed for `FIELD` in RESV as the borrowed-value marker, but a borrow field is declared `@borrow` (OWN-09) and its instance is already `@bound`, so a standalone `@bound` field has no rule giving it independent meaning. Treat it as unsettled.
+(a) `@bound` does not target a field.
+A field that holds a borrow is declared `@borrow` (OWN-09), and its enclosing instance becomes `@bound` automatically.
 (b) `final`, `@mut`, and `@borrow` combine into one field, a set-once mutate-through borrow slot such as `@mut @borrow Sink sink` (DROP-11).
 `@take` is rejected on every field by OWN-10.
 
@@ -226,7 +226,7 @@ The only intra-position opposite is `@take` against `@bound` on a parameter.
 Consuming a parameter and lending it back through the return are contradictory, so the pair is excluded (OWN-17, OWN-21).
 
 `@bound` changes meaning by position.
-On a parameter it names a return source (OWN-17), on a method or return it binds the return to `this` (OWN-18), and on a local or field it marks a borrowed value (OWN-09).
+On a parameter it names a return source (OWN-17), on a method or return it binds the return to `this` (OWN-18), and on a local it marks a borrowed value (OWN-09).
 
-The one genuinely unsettled placement is `@bound` on a field.
-RESV lists the target, but no rule gives a standalone `@bound` field a meaning distinct from a `@borrow` field, so those cells are marked unsure pending a spec decision.
+`@bound` is not a field annotation.
+A field that holds a borrow is declared `@borrow` (OWN-09), and the enclosing instance becomes `@bound` automatically, so there is no standalone `@bound` field.
