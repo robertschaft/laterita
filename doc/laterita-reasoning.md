@@ -28,7 +28,8 @@ The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf 
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`, with the default-immutable rule (MUT-09) extending to it: `var x = expr` is immutable; `@mut var x = expr` is mutable. No separate keyword for type-inferred mutable variables.
+Type inference reuses Java's `var`: a `var x = expr` is reassignable and not mutate-through, exactly as a Java `var`, and `@mut var x = expr` adds mutation-through (MUT-02).
+No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
 
@@ -57,31 +58,11 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 ---
 
-## Ownership (OWN-01 through OWN-20)
-
-### Why `@mut` is the *single* mutability marker (MUT-01)
-
-`@mut` denotes mutability uniformly across variables, fields, and parameters, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver. Each expresses the same underlying idea — "this can change." The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
-
-### Why `final` composes with `@mut` (MUT-02)
-
-`@mut` grants two capabilities at once — rebinding the name and mutating the value through it — but the most common Java pattern wants only the second: a `final` field holding a mutable object, `private final List<Item> items`. Rather than add a third annotation for "mutable but not reassignable," Laterita reuses Java's `final`, which already means precisely "this variable is not reassignable." `@mut final` is then the exact spelling of that pattern — mutation-through kept, reassignment locked — and `final` on an already-immutable variable is simply redundant, so nothing needs to reject it.
-
-### Why fields default to immutable (OWN-09)
-
-Rust's transitivity insight: immutability is only meaningful if it propagates. If a `var` variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee. Making fields immutable by default forces an explicit choice for mutation, exactly where Effective Java has been recommending we make that choice for years (favor immutability, favor records over JavaBeans).
-
-### Why methods declare mutation in the signature (MUT-08)
-
-A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?" Today you read the body or hope the documentation is accurate. With `@mutating` on the method, the compiler knows and the caller knows. By MUT-10 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+## Ownership (OWN-01 through OWN-21)
 
 ### Why methods declare consumption of `this` with `@consuming` (OWN-15)
 
 Receiver mutation and receiver consumption are the two non-bare receiver modes. Both are declared the same way: a modifier-position annotation on the method, reading like `public` or `final`. The two compose (`@mutating @consuming` for a method that does both), and either alone narrows the visible API surface to receivers whose variable mode supports it.
-
-### Why mutability is transitive (MUT-10)
-
-If a `var`-declared local could call `@mutating` methods, immutability would mean nothing — it would just be a comment. The transitivity rule is what makes "this object is read-only" a real guarantee. It also means handing someone a `var` to a complex object graph is genuinely safe — they cannot change anything, anywhere, through it. This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ### Why static fields are immutable (STAT-01, STAT-03)
 
@@ -92,6 +73,52 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 ---
 
 ## Mutability (MUT-01 through MUT-11)
+
+### Why `@mut` is the *single* referent-mutability marker (MUT-01)
+
+`@mut` denotes referent mutability uniformly across locals, fields, parameters, and returns, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver.
+Each expresses the same underlying idea: this path can change the value it reaches.
+The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+
+### Why slot and referent mutability are separate axes (MUT-02, MUT-03)
+
+A binding has two capabilities that Java keeps apart: rebinding the name to another value, the slot, and mutating the value reached through the name, the referent.
+Laterita keeps them apart, with one marker each.
+`final` locks the slot, exactly its Java meaning, so a Java local that is reassigned keeps working with no annotation and a Java `final` keeps its force.
+`@mut` grants referent mutability, the property that actually needs guarding: the right to call a `@mutating` method or write through the binding.
+Folding both onto a single `@mut` would force an annotation onto every reassigned-but-not-mutated local, which Java writes bare, and would leave the common "mutable object, locked slot" pattern, `private final List<Item> items`, reading as `@mut final` undoing half of what `@mut` granted.
+Keeping them separate lines each axis up with the marker that already means it: `final` for the slot, `@mut` for the referent, every combination spellable and none redundant.
+The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
+Reassigning a slot repoints a name and mutates no object, so it needs no `@mut` guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
+
+### Why fields default to immutable (MUT-07a, MUT-07b)
+
+Rust's transitivity insight: immutability is only meaningful if it propagates.
+If a bare variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee.
+So mutation *through* a field, the referent axis, is opt-in and needs `@mut` on the field, exactly the explicit choice Effective Java has recommended for years (favor immutability, favor records over JavaBeans).
+Reassigning a field is the orthogonal slot axis (MUT-07b), reachable only inside a `@mut` class through a `@mut` receiver, so a value class, the default kind, still exposes no field mutation of either sort after construction.
+
+### Why a parameter slot is always final (MUT-04)
+
+A parameter name is a slot the caller filled.
+Rebinding it inside the body discards the link to what the caller passed, a move Java permits but style guides routinely forbid.
+Laterita locks every parameter slot rather than offer a per-parameter `final` opt-in, because the body has no reason the caller can see to repoint the name: it reads the argument, mutates through it when `@mut`, or moves it onward when `@take`.
+Moving a `@take` parameter onward with `give` consumes the value and does not rebind the slot, so the lock takes nothing the ownership model wanted.
+The referent axis is untouched: `@mut` on a parameter still lends a mutable borrow, and `@take @mut` still owns and mutates through.
+
+### Why methods declare mutation in the signature (MUT-08)
+
+A receiver-mutating method answers a question Java developers have always had to answer informally: "does this method modify the receiver?"
+Today you read the body or hope the documentation is accurate.
+With `@mutating` on the method, the compiler knows and the caller knows.
+By MUT-10 a `@mutating` method is only callable on a `@mut` receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+
+### Why mutability is transitive (MUT-10)
+
+If a bare (non-`@mut`) local could call `@mutating` methods, immutability would mean nothing.
+The transitivity rule is what makes "this object is read-only" a real guarantee.
+It also means handing someone a bare variable to a complex object graph is genuinely safe: they cannot change anything, anywhere, through it.
+This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ### Why `Cell<T>` is the only escape hatch (MUT-11)
 
@@ -237,6 +264,14 @@ Body-driven inference (keep the signature silent, let the compiler look through 
 Rust's `'a` notation looks like a syntax error to newcomers and introduces an entirely new sigil class — rejected. The strongest alternative was `from`, but `@bound` describes the relationship the compiler enforces (a lifetime constraint) rather than the data-flow source, and it collapses the receiver case into one token (`@bound T method(...)` — no second word, no awkward `from this` compound).
 
 The known cost is overlap with Java's "upper bound / lower bound" generics terminology; the syntactic positions don't overlap and a reader is unlikely to confuse them after the first encounter.
+
+### Why a parameter can store a borrow into `this` (OWN-21)
+
+A generic container already stores borrows: `List<@borrow Foo>.add` monomorphizes to `@take @borrow` and caps the list at each element's source (TARG-04, TARG-05).
+A non-generic method storing a borrow into a `@borrow` field would otherwise have no spelling, and a setter like GEN-02's `setBorrowed` would install a borrow with no lifetime account.
+Admitting `@take @borrow` in parameter position gives that the direct spelling, and the cap falls out of LIFE-02 and LIFE-03 with no new machinery: the caller-side check is exactly the one TARG-05 already requires, as in Rust, where the signature alone relates the borrow to the receiver.
+The cap binds by signature rather than by inspecting the body: narrowing `this` is always sound even if the body never stores the borrow, the caller never depends on the callee's implementation, and storing without the cap stays impossible.
+Named lifetimes stay rejected, since the relationship rides the existing `@take` and `@borrow` markers, not a lifetime variable.
 
 ### Why intersection on multiple bounds (LIFE-02)
 
@@ -389,8 +424,8 @@ The freeze takes effect when the constructor returns and stays in effect through
 The mutable receiver is thus inert on a value class and supplies the cleanup capability only where mutation is already part of the type's surface.
 This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a `@mut` class, not a value class.
 
-Field-level immutability still applies.
-The mutable receiver only unlocks `@mut` fields (MUT-08), so a non-`@mut` or `final` field is no more writable in `onDrop()` than in any other method.
+Field-level rules still apply.
+The mutable receiver only unlocks what any `@mut` receiver gets (MUT-07b, MUT-10): reassignment of non-`final` fields and mutation through `@mut` fields, so a `final` field is no more writable in `onDrop()` than in a `@mutating` method.
 `onDrop()` is an ordinary method body in every respect except that its receiver mode is fixed by the teardown phase rather than declared.
 
 ### Why borrow reads in `onDrop()` are gated, and generics count as borrows (DROP-11)
@@ -440,7 +475,10 @@ C++ uses `= delete` as a definition syntax (`Foo() = delete;`). An equivalent at
 
 Ownership rules force the question: when a function needs an owned value but the caller has a borrow, *something* has to produce a duplicate. Without a defined story, every type author would invent their own — `User.copy()`, `Cart.duplicate()`, `Order.snapshot()` — with subtly different contracts. The clean answer is two layered mechanisms:
 
-- **Copy constructor (OBJ-01).** The actual duplication mechanism. Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields. Constructors are already the only context where immutable fields can be initialized (OWN-11), so duplication composes with the rest of the language without special pleading.
+- **Copy constructor (OBJ-01).**
+  The actual duplication mechanism.
+  Every class has a `protected ClassName(ClassName source)`, auto-generated to recurse through fields.
+  Constructors are already the only context where `final` fields can be initialized (OWN-11), so duplication composes with the rest of the language without special pleading.
 - **`clone()` method (OBJ-02).** A public wrapper that calls the copy constructor. This is the API generic and polymorphic code uses. `element.clone()` virtually dispatches to the actual class's `clone()`, which calls that class's copy constructor.
 
 ### Why the synthesized copy constructor calls `field.clone()`, not `new FieldType(source.field)`
@@ -581,6 +619,14 @@ The SAM of an anonymous functional interface is named `apply`, giving the namele
 
 Laterita keeps Rust's three capture categories (read / mutate / consume = `Fn` / `FnMut` / `FnOnce`) but infers them from the body rather than asking the user to declare them.
 
+### Why a captured local must be effectively final (CLO-01)
+
+Rust's `FnMut` closures may reassign a captured variable, and the borrow checker would have no problem with the laterita equivalent: the capture would be an exclusive borrow of the slot for the closure's lifetime (OWN-03).
+The Java-compatible surface rules the form out anyway: `javac` rejects a lambda that uses a local which is not final or effectively final (JLS 15.27.2), so a reassigning capture cannot be written in a `.java` source, the same bar that keeps annotation-only overloads out of the language (OWN-13).
+A `.lat`-only spelling that desugars to a compiler-generated `@mut` holder was considered and rejected: the desugaring would rewrite every later use of the local in the enclosing method, not just the closure body, stretching LAT-00's pure-sugar promise for marginal ergonomics.
+Java's idiom already expresses the need directly, and laterita checks it: capture a `@mut` holder and mutate through it, the referent axis doing what the slot axis cannot.
+Adopting Java's capture rule keeps every closure form expressible on both surfaces and costs only what Java already costs.
+
 ### Why call mode and variable mode are separate (CLO-03)
 
 A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held? The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (MUT-08) and `@consuming` (OWN-15) with no new vocabulary. The second is the *variable mode* — ordinary ownership and `@mut`, identical to every other variable.
@@ -661,7 +707,8 @@ This makes the spec's earlier example `String greeting = "hello"` a borrowed var
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
-A variable may still be *declared* `@mut String` — `@mut` is general (MUT-01), and rejecting it on `String` would be a special case. The declaration is inert for in-place purposes (no `@mutating` method exists on `String`), but reassignment of a `@mut String` field still works, which is what `StringBuilder`'s `@mut String contents` field relies on.
+A variable or field may still be *declared* `@mut String`, since `@mut` is general (MUT-01) and rejecting it on one type would be a special case, but it grants nothing.
+`String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-02, MUT-07b), not from `@mut`.
 
 ### Why default receiver mode is borrow (STR-08)
 
@@ -699,7 +746,11 @@ vs. the continuation-passing form which forces a lambda for an otherwise straigh
 
 For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda. Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
 
-A dedicated `reduceChunks` was considered and rejected. Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...);` — the closure captures `acc` as a Mutate-mode variable (CLO-01) and the `@mut` body slot accepts mutating closures (FN-01). The only case `reduceChunks` covers uniquely is "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms. Dropping it kept the surface at three methods instead of four; callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
+A dedicated `reduceChunks` was considered and rejected.
+Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, mutating through the `@mut` capture) and the `@mut` body slot accepts mutating closures (FN-01).
+The only case `reduceChunks` covers uniquely is "immutable accumulator type threaded through mut chunks," which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms.
+Dropping it kept the surface at three methods instead of four.
+Callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 

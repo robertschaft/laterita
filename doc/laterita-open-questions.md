@@ -106,18 +106,22 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ---
 
-## OQ-31 — `val` and `var` as first-class aliases
+## OQ-34 — `val` and `var` as first-class aliases
 
-**Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) maps exactly to laterita `var`, and Lombok's `var` (mutable inferred local) maps to laterita `@mut var`. The current spec leaves `val` unsupported.
+**Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a laterita spelling.
 
-**The issue.** Laterita could accept `val` and `var` exactly as Lombok defines them — `val` as an alias for `var` (immutable inferred local) and `var` as an alias for `@mut var` (mutable inferred local). This would let Lombok-using sources migrate without even touching the local-variable declarations. The tension is that `var` already exists in Java 10+ with the immutable meaning, and reassigning its meaning to `@mut var` makes laterita's `var` diverge from standard Java `var`. A source that uses Java's `var` immutably and Lombok's `var` mutably in the same file would be ambiguous about intent.
+**The issue.**
+Under MUT-02 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
+The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
+Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
+The tension is that `val` is not a Java keyword.
+Lombok makes `val x = ...` compile by shipping `val` as an importable type that `javac` resolves, so a `.java`-surface `val` would need the same importable-type trick, while a `.lat`-only form is plain LAT-topic sugar for `final var`.
 
 **The question.**
-- Should `val` be accepted as a synonym for `var` (immutable inferred local)?
-- Should `var` be accepted as a synonym for `@mut var` (mutable inferred local), shadowing Java's `var`?
-- Or should `val`/`var` remain unsupported in `.java` files and only permitted in `.lat` files, to avoid the Java-compatibility ambiguity?
+- Should `val` be accepted as sugar for `final var` (immutable inferred local)?
+- If so, only in `.lat` files (a LAT-topic form), or in `.java` too through an importable `val` type the compiler special-cases?
 
-**Related codes:** MUT-02, GEN-14, LAT-00.
+**Related codes:** MUT-02, MUT-03, GEN-14, LAT-00.
 
 ## OQ-33 — Primitives in the ownership and mutability system
 
@@ -153,4 +157,4 @@ The `OWN` model of variables-as-ownership-disciplined-slots only holds for refer
 Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
-**Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07, STD-04, STD-05.
+**Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
