@@ -506,9 +506,10 @@ The compiler may substitute either.
 Value classes are non-`@local` (STD-07) unless they hold a transitively `@local` field (`Rc<T>`, `Cell<T>`).
 Those primitives are themselves value classes whose hidden mutation makes them thread-affine.
 
-`Object` is `@mut`.
-`Number` is declared `@fix`, a value class.
-Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes, since they extend the value class `Number` (HIER-02).
+`Object` declares neither kind.
+It is the neutral root from which both `@mut` and value-class hierarchies descend, and its own mutability is supplied by the annotation on each direct subclass (HIER-02).
+`Number` extends `Object` and implements no `@mut` interface, so it defaults to a value class (HIER-02) with no explicit marker.
+Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes, since they extend the value class `Number`.
 
 ### MUT-06 - `@mut` is rejected on `record` and `enum`
 
@@ -614,21 +615,20 @@ This is the only mechanism that bypasses MUT-09.
 
 ## HIER — Class Hierarchy and Override
 
-### HIER-01 - `@mut` class extends only `@mut`
+### HIER-01 - A `@mut` class has no value-class ancestor
 
-A class declared `@mut` may extend only a `@mut` class.
-Every superclass of a `@mut` class is itself `@mut`, up to `Object`.
-Equivalently, a class extending a value (`@fix`) class may not be declared `@mut` (HIER-02).
+A class declared `@mut` may not extend a value (`@fix`) class.
+It may extend `Object` directly or another `@mut` class (HIER-02).
+So `@mut` classes form a connected region descending from the neutral root `Object` (MUT-05), and no `@mut` class has a value-class ancestor.
 
 ### HIER-02 - Default mutability follows the supertype and interfaces
 
 When a class declares neither `@mut` nor `@fix` (MUT-05), its kind defaults from what it extends.
 
-- A class extending no class but the implicit `Object` defaults to `@mut` if it implements at least one `@mut` interface, and to a value class otherwise. Either kind may be declared explicitly instead.
-- A class extending a `@mut` class defaults to `@mut` and may instead be declared `@fix`, a value subclass (HIER-03).
+- A class extending `Object` directly, whether `Object` is implicit or written, defaults to `@mut` if it implements at least one `@mut` interface, and to a value class otherwise. Either kind may be declared explicitly instead. `Object` itself declares no kind, so a direct subclass takes no default from it.
+- A class extending a `@mut` class other than `Object` defaults to `@mut` and may instead be declared `@fix`, a value subclass (HIER-03).
 - A class extending a value (`@fix`) class is a value class and may not be declared `@mut` (HIER-01).
 
-A class may extend a class of either kind.
 Once a class in a hierarchy is a value class, every subclass of it is a value class: a value class admits no `@mut` subclass (HIER-01), so the freeze propagates downward and never reverses.
 
 ### HIER-03 - Value subclass of a `@mut` ancestor is a frozen view
@@ -773,15 +773,15 @@ The `@unsafe` cost is visible at the storage site.
 ### TARG-03b - A type parameter assumes the mutability of its bound
 
 A type parameter carries the referent mutability of its bound at every usage: fields, parameters, returns, locals, and nested type arguments.
-The implicit bound is `Object`, which is `@mut` (MUT-05).
-So an unconstrained `class Foo<T>`, and a `class Foo<T extends Map>` whose bound `Map` is `@mut`, both treat `T` as a `@mut` type everywhere it is used, whether or not `@mut` is written.
-A parameter bound by a value type treats `T` as a value type.
+The implicit bound is `Object`, the neutral root (MUT-05), which admits `@mut` subtypes.
+So an unconstrained `class Foo<T>` may be given a `@mut` argument, and a `class Foo<T extends Map>` whose bound `Map` is `@mut` likewise, and both treat `T` as a `@mut` type everywhere it is used, whether or not `@mut` is written.
+A parameter whose bound is a value type treats `T` as a value type.
 
-The borrow checker assumes this worst case.
-An unconstrained `T` may stand for a `@mut` instance, so the body is checked as if every `T` value carried a mutable surface, and the copy-or-borrow interchange a value class permits (MUT-05) is not available.
+The borrow checker assumes this worst case, and unlike the class default (HIER-02) the conservative direction here is `@mut`, not the value class, because assuming immutability for a parameter that may bind a `@mut` argument would be unsound.
+The body is checked as if every `T` value carried a mutable surface, and the copy-or-borrow interchange a value class permits (MUT-05) is not available.
 
 ```java
-@mut class Box<T> {                 // T assumed @mut: Object bound is @mut
+@mut class Box<T> {                 // T assumed @mut: Object admits @mut subtypes
     T value;
     @mutating void set(@take T v) { this.value = v; }
 }

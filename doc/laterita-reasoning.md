@@ -155,7 +155,7 @@ Variable-level `@mut` (MUT-01) answers "can *this variable* change the object?" 
 
 This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in. Laterita's experience runs the other way: most application types (domain values, DTOs, records, configuration) are immutable, and the mutable ones (builders, collections, counters, streams) are the minority. Making the value class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone. HIER-02 refines how the default is computed once a supertype is in play, but the root case, a class extending only `Object`, keeps the value-class default this argument calls for.
 
-The inheritance rule (HIER-01) keeps the property legible: a `@mut` class extends only `@mut` classes, so every hierarchy is a run of `@mut` classes from `Object` down to a frontier, then value classes below it — the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration — something Java expresses only with a runtime-throwing wrapper.
+The inheritance rule (HIER-01) keeps the property legible: a `@mut` class has no value-class ancestor, so every hierarchy is a run of `@mut` classes descending from the neutral root `Object` down to a frontier, then value classes below it, and the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `@fix class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
 
 HIER-04 is what keeps MUT-10's check static. If a value-class instance could be widened into a `@mut` variable of a `@mut` superclass, a `@mutating` method called through that variable would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` variable refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the variable mode, with no runtime tag.
 
@@ -174,9 +174,9 @@ A subclass almost always wants the kind of what it extends.
 A subclass of a `@mut` class is overwhelmingly another mutable type, and a subclass of a value class cannot be anything else (HIER-01).
 So the supertype's kind is the default, and only the deliberate frozen view, a value subclass of a `@mut` parent (HIER-03), writes `@fix`.
 
-The root case, a class extending only `Object`, cannot take its default from `Object`, which is `@mut` (MUT-05).
-Defaulting to `Object` would make every bare class mutable and lose the value-class-by-default property that lets a reader classify a type from its declaration line (reasoning "Why classes are marked `@mut`").
-The implemented interfaces are the available signal instead.
+The root case, a class extending `Object` directly, has no kind to inherit, because `Object` is the neutral root and declares neither (MUT-05).
+Treating `Object` as `@mut` and inheriting that would make every bare class mutable and lose the value-class-by-default property that lets a reader classify a type from its declaration line (reasoning "Why classes are marked `@mut`").
+So the root keeps the value-class default, and the implemented interfaces are the only available signal that should override it.
 A class implementing a `@mut` interface is committing to the mutable surface that interface published, so it defaults to `@mut`.
 A class implementing only value-class interfaces, or none, has declared no mutable surface and defaults to a value class.
 Either default is overridable, so the rule only removes the marker from the common case rather than forbidding the rare one.
