@@ -28,7 +28,7 @@ The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf 
 
 Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`. With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`: a `var x = expr` is reassignable and not mutate-through, exactly as a Java `var`, and `@mut var x = expr` adds mutation-through (MUT-02).
+Type inference reuses Java's `var`: a `var x = expr` is reassignable exactly as a Java `var`, and its referent mutability is inherited from `expr` the way ownership is, with `@fix var x = expr` opting out (MUT-02).
 No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
@@ -74,22 +74,46 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 
 ## Mutability (MUT-01 through MUT-11)
 
-### Why `@mut` is the *single* referent-mutability marker (MUT-01)
+### Why `@mut` is the *unified* referent-mutability marker (MUT-01)
 
 `@mut` denotes referent mutability uniformly across locals, fields, parameters, and returns, and the companion `@mutating` (MUT-08) marks a method that mutates its receiver.
 Each expresses the same underlying idea: this path can change the value it reaches.
 The vocabulary matches Rust's, which is the lower-friction choice for the audience already familiar with the ownership story Laterita brings to Java.
+
+### Why `@fix` is the explicit non-mutability marker (MUT-01b)
+
+`@mut` marks the rarer, more dangerous choice, so most positions stay bare and mean "not mutable" by default: the value-class default of MUT-05, the immutable field of MUT-07a, the borrow parameter of MUT-04.
+A single word is still needed for the one place the default runs the other way, where a context would otherwise grant mutability and the author wants it gone.
+Three such contexts exist.
+A local inherits mutability from its initializer (MUT-02), a class extending a `@mut` class defaults to `@mut` (HIER-02), and a type-parameter usage is assumed `@mut` under the worst-case rule (TARG-03b).
+`@fix` is the opt-out in all three, the dual of `@mut` in the way `final` is the opt-out of the reassignable slot.
+
+Spelling the opt-out as one marker rather than three context-specific keywords keeps the surface small and the reading uniform.
+Wherever `@mut` may be written, `@fix` may be written to mean its negation.
+The goal is to let ordinary code drop `@mut` entirely while still naming immutability where a default would otherwise lose it.
+Accepting `@fix` as a redundant no-op where the default is already immutable, rather than rejecting it, matches `final`'s treatment and lets generated or defensive code state the property without the compiler second-guessing whether it was needed.
 
 ### Why slot and referent mutability are separate axes (MUT-02, MUT-03)
 
 A binding has two capabilities that Java keeps apart: rebinding the name to another value, the slot, and mutating the value reached through the name, the referent.
 Laterita keeps them apart, with one marker each.
 `final` locks the slot, exactly its Java meaning, so a Java local that is reassigned keeps working with no annotation and a Java `final` keeps its force.
-`@mut` grants referent mutability, the property that actually needs guarding: the right to call a `@mutating` method or write through the binding.
+`@mut` grants referent mutability, the property that actually needs guarding: the right to call a `@mutating` method or write through the binding, and `@fix` (MUT-01b) is its explicit negation where a default would otherwise grant mutation.
 Folding both onto a single `@mut` would force an annotation onto every reassigned-but-not-mutated local, which Java writes bare, and would leave the common "mutable object, locked slot" pattern, `private final List<Item> items`, reading as `@mut final` undoing half of what `@mut` granted.
-Keeping them separate lines each axis up with the marker that already means it: `final` for the slot, `@mut` for the referent, every combination spellable and none redundant.
-The safety property rides entirely on the referent axis: a bare binding still cannot mutate anything (MUT-10), so transitive immutability holds whether or not the slot is reassignable.
-Reassigning a slot repoints a name and mutates no object, so it needs no `@mut` guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
+Keeping them separate lines each axis up with the marker that already means it: `final` for the slot, the referent axis for mutation, every combination spellable and none redundant.
+The safety property rides on borrows, not on owned locals.
+A shared borrow still cannot mutate anything it reaches (MUT-09), so handing out a bare borrow is a genuine read-only guarantee, while an owned local mutating the value it alone holds aliases nothing and is always sound (MUT-02).
+Reassigning a slot repoints a name and mutates no object, so it needs no guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
+
+### Why a local's referent mutability is inherited from its initializer (MUT-02)
+
+Ownership of a local already follows its initializer (OWN-02): a producer yields an owner, a name yields a borrow, and no marker is written.
+Referent mutability follows the same source.
+An owned local of a `@mut` class can mutate the value it alone holds, so making it `@mut` by default aliases nothing and removes the marker from the dominant owned-mutable-local case.
+This diverges from Rust, which requires `let mut` on owned locals, and the divergence is deliberate: the language's stated aim is to write less `@mut`, and an owned local mutating its own value has no soundness reason to be annotated.
+The read-only guarantee that matters rides on borrows, not on owned locals.
+A shared borrow still cannot mutate anything it reaches (MUT-09), so passing a bare borrow is still a real read-only contract, and a mutable borrow into a local still demands the explicit `@mut` the borrow case has always required (OWN-04).
+`@fix` recovers an immutable owned local for the cases that want one, locking the referent the way `final` locks the slot, so the two axes read in parallel rather than one inferring its capability and the other defaulting off.
 
 ### Why fields default to immutable (MUT-07a, MUT-07b)
 
@@ -115,9 +139,10 @@ By MUT-10 a `@mutating` method is only callable on a `@mut` receiver, so the mar
 
 ### Why mutability is transitive (MUT-10)
 
-If a bare (non-`@mut`) local could call `@mutating` methods, immutability would mean nothing.
+If a shared (non-`@mut`) borrow could call `@mutating` methods, immutability would mean nothing.
 The transitivity rule is what makes "this object is read-only" a real guarantee.
-It also means handing someone a bare variable to a complex object graph is genuinely safe: they cannot change anything, anywhere, through it.
+It also means handing someone a bare (shared) borrow into a complex object graph is genuinely safe: they cannot change anything, anywhere, through it.
+An owned local is the other case, and it is sound to let it mutate the value it alone holds (MUT-02), because no other binding aliases that value.
 This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ### Why `Cell<T>` is the only escape hatch (MUT-11)
@@ -128,9 +153,9 @@ There are real cases where a class is logically immutable but has internal cachi
 
 Variable-level `@mut` (MUT-01) answers "can *this variable* change the object?" It does not answer "can the object change *at all*?" A class with a `@mut` field gives no signal at its declaration that it carries mutable state — a reader has to scan its members. Marking the class supplies that signal: `@mut class` declares a mutable surface; an unmarked class is a *value class* whose instances carry no callable `@mutating` method.
 
-This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in. Laterita's experience runs the other way: most application types — domain values, DTOs, records, configuration — are immutable, and the mutable ones (builders, collections, counters, streams) are the minority. Making the value class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone.
+This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in. Laterita's experience runs the other way: most application types (domain values, DTOs, records, configuration) are immutable, and the mutable ones (builders, collections, counters, streams) are the minority. Making the value class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone. HIER-02 refines how the default is computed once a supertype is in play, but the root case, a class extending only `Object`, keeps the value-class default this argument calls for.
 
-The inheritance rule (HIER-01) keeps the property legible: a `@mut` class extends only `@mut` classes, so every hierarchy is a run of `@mut` classes from `Object` down to a frontier, then value classes below it — the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration — something Java expresses only with a runtime-throwing wrapper.
+The inheritance rule (HIER-01) keeps the property legible: a `@mut` class has no value-class ancestor, so every hierarchy is a run of `@mut` classes descending from the neutral root `Object` down to a frontier, then value classes below it, and the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `@fix class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
 
 HIER-04 is what keeps MUT-10's check static. If a value-class instance could be widened into a `@mut` variable of a `@mut` superclass, a `@mutating` method called through that variable would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` variable refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the variable mode, with no runtime tag.
 
@@ -141,6 +166,20 @@ Interfaces carry the same `@mut` marker for the same reason a class does: a publ
 ---
 
 ## Class Hierarchy and Override (HIER-01 through HIER-05)
+
+### Why default mutability follows the supertype and interfaces (HIER-02)
+
+The default kind is chosen to need the fewest markers in real hierarchies.
+A subclass almost always wants the kind of what it extends.
+A subclass of a `@mut` class is overwhelmingly another mutable type, and a subclass of a value class cannot be anything else (HIER-01).
+So the supertype's kind is the default, and only the deliberate frozen view, a value subclass of a `@mut` parent (HIER-03), writes `@fix`.
+
+The root case, a class extending `Object` directly, has no kind to inherit, because `Object` is the neutral root and declares neither (MUT-05).
+Treating `Object` as `@mut` and inheriting that would make every bare class mutable and lose the value-class-by-default property that lets a reader classify a type from its declaration line (reasoning "Why classes are marked `@mut`").
+So the root keeps the value-class default, and the implemented interfaces are the only available signal that should override it.
+A class implementing a `@mut` interface is committing to the mutable surface that interface published, so it defaults to `@mut`.
+A class implementing only value-class interfaces, or none, has declared no mutable surface and defaults to a value class.
+Either default is overridable, so the rule only removes the marker from the common case rather than forbidding the rare one.
 
 ### Why default assignment is a borrow (OWN-02)
 
@@ -768,6 +807,19 @@ An instance that stores a `@borrow`-substituted argument can only be produced as
 `@mut` in a type argument — `List<@mut Foo>` — is the hard case. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), and the hazard is aliasing: an element accessor `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`, and two coexisting shared borrows of a `List<@mut Foo>` would each call `get(0)` and receive a `@mut Foo` to the same slot. Banning `@mut` from type arguments outright would push the case onto `Cell<T>`, but that is heavier than the hazard requires.
 
 The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (OWN-03): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (TARG-03): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
+
+### Why a type parameter assumes worst-case mutability, and `@fix` opts out (TARG-03b, TARG-08)
+
+A generic body is checked once and monomorphized against every argument (COMP-02), so it must be sound for the most capable argument it admits.
+For mutability the most capable argument is a `@mut` instance, so an unconstrained `T` is assumed `@mut` everywhere it is used.
+The assumption is conservative in the safe direction.
+A body that type-checks against a possibly-mutable `T` stays correct when `T` turns out to be a value class, whereas a body that assumed immutability could be handed a mutable argument and alias it.
+Reading the assumption off the bound rather than a separate annotation means a constrained parameter such as `T extends Map` carries `Map`'s kind for free, with no per-usage marks.
+
+`@fix` is the opt-out, mirroring how `@own` (TARG-06) opts a parameter out of admitting borrows.
+`@fix T` at the declaration, shorthand for `T extends @fix Object`, freezes every usage at once and is the form a value-only container wants.
+`@fix` on a single usage narrows just that occurrence, for a body that stores a `T` mutably in one field but exposes it immutably through one accessor.
+Because `@fix` only removes a capability, it constrains the container at no site, the dual of TARG-03's rule that a written `@mut` element demands a `@mut` container.
 
 ### Why `@take` needs no degradation for borrows (TARG-05)
 
