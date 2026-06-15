@@ -82,7 +82,7 @@ The vocabulary matches Rust's, which is the lower-friction choice for the audien
 
 ### Why `@fix` is the explicit non-mutability marker (MUT-01b)
 
-`@mut` marks the rarer, more dangerous choice, so most positions stay bare and mean "not mutable" by default: the value-class default of MUT-05, the immutable field of MUT-07a, the borrow parameter of MUT-04.
+`@mut` marks the rarer, more dangerous choice, so most positions stay bare and mean "not mutable" by default: the immutable-class default of MUT-05, the immutable field of MUT-07a, the borrow parameter of MUT-04.
 A single word is still needed for the one place the default runs the other way, where a context would otherwise grant mutability and the author wants it gone.
 Three such contexts exist.
 A local inherits mutability from its initializer (MUT-02), a class extending a `@mut` class defaults to `@mut` (HIER-02), and a type-parameter usage is assumed `@mut` under the worst-case rule (TARG-03b).
@@ -122,7 +122,7 @@ An `int` or other primitive has no mutating surface, so a primitive local is nev
 Rust's transitivity insight: immutability is only meaningful if it propagates.
 If a bare variable could still mutate the object's fields, "immutable" would be a hopeful suggestion rather than a guarantee.
 So mutation *through* a field, the referent axis, is opt-in and needs `@mut` on the field, exactly the explicit choice Effective Java has recommended for years (favor immutability, favor records over JavaBeans).
-Reassigning a field is the orthogonal slot axis (MUT-07b), reachable only inside a `@mut` class through a `@mut` receiver, so a value class, the default kind, still exposes no field mutation of either sort after construction.
+Reassigning a field is the orthogonal slot axis (MUT-07b), reachable only inside a `@mut` class through a `@mut` receiver, so an immutable class, the default kind, still exposes no field mutation of either sort after construction.
 
 ### Why a parameter slot is always final (MUT-04)
 
@@ -153,17 +153,28 @@ There are real cases where a class is logically immutable but has internal cachi
 
 ### Why classes are marked `@mut` (MUT-05 through HIER-04)
 
-Variable-level `@mut` (MUT-01) answers "can *this variable* change the object?" It does not answer "can the object change *at all*?" A class with a `@mut` field gives no signal at its declaration that it carries mutable state — a reader has to scan its members. Marking the class supplies that signal: `@mut class` declares a mutable surface; an unmarked class is a *value class* whose instances carry no callable `@mutating` method.
+Variable-level `@mut` (MUT-01) answers "can *this variable* change the object?", not "can the object change *at all*?".
+A class with a `@mut` field gives no signal at its declaration that it carries mutable state, so a reader has to scan its members.
+Marking the class supplies that signal: `@mut class` declares a mutable surface, and an unmarked class is an *immutable class* whose instances carry no callable `@mutating` method.
 
-This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in. Laterita's experience runs the other way: most application types (domain values, DTOs, records, configuration) are immutable, and the mutable ones (builders, collections, counters, streams) are the minority. Making the value class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone. HIER-02 refines how the default is computed once a supertype is in play, but the root case, a class extending only `Object`, keeps the value-class default this argument calls for.
+This inverts the Valhalla value-class proposal, where the mutable identity class is the unmarked default and `value class` is the opt-in.
+Laterita's experience runs the other way: most application types (domain values, DTOs, records, configuration) are immutable, and the mutable ones (builders, collections, counters, streams) are the minority.
+Making the immutable class the default and `@mut` the opt-in puts the annotation on the rarer, more dangerous choice, and lets a reader classify a type from its declaration line alone.
+HIER-02 refines how the default is computed once a supertype is in play, but the root case, a class extending only `Object`, keeps the immutable default this argument calls for.
 
-The inheritance rule (HIER-01) keeps the property legible: a `@mut` class has no value-class ancestor, so every hierarchy is a run of `@mut` classes descending from the neutral root `Object` down to a frontier, then value classes below it, and the transition happens once and never reverses. A value class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `@fix class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
+The inheritance rule (HIER-01) keeps the property legible: a `@mut` class has no immutable-class ancestor, so every hierarchy is a run of `@mut` classes descending from the neutral root `Object` down to a frontier, then immutable classes below it, and the transition happens once and never reverses.
+An immutable class extending a `@mut` class is the useful corner: it inherits the mutable API but cannot call it (MUT-10), so `@fix class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
 
-HIER-04 is what keeps MUT-10's check static. If a value-class instance could be widened into a `@mut` variable of a `@mut` superclass, a `@mutating` method called through that variable would mutate a value the program treats as frozen. Forbidding that one widening — `@mut` access originates only at construction of a `@mut` class, never by widening or cast — guarantees every `@mut` variable refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the variable mode, with no runtime tag.
+HIER-04 is what keeps MUT-10's check static.
+If an immutable instance could be widened into a `@mut` variable of a `@mut` superclass, a `@mutating` method called through that variable would mutate a value the program treats as frozen.
+Forbidding that one widening, so `@mut` access originates only at construction of a `@mut` class and never by widening or cast, guarantees every `@mut` variable refers to a genuinely `@mut` instance, so callability is decided entirely from the static type and the variable mode, with no runtime tag.
 
-`Cell<T>` stays the interior-mutability escape hatch (MUT-11): a value class may hold a `Cell` field and mutate through it. The reference-counted handles depend on this — `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
+`Cell<T>` stays the interior-mutability escape hatch (MUT-11): an immutable class may hold a `Cell` field and mutate through it.
+The reference-counted handles depend on this, since `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so need no `@mut` surface of their own.
 
-Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration. The restriction "only `@mut` interfaces may declare `@mutating` methods" lets MUT-10's static check use one uniform predicate over the receiver's static type (class or interface). A value class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view — the same corner HIER-01 opens for class inheritance.
+Interfaces carry the same `@mut` marker for the same reason a class does: a published interface signals its mutability surface at the declaration.
+The restriction "only `@mut` interfaces may declare `@mutating` methods" lets MUT-10's static check use one uniform predicate over the receiver's static type (class or interface).
+An immutable class implementing a `@mut` interface inherits its `@mutating` methods as a frozen view, the same corner HIER-01 opens for class inheritance.
 
 ---
 
@@ -173,14 +184,14 @@ Interfaces carry the same `@mut` marker for the same reason a class does: a publ
 
 The default kind is chosen to need the fewest markers in real hierarchies.
 A subclass almost always wants the kind of what it extends.
-A subclass of a `@mut` class is overwhelmingly another mutable type, and a subclass of a value class cannot be anything else (HIER-01).
-So the supertype's kind is the default, and only the deliberate frozen view, a value subclass of a `@mut` parent (HIER-03), writes `@fix`.
+A subclass of a `@mut` class is overwhelmingly another mutable type, and a subclass of an immutable class cannot be anything else (HIER-01).
+So the supertype's kind is the default, and only the deliberate frozen view, an immutable subclass of a `@mut` parent (HIER-03), writes `@fix`.
 
 The root case, a class extending `Object` directly, has no kind to inherit, because `Object` is the neutral root and declares neither (MUT-05).
-Treating `Object` as `@mut` and inheriting that would make every bare class mutable and lose the value-class-by-default property that lets a reader classify a type from its declaration line (reasoning "Why classes are marked `@mut`").
-So the root keeps the value-class default, and the implemented interfaces are the only available signal that should override it.
+Treating `Object` as `@mut` and inheriting that would make every bare class mutable and lose the immutable-by-default property that lets a reader classify a type from its declaration line (reasoning "Why classes are marked `@mut`").
+So the root keeps the immutable default, and the implemented interfaces are the only available signal that should override it.
 A class implementing a `@mut` interface is committing to the mutable surface that interface published, so it defaults to `@mut`.
-A class implementing only value-class interfaces, or none, has declared no mutable surface and defaults to a value class.
+A class implementing only immutable interfaces, or none, has declared no mutable surface and defaults to immutable.
 Either default is overridable, so the rule only removes the marker from the common case rather than forbidding the rare one.
 
 ### Why default assignment is a borrow (OWN-02)
@@ -286,7 +297,10 @@ This is non-normative — methods sometimes legitimately clone internally (defen
 
 One principle drives every row of HIER-05's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse — the same shape as Java's `throws` relaxation applied uniformly across every Laterita annotation.
 
-On the demand side (parameters, receiver), an override may drop `@mut` on a parameter (override needs only shared access; callers holding `@mut` still qualify), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), drop `@mutating` (override no longer needs a `@mut` receiver), or weaken `@consuming` to `@mutating` or bare (override no longer needs ownership of the receiver). Adding any of these tightens the call-site demand — callers with the weaker form the base contract promised to accept would be rejected. `@take` on a parameter is the one exception: it is identity, not strength, and either dropping or adding it breaks callers using the inherited type. Class `@mut` (HIER-01) is the same shape at the class level — a value subclass of a `@mut` parent drops the receiver demand for inherited `@mutating` methods.
+On the demand side (parameters, receiver), an override may drop `@mut` on a parameter (override needs only shared access, and callers holding `@mut` still qualify), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), drop `@mutating` (override no longer needs a `@mut` receiver), or weaken `@consuming` to `@mutating` or bare (override no longer needs ownership of the receiver).
+Adding any of these tightens the call-site demand, so callers with the weaker form the base contract promised to accept would be rejected.
+`@take` on a parameter is the one exception: it is identity, not strength, and either dropping or adding it breaks callers using the inherited type.
+Class `@mut` (HIER-01) is the same shape at the class level, where an immutable subclass of a `@mut` parent drops the receiver demand for inherited `@mutating` methods.
 
 On the guarantee side, `@bound` on the return is covariant in strength: an override may return owned where the base promised a value bound to `this` (the per-OWN-18 meaning of `@bound` on a return). Owned is a stronger guarantee — a value the caller may freely move or hold past the receiver's lifetime. Callers using the inherited type continue treating the result as receiver-bound and remain sound. The reverse — returning a receiver-bound value where the base promised owned — would silently constrain a value the caller intended to move or store. The FI-slot call-mode row inverts the surface direction for the same underlying principle: strengthening the slot (bare → `@mutating` → `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted — the annotation governs closure acceptance, not parameter variable.
 
@@ -460,10 +474,10 @@ The receiver is therefore `@mut` regardless of class kind, with no `@mutating` a
 Making destructor mutation opt-in, by requiring `@mutating` on `onDrop()` and a `@mut` class to carry it, is rejected.
 It would diverge from Rust, where every drop is mutation-capable, and it would impose ceremony on the most ordinary cleanup bodies.
 
-The value-class boundary is preserved rather than pierced.
-The freeze takes effect when the constructor returns and stays in effect through teardown, so a value class's fields remain immutable in `onDrop()` and the body is read-only.
-The mutable receiver is thus inert on a value class and supplies the cleanup capability only where mutation is already part of the type's surface.
-This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a `@mut` class, not a value class.
+The immutability boundary is preserved rather than pierced.
+The freeze takes effect when the constructor returns and stays in effect through teardown, so an immutable class's fields remain immutable in `onDrop()` and the body is read-only.
+The mutable receiver is thus inert on an immutable class and supplies the cleanup capability only where mutation is already part of the type's surface.
+This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a `@mut` class, not an immutable class.
 
 Field-level rules still apply.
 The mutable receiver only unlocks what any `@mut` receiver gets (MUT-07b, MUT-10): reassignment of non-`final` fields and mutation through `@mut` fields, so a `final` field is no more writable in `onDrop()` than in a `@mutating` method.
@@ -714,9 +728,17 @@ Resolution is left-operand-directed with unboxing as the primitive fallback and 
 
 ### Why adopt the whole stable Lombok surface natively (GEN-*)
 
-Lombok exists because Java's boilerplate burden is high enough that the ecosystem delegates codegen to a third-party tool, so its annotation names are the closest thing Java has to a standard codegen vocabulary. Laterita supports the whole stable set natively and unchanged, so a Java-plus-Lombok source migrates without edits and keeps the same observable result. Supporting every annotation, even the ones a `record` or value class already covers, is the deliberate choice: a migration that silently drops `@Data` or rejects `@Synchronized` is a migration that fails, and the cost of accepting a redundant generator is near zero.
+Lombok exists because Java's boilerplate burden is high enough that the ecosystem delegates codegen to a third-party tool, so its annotation names are the closest thing Java has to a standard codegen vocabulary.
+Laterita supports the whole stable set natively and unchanged, so a Java-plus-Lombok source migrates without edits and keeps the same observable result.
+Supporting every annotation, even the ones a `record` or immutable class already covers, is the deliberate choice: a migration that silently drops `@Data` or rejects `@Synchronized` is a migration that fails, and the cost of accepting a redundant generator is near zero.
 
-The model absorbs the apparent conflicts rather than rejecting them, because a Lombok annotation may add the laterita annotation it implies. A generated setter mutates, so a class-level `@Setter` makes the class `@mut` and a Java mutable bean keeps its meaning with no source edit. A field-level `@Setter` needs an already-`@mut` class, since a lone mutable field cannot live in a value class. `@Value` lands on a value class and `@Data` on a `@mut` class, so Laterita's immutability default and Java's mutability default meet in the middle without a keyword. `@NonNull` is already the default and is accepted as a no-op rather than a duplicate spelling. `@Synchronized` reproduces its private-lock semantics through `ReentrantLock` (STD-10) instead of the absent keyword, which is what Lombok itself does on the JVM, only with an explicit lock object. `@SneakyThrows` is a no-op while EXC-05 keeps every exception unchecked, and regains its purpose if OQ-22 restores the checked distinction.
+The model absorbs the apparent conflicts rather than rejecting them, because a Lombok annotation may add the laterita annotation it implies.
+A generated setter mutates, so a class-level `@Setter` makes the class `@mut` and a Java mutable bean keeps its meaning with no source edit.
+A field-level `@Setter` needs an already-`@mut` class, since a lone mutable field cannot live in an immutable class.
+`@Value` lands on an immutable class and `@Data` on a `@mut` class, so Laterita's immutability default and Java's mutability default meet in the middle without a keyword.
+`@NonNull` is already the default and is accepted as a no-op rather than a duplicate spelling.
+`@Synchronized` reproduces its private-lock semantics through `ReentrantLock` (STD-10) instead of the absent keyword, which is what Lombok itself does on the JVM, only with an explicit lock object.
+`@SneakyThrows` is a no-op while EXC-05 keeps every exception unchecked, and regains its purpose if OQ-22 restores the checked distinction.
 
 `@Delegate` is the one experimental annotation kept, because it is the keystone of the newtype idiom and of composition-over-inheritance generally. Lombok flags it as permanently experimental for reasons that do not carry over. Its generics handling is erasure-bound and version-fragile, but laterita monomorphizes (COMP-02), so a forwarded generic method has a concrete signature and the attribute restrictions disappear. Lombok also cannot let you implement some methods and delegate the rest, but laterita's shadowing rule gives exactly that for free. The pitfalls that keep `@Delegate` experimental in Java are artifacts of the JVM, so Laterita keeps the core (the forwarded methods appear on the owner and behave like the original) and drops the caveats.
 
@@ -744,7 +766,7 @@ A literal lives in the program's read-only static segment, not on the heap. Trea
 
 This makes the spec's earlier example `String greeting = "hello"` a borrowed variable, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic. There is no special rule for literals beyond "their lifetime is static" — they participate in OWN-02 and STR-02 like any other borrow.
 
-### Why `String` is a value class (STR-07)
+### Why `String` is immutable (STR-07)
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected. Bulk construction is `StringBuilder`'s job. Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`. The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
@@ -815,8 +837,8 @@ The hazard exists only when the container is *shared* — duplicable into many c
 A generic body is checked once and monomorphized against every argument (COMP-02), so it must be sound for the most capable argument it admits.
 For mutability the most capable argument is a `@mut` instance, so an unconstrained `T` is assumed `@mut` everywhere it is used.
 The assumption is conservative in the safe direction, and that direction is the opposite of the class default (HIER-02).
-A class extending only `Object` defaults to the value class because a wrong guess is merely an annotation the author adds, but a generic body that assumed immutability could be handed a mutable argument and alias it, so the generic default leans to `@mut` where the class default leans to the value class.
-A body that type-checks against a possibly-mutable `T` stays correct when `T` turns out to be a value class.
+A class extending only `Object` defaults to immutable because a wrong guess is merely an annotation the author adds, but a generic body that assumed immutability could be handed a mutable argument and alias it, so the generic default leans to `@mut` where the class default leans to immutable.
+A body that type-checks against a possibly-mutable `T` stays correct when `T` turns out to be immutable.
 Reading the assumption off the bound rather than a separate annotation means a constrained parameter such as `T extends Map` carries `Map`'s kind for free, with no per-usage marks.
 
 `@fix` is the opt-out, mirroring how `@own` (TARG-06) opts a parameter out of admitting borrows.

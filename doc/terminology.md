@@ -78,7 +78,7 @@ Declares that a method consumes its receiver — the body owns `this`, and after
 The explicit non-mutability dual of `@mut`: it declares the referent non-mutable wherever `@mut` may appear, and is mutually exclusive with `@mut` on one position.
 It is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (`MUT-02`), a subclass of a `@mut` class (`HIER-02`), and a type-parameter usage assumed `@mut` (`TARG-03b`).
 On a type-parameter declaration `<@fix T>` is shorthand for `<T extends @fix Object>`, freezing every usage of `T` (`TARG-08`).
-On a class declaration `@fix class C` declares a value class (`MUT-05`).
+On a class declaration `@fix class C` declares an immutable class (`MUT-05`).
 See `MUT-01b`.
 
 ### contravariantly
@@ -125,6 +125,9 @@ A raw heap-allocation primitive. Provides direct allocation and deallocation. Al
 ### @internal (annotation)
 An annotation marking that a method may only be called by compiler-emitted code, never by user code. Used exclusively for `onDrop()`. See `DROP-06`.
 
+### immutable class
+A class that is not `@mut`, declared `@fix` or defaulted to that kind by `HIER-02`. An immutable class declares no `@mut` fields and exposes no callable `@mutating` method, so its instances cannot be mutated through any variable. It may inherit `@mut` members from a `@mut` ancestor, present but not callable on it (`MUT-10`), and may still hold `Cell<T>` interior-mutable state. A class extending only `Object` and implementing no `@mut` interface defaults to immutable, the common case (`HIER-02`). `String`, `Number`, and every `record` are immutable. The stricter notion of a *value class* is reserved (see below). See `MUT-05`, `HIER-01`, `HIER-02`.
+
 ### interior mutability
 The ability to mutate an object's contents through a non-`@mut` (immutable) variable. Breaks the default rule that mutation requires `@mut` at every level. Implemented only through `Cell<T>` in safe code. See `MUT-11`.
 
@@ -150,7 +153,7 @@ The compile-time process of specializing generic code. Each instantiation of a g
 The marker for *referent mutability*: the right to mutate a value through the binding, by calling `@mutating` methods or writing through it.
 Appears on variables, fields, parameters, and return types, and on class declarations (`@mut class C`, `MUT-05`).
 It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-02`, `MUT-03`).
-On a value-class-typed binding `@mut` is redundant, since the referent has no mutating surface.
+On a binding of immutable type `@mut` is redundant, since the referent has no mutating surface.
 A `@mut` class has a mutable surface.
 The explicit non-mutability dual is `@fix` (`MUT-01b`), and the kind of an unmarked class is determined by its supertype and interfaces (`HIER-02`).
 A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@mut`.
@@ -284,8 +287,8 @@ The process of propagating an exception up the call stack, running cleanup (`onD
 ### use-after-move
 An error where a variable is used after its value has been moved elsewhere. The compiler rejects such code statically. See `OWN-07`.
 
-### value class
-A class that is not `@mut`, declared `@fix` or defaulted to that kind by `HIER-02`. A value class declares no `@mut` fields and exposes no callable `@mutating` method, so its instances cannot be mutated through any variable. It may inherit `@mut` members from a `@mut` ancestor, present but not callable on it (`MUT-10`), and may still hold `Cell<T>` interior-mutable state. A class extending only `Object` and implementing no `@mut` interface defaults to a value class, the common case (`HIER-02`). `String`, `Number`, and every `record` are value classes. See `MUT-05`, `HIER-01`, `HIER-02`.
+### value class (reserved)
+Reserved for a future notion stricter than an immutable class, in the spirit of an identity-free inline value type. Laterita's non-`@mut` classes are *immutable classes* (`MUT-05`), not value classes. Do not use "value class" for a `@fix` class or instance.
 
 ### WeakReference<T>
 A non-owning reference to a value managed by `Rc<T>` or `Arc<T>`. The weak reference is not counted toward the refcount and does not prevent the value from being freed. Calling `get()` returns an `Rc<T>?` or `Arc<T>?` (a strong reference if the value still lives). See `STD-03`.
@@ -312,7 +315,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `OWN` | Ownership: owned vs. borrowed variables, move and borrow rules, `@take` / `@borrow` / `@bound`, `@consuming` |
 | `LIFE` | Lifetime intersection across multiple borrow sources |
 | `MUT` | Mutability rules: `@mut` and `@fix` markers, `@mutating` methods, transitivity, interior mutability |
-| `HIER` | Class hierarchy: default mutability, `@mut` / value-class inheritance, value subclass freeze, no-widening, override variance |
+| `HIER` | Class hierarchy: default mutability, `@mut` / immutable-class inheritance, immutable subclass freeze, no-widening, override variance |
 | `TARG` | Annotations admitted inside generic type arguments, and type-parameter mutability |
 | `STAT` | Static field rules |
 | `NULL` | Nullable types, null safety |
@@ -347,7 +350,7 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | Ownership + `give(...)` | Explicit transfer | Java has no ownership concept; all variables are borrows |
 | Borrow (`&`) | Variable | Similar to Java; lifetime rules are stricter |
 | `@mut` (mutate-through) | Reference used to mutate the object | Java allows mutation through any reference; laterita gates it on `@mut`, with reassignment the separate `final` axis |
-| `@mut class` vs. value class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes, Laterita opts *in* to mutable classes, and a class extending only `Object` and implementing no `@mut` interface defaults to a value class (HIER-02) |
+| `@mut class` vs. immutable class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes, Laterita opts *in* to mutable classes, and a class extending only `Object` and implementing no `@mut` interface defaults to an immutable class (HIER-02) |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |
 | `Mutex<T>` | `synchronized` block on a protected field | Closure-scoped API ensures lock release and ties the lock to the protected value |
