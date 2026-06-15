@@ -114,6 +114,8 @@ This diverges from Rust, which requires `let mut` on owned locals, and the diver
 The read-only guarantee that matters rides on borrows, not on owned locals.
 A shared borrow still cannot mutate anything it reaches (MUT-09), so passing a bare borrow is still a real read-only contract, and a mutable borrow into a local still demands the explicit `@mut` the borrow case has always required (OWN-04).
 `@fix` recovers an immutable owned local for the cases that want one, locking the referent the way `final` locks the slot, so the two axes read in parallel rather than one inferring its capability and the other defaulting off.
+Inheritance also needs no special case for primitives.
+An `int` or other primitive has no mutating surface, so a primitive local is never mutate-through whatever its initializer, and a primitive-returning method needs no `@mut` for `var n = computeCount();` to bind without a mismatch.
 
 ### Why fields default to immutable (MUT-07a, MUT-07b)
 

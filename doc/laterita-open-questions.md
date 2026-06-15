@@ -136,15 +136,16 @@ The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `Atomic
 The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern; struct and array out-pointers dominate.
 Java itself has no equivalent — primitives are pass-by-value.
 
-If primitives sit outside the borrow system entirely, two follow-on rules need to be specified.
+If primitives sit outside the borrow system entirely, follow-on rules need to be specified.
+
+**Partly settled.**
+MUT-02 makes a local's referent mutability inherited from its initializer, and a primitive has no mutating surface, so a primitive local is never mutate-through and a primitive-returning method needs no `@mut` for `var n = computeCount();` to compile.
+The local-and-return mutability concern is therefore closed, and what remains open is the ownership and borrow treatment of primitives.
 
 **The question.**
 
 - *Are `@mut` parameters of primitive type rejected?*
   The proposal: yes, since a primitive cannot be borrowed in a way distinguishable from a copy, and the few cases that genuinely want pass-by-pointer (shared counters, atomic flags) are served better by `AtomicInt` / `AtomicBoolean` (STD-04 territory) or by `Cell<int>` (STD-05).
-- *Do primitive returns default to `@mut`?*
-  A returned primitive is a pure rvalue — there is no source for a borrow and no owner for a move; it is simply a value the caller may bind however they like.
-  Marking it `@mut` by default means `@mut int n = computeCount();` works without an explicit annotation on the signature, where the alternative would force every primitive-returning method to spell `@mut int computeCount()` or face an owned/`@mut` mismatch at the call site.
 - *What about `@bound` on primitive returns and `@borrow` on primitive fields?*
   The proposal: both rejected for the same reason — there is no storage to bind a lifetime to.
   A primitive field is always its own owner (the enclosing instance holds the bits inline).
@@ -157,4 +158,4 @@ The `OWN` model of variables-as-ownership-disciplined-slots only holds for refer
 Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
-**Related codes:** OWN-01, OWN-13, OWN-16, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
+**Related codes:** OWN-01, OWN-13, OWN-16, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
