@@ -1539,7 +1539,7 @@ When the closure escapes through a return, its captured parameters are the `@bou
 ### STR-07 — `String` is a value class
 
 `String` is a value class (MUT-05): no `@mutating` method exists or can be added by extension (HIER-01).
-A non-`final` `String` field in a `@mut` class is reassignable (MUT-07b), and a non-`final` `String` local is reassignable (MUT-02), but `@mut String` is redundant since `String` is a value class with no method that mutates in place, and `@fix String` is likewise redundant (MUT-01b).
+A non-`final` `String` field in a `@mut` class is reassignable (MUT-07b), and a non-`final` `String` local is reassignable (MUT-02), but `@mut String` grants nothing because `String` is a value class with no method that mutates in place, and on an owned local it would be redundant anyway since mutability is inherited (MUT-02), so `@fix String` is likewise redundant (MUT-01b).
 Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per variable
@@ -1870,7 +1870,7 @@ A `Thread`'s lifetime is bound to its owner: when the owning variable goes out o
 Threads are created using the standard Java `Thread` constructor and `start()` method, or via the fluent factory methods on `Thread.ofVirtual()` and `Thread.ofPlatform()`. No new keyword is introduced.
 
 ```java
-@mut var worker = new Thread(() -> body);
+var worker = new Thread(() -> body);   // worker inherits @mut from new Thread() (MUT-02)
 worker.start();
 
 var other = Thread.ofVirtual().start(() -> body);   // factory returns started Thread
