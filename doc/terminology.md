@@ -75,13 +75,11 @@ To transfer ownership of a value from one variable to another, or to invoke a me
 Declares that a method consumes its receiver — the body owns `this`, and after the call returns the variable that held the receiver is consumed and subsequent uses are rejected. A modifier-position annotation on the method, parallel to `@mutating` (MUT-08); the two compose. See `OWN-15`.
 
 ### @fix (annotation)
-The explicit non-mutability dual of `@mut`: it declares the referent non-mutable wherever `@mut` may appear.
-Mutually exclusive with `@mut` on the same position.
-It is redundant where the default is already non-mutable (a value-class-typed binding, a field, a bare parameter) and accepted there the way `final` is accepted on a never-reassigned slot.
-It is load-bearing where a default would otherwise grant mutation: a local whose initializer is `@mut` (locals inherit referent mutability per `MUT-02`), a class extending a `@mut` class (`HIER-02`), and a type-parameter usage assumed `@mut` by the worst-case rule (`TARG-03b`).
-On a type-parameter declaration `<@fix T>` is shorthand for `<T extends @fix Object>`, treating every usage of `T` as non-`@mut`.
-On a class declaration `@fix class C` declares a value class.
-See `MUT-01b`, `MUT-05`, `TARG-08`.
+The explicit non-mutability dual of `@mut`: it declares the referent non-mutable wherever `@mut` may appear, and is mutually exclusive with `@mut` on one position.
+It is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (`MUT-02`), a subclass of a `@mut` class (`HIER-02`), and a type-parameter usage assumed `@mut` (`TARG-03b`).
+On a type-parameter declaration `<@fix T>` is shorthand for `<T extends @fix Object>`, freezing every usage of `T` (`TARG-08`).
+On a class declaration `@fix class C` declares a value class (`MUT-05`).
+See `MUT-01b`.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method. For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow—the override is less strict, so any caller satisfying the base contract satisfies the override. See `HIER-05`.

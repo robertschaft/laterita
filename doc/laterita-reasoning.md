@@ -814,8 +814,9 @@ The hazard exists only when the container is *shared* — duplicable into many c
 
 A generic body is checked once and monomorphized against every argument (COMP-02), so it must be sound for the most capable argument it admits.
 For mutability the most capable argument is a `@mut` instance, so an unconstrained `T` is assumed `@mut` everywhere it is used.
-The assumption is conservative in the safe direction.
-A body that type-checks against a possibly-mutable `T` stays correct when `T` turns out to be a value class, whereas a body that assumed immutability could be handed a mutable argument and alias it.
+The assumption is conservative in the safe direction, and that direction is the opposite of the class default (HIER-02).
+A class extending only `Object` defaults to the value class because a wrong guess is merely an annotation the author adds, but a generic body that assumed immutability could be handed a mutable argument and alias it, so the generic default leans to `@mut` where the class default leans to the value class.
+A body that type-checks against a possibly-mutable `T` stays correct when `T` turns out to be a value class.
 Reading the assumption off the bound rather than a separate annotation means a constrained parameter such as `T extends Map` carries `Map`'s kind for free, with no per-usage marks.
 
 `@fix` is the opt-out, mirroring how `@own` (TARG-06) opts a parameter out of admitting borrows.

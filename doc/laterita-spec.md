@@ -382,27 +382,34 @@ These are the only surface forms that grant mutability, and `@fix` (MUT-01b) is 
 
 ### MUT-01b - `@fix` is the explicit non-mutability marker
 
-`@fix` is the dual of `@mut` and the explicit spelling of "not mutable here".
-It declares the referent non-mutable wherever `@mut` may appear: locals (MUT-02), fields (MUT-07a), parameters (MUT-04), returns, type arguments and type-parameter usages (TARG-03b), and class or interface declarations (MUT-05).
-`@fix` and `@mut` are mutually exclusive on the same position.
+`@fix` is the dual of `@mut`: it declares the referent non-mutable.
+It is admitted wherever `@mut` may appear: locals (MUT-02), fields (MUT-07a), parameters (MUT-04), returns, type arguments and type-parameter usages (TARG-03b, TARG-08), and class or interface declarations (MUT-05).
+`@fix` and `@mut` are mutually exclusive on one position.
 
-Where the default is already non-mutable, `@fix` is redundant but accepted, the way `final` is accepted where a slot is never reassigned.
-It earns its keep where a default would otherwise grant mutability: a local whose initializer is `@mut` (MUT-02), a class extending a `@mut` class (HIER-02), and a type-parameter usage the worst-case rule assumes `@mut` (TARG-03b).
-In override position `@fix` is the explicit form of dropping `@mut` and follows HIER-05 unchanged.
+`@fix` is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (MUT-02), a subclass of a `@mut` class (HIER-02), and a type-parameter usage assumed `@mut` (TARG-03b).
+As an override annotation it is the explicit drop of `@mut` (HIER-05).
+
+A `@fix` type-parameter declaration freezes every usage of the parameter (TARG-08):
 
 ```java
-@fix class Foo<@fix T> extends MutableClass {
-    @fix T bar;                              // redundant: T is already @fix
-    List<@fix T> bars;                       // redundant: T is already @fix
-    @fix @bound T best(@bound @fix T b) {    // redundant: T is already @fix
-        @fix T c = b.clone();                // redundant: c inherits non-mut from b
-        return c;
-    }
+class Cache<@fix T> { T newest; T peek(); }   // every T is non-@mut
+```
+
+A per-usage `@fix` freezes one occurrence and leaves the rest assumed `@mut` (TARG-03b):
+
+```java
+@mut class Box<T> {
+    @fix T newest;                            // this T is non-@mut
+    @fix @bound T peek(@bound @fix T probe);  // these T usages too
+    @mutating void set(@take T v);            // other T usages stay @mut
 }
 ```
 
-`Foo` is a value class although it extends a `@mut` class (HIER-02, HIER-03), and `<@fix T>` treats every usage of `T` as non-`@mut` (TARG-08), so every `@fix` written on a usage of `T` inside the body is redundant.
-The example writes them only to show the positions `@fix` is admitted.
+A `@fix` binding freezes a mutable instance:
+
+```java
+@fix var frozen = new StringBuilder();        // frozen.append(...) rejected
+```
 
 ### MUT-02 - Local declaration forms
 
@@ -413,7 +420,7 @@ A local has two independent capabilities, each with its own default and marker.
 
 A local bound to a `@mut` value is `@mut`.
 A local bound to a value-class value, or to a shared borrow (OWN-02), is not.
-`@fix` forces the referent immutable even when the initializer would grant mutation, exactly as `final` forbids the reassignment the slot would otherwise grant.
+`@fix` forces the referent immutable even when the initializer would grant mutation.
 
 | Form | Reassign slot | Mutate through |
 |---|---|---|
@@ -423,41 +430,25 @@ A local bound to a value-class value, or to a shared borrow (OWN-02), is not.
 | `final @fix T x = e` | no | no |
 | `@mut T x = e` | yes | mutable borrow when `e` names a source, otherwise inherited |
 
-Because referent mutability is inherited, an owned mutable local needs no marker.
+An owned mutable local therefore needs no marker, and `@mut` on one is redundant.
+`@mut` stays meaningful on a borrowing local: a naming RHS borrows shared by default (OWN-02), and `@mut` requests a mutable borrow instead, which requires a `@mut` source and is exclusive (OWN-03, OWN-04).
 
 ```java
-var sb = new StringBuilder();                   // mutate-through: StringBuilder is @mut (MUT-05)
-sb.append("x");                                 // OK
-@fix var frozen = new StringBuilder();          // @fix drops mutation: frozen.append(...) rejected
-List<String> c = makeList();                    // mutate-through if makeList() yields an owned @mut List
-```
-
-Writing `@mut` on an owned local is redundant.
-`@mut` stays meaningful on a borrowing local: a naming RHS borrows shared by default (OWN-02), and `@mut` requests a mutable borrow instead, which requires the source to be `@mut` and is exclusive (OWN-03, OWN-04).
-
-```java
-@mut Node l = t.left;       // mutable borrow of a disjoint field (OWN-04)
+var sb = new StringBuilder();   // mutate-through: StringBuilder is @mut (MUT-05)
+@mut Node l = t.left;           // mutable borrow of a disjoint field (OWN-04)
 ```
 
 A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
 Only an effectively final local may be captured by a closure (CLO-01).
 Reassigning a slot that owns its value drops the previous value first (DROP-01).
 
-Java's `var` infers the type and changes neither axis.
-`var x = e` is reassignable, and its referent mutability is inherited from `e`.
-`final var x = e` locks the slot.
-`@fix var x = e` drops mutation through the referent.
-
-```java
-var count = items.size();           // reassignable; an int is never mutate-through
-final var pi = 3.14159;             // slot locked
-```
+`var` follows the same two axes: `var x = e` is reassignable with referent mutability inherited from `e`, `final var x = e` locks the slot, and `@fix var x = e` drops mutation through the referent.
 
 ### MUT-03 - `final` locks the slot, orthogonal to `@mut`
 
 `final` is Java's slot lock.
 It forbids reassignment and nothing else.
-It composes with the referent axis (MUT-02): `final` governs the slot, while referent mutability is inherited from the initializer and opted out of with `@fix`.
+It composes with the referent axis (MUT-02): `final` governs the slot.
 
 ```java
 final Properties config = loadConfig();  // referent mutability inherited from loadConfig()
@@ -485,8 +476,7 @@ A temporary fills a `@mut` parameter directly.
 A non-`@mut` source passed to a `@mut` parameter is rejected.
 There is no mutable access to lend.
 
-`@fix` on a parameter forces the referent non-mutable.
-It is redundant on a bare parameter, which already borrows immutably, except where the parameter's type is a type parameter assumed `@mut` (TARG-03b), in which case it drops that assumption (TARG-08).
+`@fix` on a parameter is redundant except where the parameter's type is a type parameter assumed `@mut` (TARG-03b, TARG-08).
 
 ### MUT-05 - `@mut` and `@fix` class declarations
 
@@ -507,7 +497,7 @@ Value classes are non-`@local` (STD-07) unless they hold a transitively `@local`
 Those primitives are themselves value classes whose hidden mutation makes them thread-affine.
 
 `Object` declares neither kind.
-It is the neutral root from which both `@mut` and value-class hierarchies descend, and its own mutability is supplied by the annotation on each direct subclass (HIER-02).
+It is the neutral root: a direct subclass takes its kind from its own declaration or the HIER-02 default, not from `Object`.
 `Number` extends `Object` and implements no `@mut` interface, so it defaults to a value class (HIER-02) with no explicit marker.
 Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are value classes, since they extend the value class `Number`.
 
@@ -525,7 +515,7 @@ A `@mut` field may be *declared* only in a class declared `@mut`.
 A value class may *inherit* a `@mut` field from a `@mut` ancestor (HIER-03) but may not declare one.
 The declared type is unrestricted.
 On a value-class-typed field `@mut` grants nothing observable, since the referent has no mutating surface, and is redundant.
-`@fix` on a field is redundant where the field is non-mutable-through by default, and meaningful only where the field's type is a type parameter assumed `@mut` (TARG-03b), where it drops that assumption (TARG-08).
+`@fix` on a field is redundant except where the field's type is a type parameter assumed `@mut` (TARG-03b, TARG-08).
 
 ### MUT-07b - Non-`final` field is reassignable through a `@mut` receiver
 
@@ -618,8 +608,7 @@ This is the only mechanism that bypasses MUT-09.
 ### HIER-01 - A `@mut` class has no value-class ancestor
 
 A class declared `@mut` may not extend a value (`@fix`) class.
-It may extend `Object` directly or another `@mut` class (HIER-02).
-So `@mut` classes form a connected region descending from the neutral root `Object` (MUT-05), and no `@mut` class has a value-class ancestor.
+It may extend `Object` directly or another `@mut` class (HIER-02), so no `@mut` class has a value-class ancestor.
 
 ### HIER-02 - Default mutability follows the supertype and interfaces
 
@@ -773,19 +762,10 @@ The `@unsafe` cost is visible at the storage site.
 ### TARG-03b - A type parameter assumes the mutability of its bound
 
 A type parameter carries the referent mutability of its bound at every usage: fields, parameters, returns, locals, and nested type arguments.
-The implicit bound is `Object`, the neutral root (MUT-05), which admits `@mut` subtypes.
-So an unconstrained `class Foo<T>` may be given a `@mut` argument, and a `class Foo<T extends Map>` whose bound `Map` is `@mut` likewise, and both treat `T` as a `@mut` type everywhere it is used, whether or not `@mut` is written.
+The implicit bound is `Object`, the neutral root (MUT-05), which admits `@mut` subtypes, so an unconstrained `class Foo<T>` and a `class Foo<T extends Map>` whose bound `Map` is `@mut` both treat `T` as `@mut` everywhere, whether or not `@mut` is written.
 A parameter whose bound is a value type treats `T` as a value type.
 
-The borrow checker assumes this worst case, and unlike the class default (HIER-02) the conservative direction here is `@mut`, not the value class, because assuming immutability for a parameter that may bind a `@mut` argument would be unsound.
-The body is checked as if every `T` value carried a mutable surface, and the copy-or-borrow interchange a value class permits (MUT-05) is not available.
-
-```java
-@mut class Box<T> {                 // T assumed @mut: Object admits @mut subtypes
-    T value;
-    @mutating void set(@take T v) { this.value = v; }
-}
-```
+The borrow checker assumes this worst case: the body is checked as if every `T` carried a mutable surface, so the copy-or-borrow interchange a value class permits (MUT-05) is not available.
 
 ### TARG-04 - Stacked borrow markers collapse to one borrow
 
@@ -872,23 +852,11 @@ List<@borrow Foo> b;  // remove(int): returns @bound Foo, bound to the list
 
 `@fix` removes the assumed mutability of TARG-03b, at either the declaration or an individual usage.
 
-On the parameter declaration, `class Foo<@fix T>` is shorthand for `class Foo<T extends @fix Object>`.
-It treats `T` as non-`@mut` at every usage, so an argument with a mutable surface is admitted but seen only through its value (non-mutating) surface inside `Foo`, a frozen view (HIER-04).
-This is the dual of `@own` (TARG-06), which constrains ownership rather than mutability.
+On the declaration, `class Foo<@fix T>` is shorthand for `class Foo<T extends @fix Object>`: every usage of `T` is non-`@mut`, so a mutable argument is admitted but seen only through its value surface inside `Foo`, a frozen view (HIER-04).
 
 On an individual usage, `@fix` treats just that occurrence as non-`@mut` and leaves the others under TARG-03b: `@fix T field`, `List<@fix T> xs`, a `@fix T` parameter or return, and a `@fix T` local.
 
 `@fix` in a type argument requires nothing of its container, since it only removes a capability.
-It is the dual of TARG-03, where `@mut` in a type argument requires a `@mut` container.
-
-```java
-class Cache<@fix T> { /* every T is a frozen view: no @mutating call on a T */ }
-
-@mut class Registry<T> {
-    @fix T template;                 // stored but never mutated through
-    @mutating void put(@take T v);   // other T usages stay @mut (TARG-03b)
-}
-```
 
 ---
 
