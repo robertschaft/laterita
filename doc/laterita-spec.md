@@ -499,7 +499,6 @@ Those primitives are themselves immutable classes whose hidden mutation makes th
 `Object` declares neither kind.
 It is the neutral root: a direct subclass takes its kind from its own declaration or the HIER-02 default, not from `Object`.
 `Number` extends `Object` and implements no `@mut` interface, so it defaults to an immutable class (HIER-02) with no explicit marker.
-Therefore `Integer`, `Long`, `Float`, and the other boxed numeric types are immutable classes, since they extend the immutable class `Number`.
 
 ### MUT-06 - `@mut` is rejected on `record` and `enum`
 
@@ -607,8 +606,8 @@ This is the only mechanism that bypasses MUT-09.
 
 ### HIER-01 - A `@mut` class has no immutable-class ancestor
 
-A class declared `@mut` may not extend an immutable (`@fix`) class.
-It may extend `Object` directly or another `@mut` class (HIER-02), so no `@mut` class has an immutable-class ancestor.
+A class may only be declared `@mut` if it extends a `@mut` class or the neutral `Object`.
+A class extending a `@fix` class must be `@fix`.
 
 ### HIER-02 - Default mutability follows the supertype and interfaces
 
