@@ -737,32 +737,32 @@ As a type argument it has no referent.
 `Pair<@take K, @take V>` is a compile error.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`).
 
-### TARG-03 - Element mutability follows the element, gated by the container
+### TARG-03 - Borrowing a held value is exclusive, producing one is not
 
-An element reached through a generic container follows the same two axes as a local (MUT-02).
-An owned element inherits its referent mutability from the element type: an element of a `@mut` class, or of a type parameter assumed `@mut` (TARG-03b), is mutable through, and an immutable element is not.
-`@fix` on an element opts it out, freezing it (TARG-08), and `@mut` on an owned `@mut`-class element is redundant.
-A `@borrow` element is shared by default and takes `@mut` to request a mutable element borrow, exactly as a borrowing local does.
+A `T` value obeys the ordinary mutability rules with no generic-specific default: an owned `T` follows its binding (MUT-02) and the type-parameter assumption (TARG-03b), a `@borrow` `T` takes `@mut` for a mutable borrow, and `@fix` freezes a usage (TARG-08).
+In particular the mutability of a `T` a generic *produces by ownership* is the receiver's, not the generic's.
+An immutable `Generator<T>` may hand out an owned `@mut` `T`, the same way any immutable producer may return a value the caller then owns and mutates.
 
-`@mut` element access is realized only through a `@mut` container.
-A `@mut` container is an exclusive borrow (OWN-03), so a `@mut` element borrow re-borrows the whole container and a second concurrent element borrow is a borrow-check error rather than aliasing.
-Through a shared container every element borrow is shared, so coexisting shared borrows can never each obtain `@mut` access to the same element.
-A local owning its container is `@mut` by inheritance (MUT-02), so the container is `@mut` without an explicit marker, and the gate bites only on a shared borrow of the container.
+The one generic-specific constraint is aliasing, and it applies only to a borrow of a value the generic *holds*.
+A `@mut` borrow of a held value re-borrows the whole structure (OWN-03), so it is available only while the structure is held `@mut` (exclusively).
+Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows of the structure can never each draw a `@mut` borrow of the same held value.
 
 ```java
 @mut class Foo { @mutating void touch(); }
 
-List<Foo> a = new ArrayList<>();   // a owns the list, so a is @mut (MUT-02)
-a.get(0).touch();                  // OK: Foo is @mut and a is @mut, so the element borrow is @mut
+List<Foo> a = new ArrayList<>();        // a owns the list, so a is @mut (MUT-02)
+a.get(0).touch();                       // OK: get borrows into a; a is @mut, so the borrow is @mut
 
-List<Foo> b = borrowList();        // b is a shared borrow of another owner's list
-b.get(0).touch();                  // ERROR: through a shared container the element borrow is shared
+List<Foo> b = borrowList();             // b is a shared borrow of another owner's list
+b.get(0).touch();                       // ERROR: a borrow of a held value through a shared structure is shared
 
-List<@fix Foo> c = new ArrayList<>();   // @fix freezes the elements
-c.get(0).touch();                  // ERROR: a @fix Foo element is never @mut
+class Generator<T> { Supplier<T> gen; T next() { return gen.get(); } }
+@fix Generator<Foo> g = makeGen();      // g is immutable, yet still produces owned Foo
+g.next().touch();                       // OK: next hands out an owned Foo, not a borrow into g
 ```
 
-A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05).
+`@fix` on a held value freezes it even in a `@mut` structure (TARG-08).
+A genuinely shared structure whose held values must mutate through shared borrows still requires `Cell<T>` (STD-05).
 The `@unsafe` cost is visible at the storage site.
 
 ### TARG-03b - A type parameter assumes the mutability of its bound
@@ -1977,7 +1977,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `FIELD` | only in a `@mut` class | Grants mutate-through on the field (the slot axis is MUT-07b) | MUT-07a |
 | `@mut` | `PARAMETER` | inert when the type is immutable (STR-07) | Mutable parameter (mutable borrow) | MUT-04 |
 | `@mut` | `METHOD` | inert when the type is immutable (STR-07) | Return is a `@mut` variable | MUT-01 |
-| `@mut` | `TYPE_USE` | `@mut` access realized only through a `@mut` container | Redundant on an owned `@mut`-class element (inherited), requests a mutable borrow on a `@borrow` element | TARG-03 |
+| `@mut` | `TYPE_USE` | a `@mut` borrow of a held value needs an exclusive holder | redundant on an owned `@mut`-class `T` (inherited), requests a mutable borrow on a `@borrow` `T` | TARG-03 |
 | `@fix` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-05 |
 | `@fix` | `LOCAL_VARIABLE` | - | Forces the referent non-mutable, opting out of the inherited mutability of MUT-02 | MUT-01b |
 | `@fix` | `FIELD` | redundant unless the field type is a `@mut`-assumed type parameter (TARG-03b) | Forces the referent non-mutable | MUT-01b |

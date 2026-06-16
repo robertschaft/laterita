@@ -828,15 +828,16 @@ A type argument may carry `@borrow` and `@mut`, but not `@take`.
 `@borrow` composes cleanly (TARG-01): a type argument names no source, so a borrow slot is exactly what it is.
 An instance that stores a `@borrow`-substituted argument can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04, and no struct-level lifetime parameters are needed.
 
-Element mutability is the subtle case, and it now mirrors the local rule (MUT-02) rather than standing apart.
-An owned element inherits its mutability from the element type, so an element of a `@mut` class is mutable through with no `@mut` written, and `@fix` is the opt-out that freezes it (TARG-08).
-The expressiveness this enables is real (worker pools, grids, fixed-shape mutable contents), and the only hazard is aliasing: an element accessor `@bound E get(int i)` yields a `@mut` element borrow when the element is `@mut`, and two coexisting shared borrows of one container would each draw a `@mut` borrow to the same slot.
+A `T` value's mutability is not a generic-specific rule, so TARG-03 does not give one.
+An owned `T` follows its binding (MUT-02) and the type-parameter assumption (TARG-03b), a `@borrow` `T` takes `@mut` for a mutable borrow, and `@fix` freezes a usage.
+Treating a generic as a container that holds and lends elements would over-generalize: a generic that *produces* a `T` by ownership, such as a `Generator<T>` calling a held supplier, hands the caller an owned value whose mutability is the caller's, so an immutable generator can still produce a `@mut` `T`.
+Rust draws the same line: a value produced through `&self` is owned by the caller, while only a `&mut` borrow of data stored in the receiver needs `&mut self`.
 
-The hazard exists only when the container is shared, duplicable into many coexisting borrows.
-A `@mut` container is an exclusive borrow (OWN-03), so a `@mut` element borrow re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing.
-So `@mut` element access is gated on the container being `@mut`, which a local owning its container now satisfies by inheritance (MUT-02), while a shared borrow of the container never does.
-A `@borrow` element keeps `@mut` as a meaningful marker that distinguishes a mutable element borrow from a shared one, which is why `@borrow @mut T[]` in `splitAt`'s return (ARR-01) is unaffected by the owned-element redundancy.
-A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
+The single generic-specific constraint is aliasing, and it bites only on a borrow of a value the generic *holds*.
+A `@mut` borrow of a held value re-borrows the whole structure (OWN-03), exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), so it is available only while the structure is held `@mut`.
+Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows can never each draw a `@mut` borrow of the same held value, and a local owning its structure satisfies the exclusivity by inheritance (MUT-02).
+A `@borrow` held value keeps `@mut` as a meaningful marker that distinguishes a mutable borrow from a shared one, which is why `@borrow @mut T[]` in `splitAt`'s return (ARR-01) is unaffected.
+A genuinely shared structure whose held values mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ### Why a type parameter assumes worst-case mutability, and `@fix` opts out (TARG-03b, TARG-08)
 
