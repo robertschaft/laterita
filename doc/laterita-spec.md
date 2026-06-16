@@ -494,6 +494,11 @@ An immutable interface may declare only methods without `@mutating`.
 Because no mutation is observable through an immutable variable, a copy of an immutable instance is interchangeable with a borrow under the same lifetime constraints.
 The compiler may substitute either.
 
+`Object` is special.
+It may carry `@fix` or `@mut` when used as a type, such as a container element or a variable.
+Per default it is `@fix`.
+In the class hierarchy it is neutral (HIER-02).
+
 ### MUT-06 - `@mut` is rejected on `record` and `enum`
 
 A `record` and an `enum` may not carry `@mut`.
