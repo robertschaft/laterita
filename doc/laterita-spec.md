@@ -405,7 +405,7 @@ A per-usage `@fix` freezes one occurrence and leaves the rest assumed `@mut` (TA
 }
 ```
 
-A `@fix` binding freezes a mutable instance, and `@fix` on an element type freezes the elements of a mutable container (TARG-03):
+A `@fix` binding freezes a mutable instance, and `@fix` on an element type freezes the elements of a mutable container (TARG-08):
 
 ```java
 @fix var frozen = new StringBuilder();              // frozen.append(...) rejected
@@ -737,33 +737,11 @@ As a type argument it has no referent.
 `Pair<@take K, @take V>` is a compile error.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`).
 
-### TARG-03 - Borrowing a held value is exclusive, producing one is not
+### TARG-03 - `@mut` in a type argument
 
-A `T` value obeys the ordinary mutability rules with no generic-specific default: an owned `T` follows its binding (MUT-02) and the type-parameter assumption (TARG-03b), a `@borrow` `T` takes `@mut` for a mutable borrow, and `@fix` freezes a usage (TARG-08).
-In particular the mutability of a `T` a generic *produces by ownership* is the receiver's, not the generic's.
-An immutable `Generator<T>` may hand out an owned `@mut` `T`, the same way any immutable producer may return a value the caller then owns and mutates.
-
-The one generic-specific constraint is aliasing, and it applies only to a borrow of a value the generic *holds*.
-A `@mut` borrow of a held value re-borrows the whole structure (OWN-03), so it is available only while the structure is held `@mut` (exclusively).
-Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows of the structure can never each draw a `@mut` borrow of the same held value.
-
-```java
-@mut class Foo { @mutating void touch(); }
-
-List<Foo> a = new ArrayList<>();        // a owns the list, so a is @mut (MUT-02)
-a.get(0).touch();                       // OK: get borrows into a; a is @mut, so the borrow is @mut
-
-List<Foo> b = borrowList();             // b is a shared borrow of another owner's list
-b.get(0).touch();                       // ERROR: a borrow of a held value through a shared structure is shared
-
-class Generator<T> { Supplier<T> gen; T next() { return gen.get(); } }
-@fix Generator<Foo> g = makeGen();      // g is immutable, yet still produces owned Foo
-g.next().touch();                       // OK: next hands out an owned Foo, not a borrow into g
-```
-
-`@fix` on a held value freezes it even in a `@mut` structure (TARG-08).
-A genuinely shared structure whose held values must mutate through shared borrows still requires `Cell<T>` (STD-05).
-The `@unsafe` cost is visible at the storage site.
+`@mut` may appear in a generic type argument.
+On an owned `@mut`-class `T` it is redundant (MUT-02), and on a `@borrow` `T` it requests a mutable borrow (MUT-04, TARG-01).
+The exclusivity of a `@mut` borrow of a value a generic holds follows the ordinary borrow rules (OWN-03, MUT-10), so TARG adds no constraint of its own.
 
 ### TARG-03b - A type parameter assumes the mutability of its bound
 

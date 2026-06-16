@@ -833,8 +833,8 @@ An owned `T` follows its binding (MUT-02) and the type-parameter assumption (TAR
 Treating a generic as a container that holds and lends elements would over-generalize: a generic that *produces* a `T` by ownership, such as a `Generator<T>` calling a held supplier, hands the caller an owned value whose mutability is the caller's, so an immutable generator can still produce a `@mut` `T`.
 Rust draws the same line: a value produced through `&self` is owned by the caller, while only a `&mut` borrow of data stored in the receiver needs `&mut self`.
 
-The single generic-specific constraint is aliasing, and it bites only on a borrow of a value the generic *holds*.
-A `@mut` borrow of a held value re-borrows the whole structure (OWN-03), exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), so it is available only while the structure is held `@mut`.
+Even the aliasing case adds no generic-specific rule.
+A `@mut` borrow of a held value re-borrows the whole structure (OWN-03, MUT-10), exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), so it is available only while the structure is held `@mut`, the same as drawing a `@mut` borrow from any holder.
 Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows can never each draw a `@mut` borrow of the same held value, and a local owning its structure satisfies the exclusivity by inheritance (MUT-02).
 A `@borrow` held value keeps `@mut` as a meaningful marker that distinguishes a mutable borrow from a shared one, which is why `@borrow @mut T[]` in `splitAt`'s return (ARR-01) is unaffected.
 A genuinely shared structure whose held values mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
@@ -851,7 +851,7 @@ Reading the assumption off the bound rather than a separate annotation means a c
 `@fix` is the opt-out, mirroring how `@own` (TARG-06) opts a parameter out of admitting borrows.
 `@fix T` at the declaration, shorthand for `T extends @fix Object`, freezes every usage at once and is the form a value-only container wants.
 `@fix` on a single usage narrows just that occurrence, for a body that stores a `T` mutably in one field but exposes it immutably through one accessor.
-Because `@fix` only removes a capability, it constrains the container at no site, the dual of TARG-03's rule that a written `@mut` element demands a `@mut` container.
+Because `@fix` only removes a capability, it requires nothing of its holder, the opposite of `@mut`, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-10).
 
 ### Why `@take` needs no degradation for borrows (TARG-05)
 
