@@ -405,10 +405,11 @@ A per-usage `@fix` freezes one occurrence and leaves the rest assumed `@mut` (TA
 }
 ```
 
-A `@fix` binding freezes a mutable instance:
+A `@fix` binding freezes a mutable instance, and `@fix` on an element type freezes the elements of a mutable container (TARG-03):
 
 ```java
-@fix var frozen = new StringBuilder();        // frozen.append(...) rejected
+@fix var frozen = new StringBuilder();              // frozen.append(...) rejected
+List<@fix StringBuilder> all = new ArrayList<>();   // elements frozen: all.get(0).append(...) rejected
 ```
 
 ### MUT-02 - Local declaration forms
@@ -611,13 +612,16 @@ A class extending a `@fix` class must be `@fix`.
 
 ### HIER-02 - Default mutability follows the supertype and interfaces
 
-When a class declares neither `@mut` nor `@fix` (MUT-05), its kind defaults from what it extends.
+When a class declares neither `@mut` nor `@fix` (MUT-05), its kind is determined in order:
 
-- A class extending `Object` directly, whether `Object` is implicit or written, defaults to `@mut` if it implements at least one `@mut` interface, and to an immutable class otherwise. Either kind may be declared explicitly instead. `Object` itself declares no kind, so a direct subclass takes no default from it.
-- A class extending a `@mut` class other than `Object` defaults to `@mut` and may instead be declared `@fix`, an immutable subclass (HIER-03).
-- A class extending an immutable (`@fix`) class is immutable and may not be declared `@mut` (HIER-01).
+- A `record` or `enum` is `@fix` (MUT-06).
+- If it extends a `@fix` class, it is `@fix` (HIER-01).
+- If it directly extends a `@mut` class, it defaults to `@mut`.
+- Otherwise, if it implements at least one `@mut` interface, it defaults to `@mut`.
+- In all other cases it defaults to `@fix`.
 
-Once a class in a hierarchy is immutable, every subclass of it is immutable: an immutable class admits no `@mut` subclass (HIER-01), so the freeze propagates downward and never reverses.
+`Object` is neutral in this hierarchy.
+Unless explicitly declared `@mut` or `@fix` it is neither, so a direct subclass takes no default from it.
 
 ### HIER-03 - Immutable subclass of a `@mut` ancestor is a frozen view
 
@@ -735,25 +739,30 @@ As a type argument it has no referent.
 `Pair<@take K, @take V>` is a compile error.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`).
 
-### TARG-03 - `@mut` in a type argument requires `@mut` container
+### TARG-03 - Element mutability follows the element, gated by the container
 
-`@mut` may appear inside a generic type argument only when the enclosing generic type is itself `@mut` at that occurrence.
-That is, the type of a `@mut` variable, `@mut` parameter, `@mut` field, or `@mut`/owned return.
+An element reached through a generic container follows the same two axes as a local (MUT-02).
+An owned element inherits its referent mutability from the element type: an element of a `@mut` class, or of a type parameter assumed `@mut` (TARG-03b), is mutable through, and an immutable element is not.
+`@fix` on an element opts it out, freezing it (TARG-08), and `@mut` on an owned `@mut`-class element is redundant.
+A `@borrow` element is shared by default and takes `@mut` to request a mutable element borrow, exactly as a borrowing local does.
+
+`@mut` element access is realized only through a `@mut` container.
+A `@mut` container is an exclusive borrow (OWN-03), so a `@mut` element borrow re-borrows the whole container and a second concurrent element borrow is a borrow-check error rather than aliasing.
+Through a shared container every element borrow is shared, so coexisting shared borrows can never each obtain `@mut` access to the same element.
+A local owning its container is `@mut` by inheritance (MUT-02), so the container is `@mut` without an explicit marker, and the gate bites only on a shared borrow of the container.
 
 ```java
-@mut List<@mut Foo> a = ...;     // OK
-@mut List<Foo>      b = ...;     // OK
-List<Foo>           c = ...;     // OK
-List<@mut Foo>      d = ...;     // ERROR (TARG-03)
-```
+@mut class Foo { @mutating void touch(); }
 
-The restriction is a soundness requirement.
-An element accessor declared `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`.
-Producing a `@mut` element borrow re-borrows the whole container mutably (MUT-09).
-By OWN-03 that is exclusive, the same receiver-reborrow pattern `splitAt` uses (ARR-01).
-A *shared* `List<@mut Foo>` would let that `@mut` element borrow be drawn from each of several coexisting shared borrows of the container, aliasing the element.
-Requiring the container to be `@mut` makes every `@mut` element borrow an exclusive re-borrow.
-Two simultaneous element borrows are then a borrow-check error rather than aliasing.
+List<Foo> a = new ArrayList<>();   // a owns the list, so a is @mut (MUT-02)
+a.get(0).touch();                  // OK: Foo is @mut and a is @mut, so the element borrow is @mut
+
+List<Foo> b = borrowList();        // b is a shared borrow of another owner's list
+b.get(0).touch();                  // ERROR: through a shared container the element borrow is shared
+
+List<@fix Foo> c = new ArrayList<>();   // @fix freezes the elements
+c.get(0).touch();                  // ERROR: a @fix Foo element is never @mut
+```
 
 A genuinely shared container whose elements must mutate through shared borrows still requires `Cell<T>` (STD-05).
 The `@unsafe` cost is visible at the storage site.
@@ -1970,7 +1979,7 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `FIELD` | only in a `@mut` class | Grants mutate-through on the field (the slot axis is MUT-07b) | MUT-07a |
 | `@mut` | `PARAMETER` | inert when the type is immutable (STR-07) | Mutable parameter (mutable borrow) | MUT-04 |
 | `@mut` | `METHOD` | inert when the type is immutable (STR-07) | Return is a `@mut` variable | MUT-01 |
-| `@mut` | `TYPE_USE` | only when enclosing generic type is `@mut` | Generic type argument carries `@mut` elements | TARG-03 |
+| `@mut` | `TYPE_USE` | `@mut` access realized only through a `@mut` container | Redundant on an owned `@mut`-class element (inherited), requests a mutable borrow on a `@borrow` element | TARG-03 |
 | `@fix` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-05 |
 | `@fix` | `LOCAL_VARIABLE` | - | Forces the referent non-mutable, opting out of the inherited mutability of MUT-02 | MUT-01b |
 | `@fix` | `FIELD` | redundant unless the field type is a `@mut`-assumed type parameter (TARG-03b) | Forces the referent non-mutable | MUT-01b |

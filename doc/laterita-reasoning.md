@@ -828,9 +828,15 @@ A type argument may carry `@borrow` and `@mut`, but not `@take`.
 `@borrow` composes cleanly (TARG-01): a type argument names no source, so a borrow slot is exactly what it is.
 An instance that stores a `@borrow`-substituted argument can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04, and no struct-level lifetime parameters are needed.
 
-`@mut` in a type argument — `List<@mut Foo>` — is the hard case. The expressiveness is real (worker pools, grids, fixed-shape mutable contents), and the hazard is aliasing: an element accessor `@bound E get(int i)` returns `@mut @bound Foo` when `E` is `@mut Foo`, and two coexisting shared borrows of a `List<@mut Foo>` would each call `get(0)` and receive a `@mut Foo` to the same slot. Banning `@mut` from type arguments outright would push the case onto `Cell<T>`, but that is heavier than the hazard requires.
+Element mutability is the subtle case, and it now mirrors the local rule (MUT-02) rather than standing apart.
+An owned element inherits its mutability from the element type, so an element of a `@mut` class is mutable through with no `@mut` written, and `@fix` is the opt-out that freezes it (TARG-08).
+The expressiveness this enables is real (worker pools, grids, fixed-shape mutable contents), and the only hazard is aliasing: an element accessor `@bound E get(int i)` yields a `@mut` element borrow when the element is `@mut`, and two coexisting shared borrows of one container would each draw a `@mut` borrow to the same slot.
 
-The hazard exists only when the container is *shared* — duplicable into many coexisting borrows. A `@mut` container is an exclusive borrow (OWN-03): a `@mut` element borrow drawn from it re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing. So `@mut` is admitted in a type argument precisely when the enclosing generic type is itself `@mut` (TARG-03): `@mut List<@mut Foo>` is sound and expressible; `List<@mut Foo>` — a shared container with mutable elements — stays rejected. A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
+The hazard exists only when the container is shared, duplicable into many coexisting borrows.
+A `@mut` container is an exclusive borrow (OWN-03), so a `@mut` element borrow re-borrows the whole container, exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), and a second concurrent element borrow is then a borrow-check error rather than aliasing.
+So `@mut` element access is gated on the container being `@mut`, which a local owning its container now satisfies by inheritance (MUT-02), while a shared borrow of the container never does.
+A `@borrow` element keeps `@mut` as a meaningful marker that distinguishes a mutable element borrow from a shared one, which is why `@borrow @mut T[]` in `splitAt`'s return (ARR-01) is unaffected by the owned-element redundancy.
+A genuinely shared container whose elements mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ### Why a type parameter assumes worst-case mutability, and `@fix` opts out (TARG-03b, TARG-08)
 

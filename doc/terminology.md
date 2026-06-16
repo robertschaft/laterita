@@ -44,7 +44,7 @@ See `LIFE-04`, `DROP-11`.
 `@bound`, `@mut`, `@fix`, `@take`, `@borrow`, and `@own`. Legal positions:
 - `@bound`. Parameter, return (`OWN-17`, `OWN-18`).
 - `@borrow`. Field, record component, generic type argument, and parameter with `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
-- `@mut`. Local, field, parameter, return. In a type argument only when the enclosing generic is `@mut` (`TARG-03`).
+- `@mut`. Local, field, parameter, return. In a type argument it requests a mutable `@borrow` element and is redundant on an owned `@mut`-class element, with `@mut` access gated by a `@mut` container (`TARG-03`).
 - `@fix`. Local, field, parameter, return, type argument, type-parameter declaration, and class or interface declaration. The explicit non-mutability dual of `@mut`, mutually exclusive with it (`MUT-01b`, `TARG-08`).
 - `@take`. Parameter only. Rejected on fields, locals, and generic type arguments (`OWN-10`, `TARG-02`).
 - `@own`. Type parameter declaration (`TARG-06`).
