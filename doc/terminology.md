@@ -45,7 +45,7 @@ See `LIFE-04`, `DROP-11`.
 - `@bound`. Parameter, return (`OWN-17`, `OWN-18`).
 - `@borrow`. Field, record component, generic type argument, and parameter with `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
 - `@mut`. Local, field, parameter, return. In a type argument it requests a mutable borrow of a `@borrow` `T` and is redundant on an owned `@mut`-class `T`, with a `@mut` borrow of a held value gated by an exclusive holder (`TARG-03`).
-- `@fix`. Local, field, parameter, return, type argument, type-parameter declaration, and class or interface declaration. The explicit non-mutability dual of `@mut`, mutually exclusive with it (`MUT-01b`, `TARG-08`).
+- `@fix`. Local, field, parameter, return, type argument, type-parameter declaration, and class or interface declaration. The explicit non-mutability dual of `@mut`, mutually exclusive with it (`MUT-01b`, `TARG-03`).
 - `@take`. Parameter only. Rejected on fields, locals, and generic type arguments (`OWN-10`, `TARG-02`).
 - `@own`. Type parameter declaration (`TARG-06`).
 
@@ -76,8 +76,8 @@ Declares that a method consumes its receiver — the body owns `this`, and after
 
 ### @fix (annotation)
 The explicit non-mutability dual of `@mut`: it declares the referent non-mutable wherever `@mut` may appear, and is mutually exclusive with `@mut` on one position.
-It is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (`MUT-02`), a subclass of a `@mut` class (`HIER-02`), and a type-parameter usage assumed `@mut` (`TARG-03b`).
-On a type-parameter declaration `<@fix T>` is shorthand for `<T extends @fix Object>`, freezing every usage of `T` (`TARG-08`).
+It is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (`MUT-02`), a subclass of a `@mut` class (`HIER-02`), and a type-parameter usage assumed `@mut` (`TARG-03`).
+On a type-parameter declaration `<@fix T>` is shorthand for `<T extends @fix Object>`, freezing every usage of `T` (`TARG-03`).
 On a class declaration `@fix class C` declares an immutable class (`MUT-05`).
 See `MUT-01b`.
 

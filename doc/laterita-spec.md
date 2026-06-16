@@ -383,19 +383,19 @@ These are the only surface forms that grant mutability, and `@fix` (MUT-01b) is 
 ### MUT-01b - `@fix` is the explicit non-mutability marker
 
 `@fix` is the dual of `@mut`: it declares the referent non-mutable.
-It is admitted wherever `@mut` may appear: locals (MUT-02), fields (MUT-07a), parameters (MUT-04), returns, type arguments and type-parameter usages (TARG-03b, TARG-08), and class or interface declarations (MUT-05).
+It is admitted wherever `@mut` may appear: locals (MUT-02), fields (MUT-07a), parameters (MUT-04), returns, type arguments and type-parameter usages (TARG-03), and class or interface declarations (MUT-05).
 `@fix` and `@mut` are mutually exclusive on one position.
 
-`@fix` is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (MUT-02), a subclass of a `@mut` class (HIER-02), and a type-parameter usage assumed `@mut` (TARG-03b).
+`@fix` is redundant where the position is already non-mutable, and load-bearing where a default would otherwise grant mutation: a local with a `@mut` initializer (MUT-02), a subclass of a `@mut` class (HIER-02), and a type-parameter usage assumed `@mut` (TARG-03).
 As an override annotation it is the explicit drop of `@mut` (HIER-05).
 
-A `@fix` type-parameter declaration freezes every usage of the parameter (TARG-08):
+A `@fix` type-parameter declaration freezes every usage of the parameter (TARG-03):
 
 ```java
 class Cache<@fix T> { T newest; T peek(); }   // every T is non-@mut
 ```
 
-A per-usage `@fix` freezes one occurrence and leaves the rest assumed `@mut` (TARG-03b):
+A per-usage `@fix` freezes one occurrence and leaves the rest assumed `@mut` (TARG-03):
 
 ```java
 @mut class Box<T> {
@@ -405,7 +405,7 @@ A per-usage `@fix` freezes one occurrence and leaves the rest assumed `@mut` (TA
 }
 ```
 
-A `@fix` binding freezes a mutable instance, and `@fix` on an element type freezes the elements of a mutable container (TARG-08):
+A `@fix` binding freezes a mutable instance, and `@fix` on an element type freezes the elements of a mutable container (TARG-03):
 
 ```java
 @fix var frozen = new StringBuilder();              // frozen.append(...) rejected
@@ -477,7 +477,7 @@ A temporary fills a `@mut` parameter directly.
 A non-`@mut` source passed to a `@mut` parameter is rejected.
 There is no mutable access to lend.
 
-`@fix` on a parameter is redundant except where the parameter's type is a type parameter assumed `@mut` (TARG-03b, TARG-08).
+`@fix` on a parameter is redundant except where the parameter's type is a type parameter assumed `@mut` (TARG-03).
 
 ### MUT-05 - `@mut` and `@fix` class declarations
 
@@ -513,7 +513,7 @@ A `@mut` field may be *declared* only in a class declared `@mut`.
 An immutable class may *inherit* a `@mut` field from a `@mut` ancestor (HIER-03) but may not declare one.
 The declared type is unrestricted.
 On a field of immutable type `@mut` grants nothing observable, since the referent has no mutating surface, and is redundant.
-`@fix` on a field is redundant except where the field's type is a type parameter assumed `@mut` (TARG-03b, TARG-08).
+`@fix` on a field is redundant except where the field's type is a type parameter assumed `@mut` (TARG-03).
 
 ### MUT-07b - Non-`final` field is reassignable through a `@mut` receiver
 
@@ -737,19 +737,16 @@ As a type argument it has no referent.
 `Pair<@take K, @take V>` is a compile error.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`).
 
-### TARG-03 - `@mut` in a type argument
+### TARG-03 - Type-parameter mutability and the `@fix` opt-out
 
-`@mut` may appear in a generic type argument.
-On an owned `@mut`-class `T` it is redundant (MUT-02), and on a `@borrow` `T` it requests a mutable borrow (MUT-04, TARG-01).
-The exclusivity of a `@mut` borrow of a value a generic holds follows the ordinary borrow rules (OWN-03, MUT-10), so TARG adds no constraint of its own.
+A type parameter assumes the mutability of its bound at every usage: fields, parameters, returns, locals, and nested type arguments.
+The implicit bound is `Object`, which admits `@mut` subtypes, so an unconstrained `class Foo<T>`, and a `class Foo<T extends Map>` whose bound is `@mut`, treat `T` as `@mut` everywhere, while a parameter with a value bound treats `T` as immutable.
+The borrow checker assumes this worst case, checking the body as if every `T` carried a mutable surface, so writing `@mut` on a usage of `T` is redundant.
 
-### TARG-03b - A type parameter assumes the mutability of its bound
-
-A type parameter carries the referent mutability of its bound at every usage: fields, parameters, returns, locals, and nested type arguments.
-The implicit bound is `Object`, the neutral root (MUT-05), which admits `@mut` subtypes, so an unconstrained `class Foo<T>` and a `class Foo<T extends Map>` whose bound `Map` is `@mut` both treat `T` as `@mut` everywhere, whether or not `@mut` is written.
-A parameter whose bound is immutable treats `T` as immutable.
-
-The borrow checker assumes this worst case: the body is checked as if every `T` carried a mutable surface, so the copy-or-borrow interchange an immutable class permits (MUT-05) is not available.
+`@fix` is the opt-out.
+`class Foo<@fix T>` is shorthand for `class Foo<T extends @fix Object>` and treats every `T` as non-`@mut`, admitting a mutable argument only through its immutable surface, a frozen view (HIER-04).
+On a single usage (`@fix T field`, `List<@fix T> xs`, a `@fix T` parameter, return, or local) it frees just that occurrence and leaves the rest assumed `@mut`.
+`@fix` requires nothing of its holder, since it only removes a capability.
 
 ### TARG-04 - Stacked borrow markers collapse to one borrow
 
@@ -831,16 +828,6 @@ It is the conservative choice: the returned borrow is capped at the container's 
 List<Foo> a;          // remove(int): returns owned Foo (moved out)
 List<@borrow Foo> b;  // remove(int): returns @bound Foo, bound to the list
 ```
-
-### TARG-08 - `@fix` opts a type-parameter usage out of assumed mutability
-
-`@fix` removes the assumed mutability of TARG-03b, at either the declaration or an individual usage.
-
-On the declaration, `class Foo<@fix T>` is shorthand for `class Foo<T extends @fix Object>`: every usage of `T` is non-`@mut`, so a mutable argument is admitted but seen only through its immutable surface inside `Foo`, a frozen view (HIER-04).
-
-On an individual usage, `@fix` treats just that occurrence as non-`@mut` and leaves the others under TARG-03b: `@fix T field`, `List<@fix T> xs`, a `@fix T` parameter or return, and a `@fix T` local.
-
-`@fix` in a type argument requires nothing of its container, since it only removes a capability.
 
 ---
 
@@ -1958,11 +1945,11 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `TYPE_USE` | a `@mut` borrow of a held value needs an exclusive holder | redundant on an owned `@mut`-class `T` (inherited), requests a mutable borrow on a `@borrow` `T` | TARG-03 |
 | `@fix` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-05 |
 | `@fix` | `LOCAL_VARIABLE` | - | Forces the referent non-mutable, opting out of the inherited mutability of MUT-02 | MUT-01b |
-| `@fix` | `FIELD` | redundant unless the field type is a `@mut`-assumed type parameter (TARG-03b) | Forces the referent non-mutable | MUT-01b |
-| `@fix` | `PARAMETER` | redundant unless the type is a `@mut`-assumed type parameter (TARG-03b) | Forces the referent non-mutable | MUT-01b |
+| `@fix` | `FIELD` | redundant unless the field type is a `@mut`-assumed type parameter (TARG-03) | Forces the referent non-mutable | MUT-01b |
+| `@fix` | `PARAMETER` | redundant unless the type is a `@mut`-assumed type parameter (TARG-03) | Forces the referent non-mutable | MUT-01b |
 | `@fix` | `METHOD` | - | Return is non-`@mut` | MUT-01b |
-| `@fix` | `TYPE_USE` | - | Generic type-argument usage is non-`@mut` (dual of `@mut`, requires nothing of the container) | TARG-08 |
-| `@fix` | `TYPE_PARAMETER` | - | `<@fix T>` is shorthand for `<T extends @fix Object>`: every usage of `T` is non-`@mut` | TARG-08 |
+| `@fix` | `TYPE_USE` | - | Generic type-argument usage is non-`@mut` (dual of `@mut`, requires nothing of the container) | TARG-03 |
+| `@fix` | `TYPE_PARAMETER` | - | `<@fix T>` is shorthand for `<T extends @fix Object>`: every usage of `T` is non-`@mut` | TARG-03 |
 | `@mutating` | `METHOD` | - | Method mutates its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | MUT-08, FN-01 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |

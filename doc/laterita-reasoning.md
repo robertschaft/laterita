@@ -85,7 +85,7 @@ The vocabulary matches Rust's, which is the lower-friction choice for the audien
 `@mut` marks the rarer, more dangerous choice, so most positions stay bare and mean "not mutable" by default: the immutable-class default of MUT-05, the immutable field of MUT-07a, the borrow parameter of MUT-04.
 A single word is still needed for the one place the default runs the other way, where a context would otherwise grant mutability and the author wants it gone.
 Three such contexts exist.
-A local inherits mutability from its initializer (MUT-02), a class extending a `@mut` class defaults to `@mut` (HIER-02), and a type-parameter usage is assumed `@mut` under the worst-case rule (TARG-03b).
+A local inherits mutability from its initializer (MUT-02), a class extending a `@mut` class defaults to `@mut` (HIER-02), and a type-parameter usage is assumed `@mut` under the worst-case rule (TARG-03).
 `@fix` is the opt-out in all three, the dual of `@mut` in the way `final` is the opt-out of the reassignable slot.
 
 Spelling the opt-out as one marker rather than three context-specific keywords keeps the surface small and the reading uniform.
@@ -829,7 +829,7 @@ A type argument may carry `@borrow` and `@mut`, but not `@take`.
 An instance that stores a `@borrow`-substituted argument can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04, and no struct-level lifetime parameters are needed.
 
 A `T` value's mutability is not a generic-specific rule, so TARG-03 does not give one.
-An owned `T` follows its binding (MUT-02) and the type-parameter assumption (TARG-03b), a `@borrow` `T` takes `@mut` for a mutable borrow, and `@fix` freezes a usage.
+An owned `T` follows its binding (MUT-02) and the type-parameter assumption (TARG-03), a `@borrow` `T` takes `@mut` for a mutable borrow, and `@fix` freezes a usage.
 Treating a generic as a container that holds and lends elements would over-generalize: a generic that *produces* a `T` by ownership, such as a `Generator<T>` calling a held supplier, hands the caller an owned value whose mutability is the caller's, so an immutable generator can still produce a `@mut` `T`.
 Rust draws the same line: a value produced through `&self` is owned by the caller, while only a `&mut` borrow of data stored in the receiver needs `&mut self`.
 
@@ -839,7 +839,7 @@ Through a shared structure a borrow of a held value is shared, so two coexisting
 A `@borrow` held value keeps `@mut` as a meaningful marker that distinguishes a mutable borrow from a shared one, which is why `@borrow @mut T[]` in `splitAt`'s return (ARR-01) is unaffected.
 A genuinely shared structure whose held values mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
-### Why a type parameter assumes worst-case mutability, and `@fix` opts out (TARG-03b, TARG-08)
+### Why a type parameter assumes worst-case mutability, and `@fix` opts out (TARG-03)
 
 A generic body is checked once and monomorphized against every argument (COMP-02), so it must be sound for the most capable argument it admits.
 For mutability the most capable argument is a `@mut` instance, so an unconstrained `T` is assumed `@mut` everywhere it is used.
