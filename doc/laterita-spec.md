@@ -494,10 +494,6 @@ An immutable interface may declare only methods without `@mutating`.
 Because no mutation is observable through an immutable variable, a copy of an immutable instance is interchangeable with a borrow under the same lifetime constraints.
 The compiler may substitute either.
 
-`Object` declares neither kind.
-It is the neutral root: a direct subclass takes its kind from its own declaration or the HIER-02 default, not from `Object`.
-`Number` extends `Object` and implements no `@mut` interface, so it defaults to an immutable class (HIER-02) with no explicit marker.
-
 ### MUT-06 - `@mut` is rejected on `record` and `enum`
 
 A `record` and an `enum` may not carry `@mut`.
