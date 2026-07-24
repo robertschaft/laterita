@@ -159,3 +159,75 @@ Without explicit rules excluding primitives from the borrow surface, every reade
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
 **Related codes:** OWN-01, OWN-13, OWN-16, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
+
+## OQ-36 — Integer overflow, shift, and narrowing semantics
+
+**Surfaced when:** surveying 2026 CVEs whose root cause is unchecked integer arithmetic feeding allocation sizes (`doc/cve-findings-2026.md`, group 4), and noticing the spec has no topic covering arithmetic semantics at all.
+
+**The issue.**
+Java wraps silently on `int` and `long` overflow, masks shift amounts to the bit width, and truncates narrowing casts.
+Rust traps on overflow in debug builds, provides explicit `wrapping_` / `checked_` / `saturating_` operation families, and rejects an out-of-range constant shift.
+The 2026 evidence (Linux AMD XDNA, 7-Zip NTFS, GIMP PSD, glibc `memalign`, Windows HTTP.sys) shows wrapped size computations producing undersized allocations that attackers turn into heap corruption.
+Laterita compiles natively (COMP-01) and its stdlib allocates through `Heap<T>` inside `@unsafe` methods, so a wrapped size that reaches such a method reproduces the C failure shape.
+Checked indexing catches the out-of-bounds write, but the undersized allocation, the wrong `slice()` range, and the corrupted program logic remain.
+The counter-pressure is Java compatibility: migrated code relies on wrapping intentionally in hash functions (`31 * h + c`), checksums, and random number generators, so a checked default changes the behavior of correct existing code.
+
+**The question.**
+- Do `+`, `-`, `*` on integer types throw `ArithmeticException` on overflow (the `Math.addExact` family semantics) by default, or wrap as in Java?
+- If checked is the default, what is the explicit wrapping form: a stdlib `wrapAdd` family, a source-level annotation on the enclosing method, or a distinct operator spelling in `.lat`?
+- Is a shift amount greater than or equal to the operand bit width a compile error where constant and a thrown error where dynamic, instead of Java's silent masking?
+- Does a narrowing cast such as `(int) longValue` throw on value loss, with an explicit truncating form for the intentional case?
+- What is the cost model under COMP-01: trapping adds are a flags branch on modern hardware, but do hot loops get a scoped opt-out?
+- Division by zero already throws in Java, so does `Integer.MIN_VALUE / -1` (the one overflowing division) join the checked set?
+
+**Why it matters.**
+CWE-190 is a top root cause of 2026 heap-corruption CVEs, and it is the one memory-safety-adjacent class the current spec does not address.
+A language that markets Rust-grade safety cannot leave allocation-size arithmetic silently wrapping.
+
+**Related codes:** COMP-01, UNS-02, STD-06, ARR-01, OQ-33.
+
+## OQ-37 — Array creation, element initialization, and the non-nullable gap
+
+**Surfaced when:** surveying 2026 uninitialized-memory disclosure CVEs (`doc/cve-findings-2026.md`, group 5), and noticing that `new T[n]` has no valid default element when `T` is non-nullable (NULL-01).
+
+**The issue.**
+Java zero-fills every fresh array: primitives to zero, references to null.
+The null-fill answer is unavailable in Laterita because a bare `T` excludes null (NULL-01), so `new String[10]` cannot be well-typed as specified today.
+The spec is silent on what `new T[n]` contains, and silent on whether a fresh allocation may expose prior heap contents.
+The 7-Zip UEFI capsule CVE shows the stakes of the second silence: an attacker-sized buffer allocated without initialization leaked cryptographic material and ASLR-defeating pointers from prior heap use.
+Rust's answer is that safe code never observes uninitialized memory: `Vec` grows from length zero, fixed arrays require an initializer expression, and `MaybeUninit` gates the rest behind unsafe.
+
+**The question.**
+- Is `new T[n]` rejected for a non-nullable reference element type, so only primitive arrays and `T?[]` use the bare form?
+- Does the stdlib provide a fill-factory creation form (an element supplier invoked per index) that initializes every element before the array is observable?
+- Is zero-fill of primitive arrays normative, so that no safe allocation ever exposes prior heap contents, with `Heap<T>` (STD-06) remaining the only uninitialized surface behind `@unsafe`?
+- How do partially filled buffers (an IO read buffer filled to `bytesRead`) express the initialized-prefix idiom: a length-tracking wrapper, a returned slice, or caller discipline?
+
+**Why it matters.**
+Uninitialized-memory disclosure is the quiet sibling of buffer overflow, and the 2026 evidence shows it leaking key material.
+Separately, `new T[n]` is a soundness hole in NULL-01 as written: either the rule or array creation must give ground, and the spec currently chooses neither.
+
+**Related codes:** NULL-01, NULL-08, OWN-11, ARR-01, STD-06, UNS-02.
+
+## OQ-38 — Allocation-failure behavior
+
+**Surfaced when:** the HAProxy HPACK CVE (`doc/cve-findings-2026.md`, group 6), where an allocation returning NULL under memory pressure was dereferenced later, and noticing that NULL-01 forbids a null-returning `new` without the spec defining what happens instead.
+
+**The issue.**
+C returns NULL from `malloc` and relies on every caller checking, which the HAProxy CVE shows failing in practice.
+Java throws `OutOfMemoryError` from a GC-coupled runtime.
+Rust aborts the process on allocation failure by default and offers fallible variants (`try_reserve`) for callers that can degrade gracefully.
+Laterita has no GC (COMP-01), non-nullable constructor results (NULL-01), and an exception unwind that runs `onDrop()` bodies (EXC-02) which may themselves allocate.
+
+**The question.**
+- Does allocation failure abort the process or throw a throwable?
+- If it throws, how does the unwind path stay sound when an `onDrop()` body allocates during the unwind?
+- Are fallible allocation variants provided on the growable stdlib types for memory-constrained callers, returning `T?` or a boolean instead of failing?
+- Do arenas or allocator handles enter the surface, or is the global allocator the only source?
+
+**Why it matters.**
+Every allocation site in every program hits this rule.
+Abort-by-default is simple and sound but surprising to Java developers, while throw-by-default threatens the soundness of cleanup during unwind.
+The decision is invisible until memory pressure, which is exactly when it must already be right.
+
+**Related codes:** NULL-01, COMP-01, EXC-02, DROP-01, THR-05, STD-06.
