@@ -17,6 +17,12 @@ A local variable, field, or parameter that holds a value. In Laterita, every var
 ### borrow / borrowed variable
 A variable that refers to a value owned elsewhere, rather than owning it itself. A borrowed variable cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`. There are two kinds: shared (immutable) and mutable. See `OWN-03` for the rules.
 
+### signature-complete ownership contract
+The design goal that every ownership and borrow fact a caller must respect is stated on the signatures the caller can see, never only in a callee's private fields or method bodies.
+It is what makes borrow checking modular: each body is checked against its own signature, each caller against the signatures it uses.
+A declaration whose safe use would need the caller to inspect an implementation is ill-formed.
+See `OWN-00`.
+
 ### @borrow (annotation on fields, record components, type arguments, and parameters)
 Declares that a slot is a borrow slot rather than an owned slot: a field, a record component, or a generic type argument (`TARG-01`).
 An instance of a class containing any `@borrow` slot can only be produced as a `@bound` value, with lifetime intersecting each source (LIFE-03).

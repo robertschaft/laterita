@@ -58,7 +58,23 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 ---
 
-## Ownership (OWN-01 through OWN-21)
+## Ownership (OWN-00 through OWN-21)
+
+### Why the ownership contract lives in signatures (OWN-00)
+
+The borrow checker is modular.
+It verifies each method against its own signature and each caller against the signatures it uses, and it never opens a callee's body or private fields to do either.
+This is what lets a library evolve its internals without breaking callers, and what keeps checking cost linear in one function at a time rather than whole-program.
+The property only holds if every ownership and borrow fact a caller must respect is already present on the signatures it can see.
+So OWN-00 states that requirement directly and makes any declaration that would hide such a fact ill-formed.
+
+The rule is also a design test for the annotation vocabulary itself.
+When a returned object borrows one of a call's inputs, the caller needs two facts to check its own code.
+Which input the result is bound to, answered by `@bound` naming the source (OWN-17, OWN-18), and whether that borrow is shared or exclusive, answered by the source's mode at the call.
+For a receiver that mode is visible as the plain-versus-`@mutating` distinction (MUT-08, MUT-10), a plain method lending `this` shared and a `@mutating` method taking it exclusively, the direct analog of Rust's `&self` versus `&mut self`.
+A design in which the only witness of shared-versus-exclusive is a private field, so that a reader of the signature cannot tell whether the returned object may mutate the borrowed source, fails OWN-00 and is rejected as a missing distinction in the signature, not patched by inspecting the implementation.
+The iterator API is the worked example.
+A read-only cursor and a mutating cursor are two return types reachable by two differently named factories, `Iterator<T>` from a plain `iterator()` and a mutating cursor from a `@mutating` factory, so that the borrow each holds on the collection is legible from the call alone.
 
 ### Why methods declare consumption of `this` with `@consuming` (OWN-15)
 

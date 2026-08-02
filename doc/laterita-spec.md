@@ -40,6 +40,23 @@ Codes are grouped by area:
 
 This section specifies how values are owned and borrowed, and how ownership transfers across local variables, parameters, returns, and fields.
 
+### OWN-00 - The ownership contract lives in signatures
+
+Every ownership and borrow fact that a caller must respect is fixed by the declarations it can see.
+Those declarations are the types, methods, and constructors the caller names, together with their annotations.
+For any expression a caller writes, three facts follow from signatures alone.
+Whether the result is owned or borrowed (OWN-01), and if borrowed which source it is bound to (OWN-17, OWN-18), and whether that borrow is shared or mutable (OWN-03).
+A callee's private fields and method bodies never carry a fact the caller needs.
+
+The compiler checks each body against its own signature and nothing more (OWN-19, OWN-20).
+A caller checks against the signatures it uses and nothing more.
+A declaration whose safe use would require reading a private field or a method body is therefore ill-formed.
+
+When a returned object borrows one of the call's inputs, both the binding and the borrow kind sit on the signature.
+The binding is `@bound` naming the source (OWN-17, OWN-18).
+The borrow kind is the mode of that source at the call, which for a receiver is shared on a plain method and exclusive on a `@mutating` method (MUT-08, MUT-10).
+A private `@borrow` field may witness the same borrow inside the implementation, but the signature states it independently, so no caller depends on the field.
+
 ### OWN-01 - Owned and borrowed values
 
 Each value has one **owner**: the variable that drops it (DROP-01) at scope exit.
