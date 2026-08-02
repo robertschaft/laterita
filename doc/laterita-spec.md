@@ -554,6 +554,8 @@ A method without it cannot.
 `@mutating` sits in modifier position.
 It is orthogonal to `@consuming` (OWN-15).
 A method that both mutates and consumes carries both.
+`@mutating` carries an `InheritFrom` value, `InheritFrom.NONE` by default, which is the always-mutating form specified here.
+`InheritFrom.RECEIVER` selects the receiver-inherited form (MUT-13).
 
 `@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
 Override variance is HIER-05.
@@ -647,6 +649,35 @@ The first non-`@mutating` level borrows the level beyond it shared, and a write 
     }
 }
 ```
+
+### MUT-13 - `@mutating(InheritFrom.RECEIVER)` inherits the receiver's mutability
+
+`@mutating` carries an `InheritFrom` value, `InheritFrom.NONE` by default (MUT-08).
+`NONE` is the plain form: the receiver is always `@mut` and the method may always mutate it.
+`RECEIVER` makes the receiver mode polymorphic, so the method requires only the mutability its caller supplies.
+Called on a `@mut` receiver it behaves as `@mutating`, taking an exclusive receiver (MUT-10), and called on a `@fix` or shared receiver it behaves as a plain method that never mutates.
+
+A `@bound` return of an `InheritFrom.RECEIVER` method inherits the receiver's mutability.
+Bound to a `@mut` receiver the returned borrow is `@mut`, and bound to a `@fix` receiver it is `@fix`.
+When the return is a container or cursor, the mutability of the elements it lends inherits the same way.
+
+```java
+@mut class Box<T> {
+    T value;
+    @mutating(InheritFrom.RECEIVER) @bound T get() { return value; }   // one definition, both modes
+}
+
+@mut Box<Foo> a = makeBox();
+var x = a.get();                 // @mut @bound Foo: a is @mut, so get() lends mutably
+@fix Box<Foo> b = fix(a);
+var y = b.get();                 // @fix @bound Foo: b is @fix, so get() lends read-only
+```
+
+The value is admitted equally on the inner-class `@mutating` of MUT-12.
+`@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the instance, so one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
+
+An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP), so it adds no runtime dispatch.
+The receiver's mutability is a compile-time fact, so a caller reads which form it gets from the receiver it supplies (OWN-00).
 
 ---
 
@@ -1779,19 +1810,26 @@ The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
 - A move (OWN-07) of a `@local` value across a thread boundary outside `@unsafe` (UNS-02 already gates this).
 
-### STD-08 — Borrow-checked mutable iteration
+### STD-08 — Borrow-checked iteration
 
-Three operations support in-place modification of collections under the borrow rules:
+Iteration reuses Java's `Iterator<T>` and `ListIterator<T>` by name.
+`Iterable<T>.iterator()` is `@mutating(InheritFrom.RECEIVER)` (MUT-13), so the cursor it returns inherits the collection's mutability.
+Over a `@mut` collection the cursor holds an exclusive `@mut` borrow and `next()` yields `@mut @bound T`, so elements may be modified in place.
+Over a `@fix` collection, such as `fix(list)`, it holds a shared borrow and `next()` yields `@fix @bound T`, so several cursors coexist and nested reads are admitted (OWN-03).
+There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`, not separate methods.
 
-- **`Collection<T>.removeIf(Predicate<T> p)`** — bulk removal of every element matching `p`. Same name and meaning as `java.util.Collection.removeIf` (Java 8+).
-- **`Iterator<T>` and `ListIterator<T>`** — Java's existing iterator types, reused by name and by method set (`hasNext`, `next`, `hasPrevious`, `previous`, `nextIndex`, `previousIndex`, `remove`, `set`, `add`).
-- **`next()` and `previous()` return `@bound T`** — a borrow into the underlying collection's storage, bound to the iterator. Any iterator-mutating call (`remove`, `set`, `add`) invalidates the borrow at the type level via OWN-03.
+The enhanced-for consumes exactly this.
+`for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-02).
+A `@mut` source therefore yields a modifiable `x` and a `@fix` source a read-only one, and reading a mutable list with a shared borrow (nested loops, or aliasing the container inside the loop) is expressed by iterating `fix(source)`.
 
-The one signature deviation from Java: **`Iterator<T>.remove()` and `ListIterator<T>.remove()` return `T`** rather than `void`. The removed element is yielded to the caller as an owned value. Statement-form `it.remove();` (ignoring the return) drops the value via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+Structural modification — `remove`, `set`, `add` — lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive `@mut` borrow rather than an inherited one, because those operations always mutate the collection.
+An enhanced-for never reaches `ListIterator`, matching the fact that a for-each exposes no handle to remove.
+`ListIterator<T>.remove()` returns `T` rather than `void`: the removed element is yielded owned, and statement-form `it.remove();` drops it via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+`Collection<T>.removeIf(Predicate<T> p)` remains the bulk-removal form, same name and meaning as `java.util.Collection.removeIf` (Java 8+).
 
-Holding a `@mut Iterator<T>` or `@mut ListIterator<T>` is a mutable borrow of the underlying collection per OWN-03. Concurrent modification through any other path is rejected at compile time; `ConcurrentModificationException` is not part of Laterita's runtime semantics, and `modCount`-style runtime guards are not required.
-
-Implementations of these operations are permitted (and expected) to use `private @unsafe` (UNS-01) for the internal aliasing they require. User code remains safe.
+Holding a cursor borrows the collection per OWN-03: an inherited-`@mut` cursor or a `ListIterator` is an exclusive borrow, a `@fix` cursor a shared one.
+Concurrent modification through any other path is rejected at compile time, so `ConcurrentModificationException` is not part of Laterita's runtime semantics and `modCount`-style guards are not required.
+Implementations are permitted, and expected, to use `private @unsafe` (UNS-01) for the internal aliasing they require, and user code remains safe.
 
 ### STD-09 — `Mutex<T>`
 

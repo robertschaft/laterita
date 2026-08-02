@@ -88,7 +88,7 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 
 ---
 
-## Mutability (MUT-01 through MUT-12)
+## Mutability (MUT-01 through MUT-13)
 
 ### Why `@mut` is the *unified* referent-mutability marker (MUT-01)
 
@@ -181,6 +181,22 @@ The `@mutating` class must also be `@mut` because the only way to write through 
 The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@fix` or `@mut Outer`, is rejected.
 It expresses the same borrow more heavily and discards the direct-field access that is the reason to write an inner class at all.
 Declaring the borrow on the class keeps both the access and the OWN-00 guarantee.
+
+### Why `@mutating` can inherit the receiver's mutability (MUT-13)
+
+Without receiver-inherited mutation, every operation that reads or lends part of a receiver is written twice, once for a shared receiver and once for a `@mut` one: `iterator` and `iteratorMut`, `get` and `getMut`, `first` and `firstMut`.
+The two bodies are identical apart from a single mutability qualifier, and the caller carries the burden of picking the right name.
+`InheritFrom.RECEIVER` writes the operation once and lets the receiver's mutability flow to the result, so a single `iterator()` serves both read and in-place-update iteration and the enhanced-for needs no cursor-selection rule.
+The `Iterable`/`MutIterable` and `Iterator`/`MutIterator` splits that a two-method design forces both collapse onto it.
+
+The mechanism has precedent in statically typed languages shaped by exactly this duplication.
+D's `inout` is a mutability wildcard that binds to an argument's actual mutability and transfers it to the return, added to stop functions being triplicated across mutable, const, and immutable.
+C++ met the same `begin`/`begin() const` duplication first with const-overloading and then, in C++23, with an explicit object parameter generic over the receiver's qualification.
+Rust deliberately did not: its standard library pays the duplication (`iter`/`iter_mut`, `get`/`get_mut`, `Index`/`IndexMut`) rather than adopt reference-mutability polymorphism, judging its inference and diagnostic cost too high for a language earning trust incrementally.
+Laterita is a new language and is free to open the path, and it bounds the cost by keeping the inherited form opt-in: plain `@mutating` still means always-mutating (`InheritFrom.NONE`), and `InheritFrom.RECEIVER` is written only where the one-definition win is wanted.
+
+The form stays legible under OWN-00 because the receiver's mutability is a compile-time fact, so a caller reads which variant it gets from the receiver it supplies, and monomorphization emits the two variants like any generic with no runtime dispatch.
+The selector is a named `InheritFrom` enum rather than a bare flag so the same inheritance can later extend to the other axes, `@mut(InheritFrom.RECEIVER)` and `@own(InheritFrom.RECEIVER)`, without inventing a second vocabulary.
 
 ### Why classes are marked `@mut` (MUT-05 through HIER-04)
 

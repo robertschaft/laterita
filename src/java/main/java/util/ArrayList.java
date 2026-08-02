@@ -15,11 +15,11 @@
  * accompanied this code).
  *
  * Laterita fork: ownership, borrow, and mutability annotations added on top of
- * the OpenJDK source. See doc/laterita-spec.md (MUT-12, STD-08, OWN-00).
+ * the OpenJDK source. See doc/laterita-spec.md (STD-08, MUT-12, MUT-13, OWN-00).
  */
 package java.util;
 
-import laterita.lang.annotation.*;          // @mut, @fix, @bound, @borrow, @take, @mutating, ...
+import laterita.lang.annotation.*;          // @mut, @fix, @bound, @borrow, @take, @mutating, InheritFrom, ...
 import static laterita.lang.Intrinsics.give;    // move-out of an array slot (OWN-07)
 import static laterita.lang.Intrinsics.broken;  // marks an unfinished path (UNR-01)
 
@@ -31,16 +31,13 @@ import static laterita.lang.Intrinsics.broken;  // marks an unfinished path (UNR
  * reallocates a larger array to grow (TODO); {@code remove} shifts elements down within the
  * fixed array and decrements {@code size}, never resizing in place.
  *
- * <p>Iteration comes in two forms, distinguished entirely by the borrow each cursor takes on
- * the list, and legible from the factory signature alone (OWN-00):
- * <ul>
- *   <li>{@link #iterator()} is a plain method, so {@code this} is a shared borrow and the
- *       returned {@link Itr} holds the list {@code @fix}. Any number may run at once, which is
- *       what allows nested read loops over the same list (OWN-03).</li>
- *   <li>{@link #iteratorMut()} is {@code @mutating}, so {@code this} is an exclusive {@code @mut}
- *       borrow the returned {@link MutItr} retains. It is the only live borrow of the list until
- *       dropped, and may {@link MutItr#remove()} elements.</li>
- * </ul>
+ * <p>Iteration is a single method. {@link #iterator()} is
+ * {@code @mutating(InheritFrom.RECEIVER)} (MUT-13), so the cursor inherits the list's mutability:
+ * over a {@code @mut} list it lends {@code @mut @bound T} and holds an exclusive borrow, over a
+ * {@code @fix} list (e.g. {@code fix(list)}) it lends {@code @fix @bound T} and holds a shared
+ * borrow so several coexist. The enhanced-for consumes exactly this, with no cursor selection.
+ * Structural modification ({@code remove}/{@code set}/{@code add}) is the separate
+ * {@link #listIterator()}, which a for-each never reaches.
  *
  * @param <T> the element type
  */
@@ -56,84 +53,84 @@ import static laterita.lang.Intrinsics.broken;  // marks an unfinished path (UNR
     // TODO: add(@take T e), get(int i) -> @bound T, set, size(), isEmpty(), grow(), ...
 
     /**
-     * Returns a read-only cursor over the list.
-     *
-     * <p>Plain method: {@code this} is shared, so the returned cursor borrows the list
-     * {@code @fix} and several cursors may coexist (OWN-03).
+     * Returns a cursor whose mutability is inherited from this list (MUT-13). One method serves
+     * both read and in-place-update iteration; the two are its monomorphizations.
      */
     @Override
-    public @bound Iterator<T> iterator() {
+    public @mutating(InheritFrom.RECEIVER) @bound Iterator<T> iterator() {
         return new Itr();
     }
 
     /**
-     * Returns a mutating cursor over the list.
-     *
-     * <p>{@code @mutating}: {@code this} is an exclusive {@code @mut} borrow that the returned
-     * cursor retains, so it is the sole live borrow of the list for its lifetime (OWN-03).
+     * Returns a structural cursor. Always {@code @mutating}, so it takes an exclusive {@code @mut}
+     * borrow (never inherited): {@code remove}/{@code set}/{@code add} always mutate the list.
      */
-    public @mutating @bound MutIterator<T> iteratorMut() {
-        return new MutItr();
+    public @mutating @bound ListIterator<T> listIterator() {
+        return new ListItr();
     }
-    // TODO: hoist iteratorMut() onto a shared MutIterable<T> super-interface, mirroring Iterable.
 
     /**
-     * Read-only cursor.
+     * The read-or-update cursor.
      *
-     * <p>{@code @mut} for its own advancing {@link #cursor} field, but NOT {@code @mutating}, so
-     * it borrows the enclosing {@code ArrayList} shared (MUT-12). The enclosing fields
-     * {@link ArrayList#size} and {@link ArrayList#elementData} below are read through that shared
-     * borrow, which is why {@link #next()} can only hand out {@code @fix} elements.
+     * <p>Class-level {@code @mutating(InheritFrom.RECEIVER)} (MUT-12, MUT-13): the borrow it holds
+     * on the enclosing {@code ArrayList} is inherited from the {@code this} that constructs it, so
+     * it is exclusive when built from a {@code @mut} list and shared when built from a {@code @fix}
+     * one. {@code @mut} covers its own {@link #cursor} field. Method-level {@code @mutating} on
+     * {@link #next()} is the ordinary receiver mutation of advancing that cursor.
      */
-    @mut private class Itr implements Iterator<T> {
+    @mutating(InheritFrom.RECEIVER) @mut private class Itr implements Iterator<T> {
 
         /** Index of the next element to return. */
         int cursor;
 
         @Override
         public boolean hasNext() {
-            return cursor < size;   // reads the enclosing size through the shared borrow
-        }
-
-        @Override
-        public @mutating @fix @bound T next() {
-            // TODO: if (cursor >= size) throw new NoSuchElementException();
-            // Enclosing borrow is shared => elementData is @fix => element is @fix @bound T.
-            var element = elementData[cursor];   // @fix @bound T, bound to the list
-            cursor = cursor + 1;                 // mutates this cursor, never the list
-            return element;
-        }
-    }
-
-    /**
-     * Mutating cursor.
-     *
-     * <p>{@code @mutating} makes it borrow the enclosing {@code ArrayList} {@code @mut} and hold
-     * it exclusively (MUT-12), which is what licenses {@link #remove()} to restructure the list.
-     * It must also be {@code @mut} (MUT-12), covering its own {@link #cursor} and
-     * {@link #lastReturned} fields.
-     */
-    @mutating @mut private class MutItr implements MutIterator<T> {
-
-        /** Index of the next element to return. */
-        int cursor;
-
-        /** Index handed out by the last {@link #next()}, or {@code -1} once removed. */
-        int lastReturned = -1;
-
-        @Override
-        public boolean hasNext() {
-            return cursor < size;
+            return cursor < size;   // reads the enclosing size through the inherited borrow
         }
 
         @Override
         public @mutating @bound T next() {
             // TODO: if (cursor >= size) throw new NoSuchElementException();
-            // Element mutability rides on T: @mut @bound T when T is @mut, @fix @bound T when @fix.
+            // Element mutability is inherited from the enclosing borrow (MUT-13):
+            // @mut @bound T over a @mut list, @fix @bound T over a @fix one.
+            var element = elementData[cursor];
+            cursor = cursor + 1;    // mutates this cursor, never the list
+            return element;
+        }
+    }
+
+    /**
+     * The structural cursor.
+     *
+     * <p>Class-level {@code @mutating} (not inherited): it always borrows the enclosing
+     * {@code ArrayList} {@code @mut} and exclusively, which is what licenses {@link #remove()} to
+     * restructure the list (MUT-12).
+     */
+    @mutating @mut private class ListItr implements ListIterator<T> {
+
+        int cursor;
+        int lastReturned = -1;
+
+        @Override public boolean hasNext()      { return cursor < size; }
+        @Override public boolean hasPrevious()  { return cursor > 0; }
+        @Override public int     nextIndex()    { return cursor; }
+        @Override public int     previousIndex(){ return cursor - 1; }
+
+        @Override
+        public @mutating @bound T next() {
+            // TODO: if (cursor >= size) throw new NoSuchElementException();
             lastReturned = cursor;
-            var element = elementData[cursor];   // @bound T, bound to the list
+            var element = elementData[cursor];   // @mut @bound T: the enclosing borrow is @mut
             cursor = cursor + 1;
             return element;
+        }
+
+        @Override
+        public @mutating @bound T previous() {
+            // TODO: if (cursor <= 0) throw new NoSuchElementException();
+            cursor = cursor - 1;
+            lastReturned = cursor;
+            return elementData[cursor];
         }
 
         @Override
@@ -145,10 +142,24 @@ import static laterita.lang.Intrinsics.broken;  // marks an unfinished path (UNR
             //   for (int i = lastReturned; i < size - 1; i++)         // shift the tail down by one
             //       elementData[i] = give(elementData[i + 1]);
             //   size = size - 1;                                      // shrink the logical length
-            //   cursor = lastReturned;                               // re-visit the shifted-in element
+            //   if (lastReturned < cursor) cursor = cursor - 1;
             //   lastReturned = -1;
             //   return removed;
-            broken("TODO: ArrayList.MutItr.remove");
+            broken("TODO: ArrayList.ListItr.remove");
+        }
+
+        @Override
+        public @mutating void set(@take T e) {
+            // TODO: if (lastReturned < 0) throw new IllegalStateException();
+            // elementData[lastReturned] = e;   // replace through the @mut enclosing borrow
+            broken("TODO: ArrayList.ListItr.set");
+        }
+
+        @Override
+        public @mutating void add(@take T e) {
+            // TODO: grow if size == elementData.length; shift tail up from cursor; insert e;
+            //       size = size + 1; cursor = cursor + 1; lastReturned = -1.
+            broken("TODO: ArrayList.ListItr.add");
         }
     }
 }

@@ -159,3 +159,46 @@ Without explicit rules excluding primitives from the borrow surface, every reade
 The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
 
 **Related codes:** OWN-01, OWN-13, OWN-16, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
+
+## OQ-35 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
+
+**Surfaced when:** specifying MUT-13 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
+
+**The issue.**
+Ownership, borrow, and mutability are compile-time properties of a binding (OWN-01, OWN-03, MUT-01).
+Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-13-style inherited path explicitly.
+Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
+
+**The question.**
+
+- Is there a standard set of predicates over a binding: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
+- Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
+- Do they observe only the static mode of the binding, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
+- Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-36)? What is the result for a generic `T` whose mode is itself inherited (MUT-13)?
+- Do they compose with monomorphization, so a MUT-13 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
+
+**Why it matters.**
+Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-13's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-36.
+
+**Related codes:** OWN-01, OWN-03, MUT-01, MUT-13; OQ-36.
+
+## OQ-36 — Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
+
+**Surfaced when:** observing that the OQ-35 mode predicates yield compile-time constants, and that Laterita removes runtime reflection (README), so any reflective capability has to be resolved at compile time.
+
+**The issue.**
+Laterita compiles ahead-of-time with monomorphization and no runtime metadata, so reflection cannot be a runtime service.
+Some computations are fully determined at compile time and could be forced to evaluate there, while others depend on runtime state and must be rejected if reached from a compile-time context.
+
+**The question.**
+
+- Is there a `@Macro` scope marking a method whose result the compiler must compute at compile time (the `constexpr` and `comptime` analog), and a `@Runtime` scope marking a method the compiler must not compile-time-evaluate?
+- Is calling a `@Runtime` method, directly or transitively, from a `@Macro` context a compile error, and how is the transitive purity of a `@Macro` call graph enforced?
+- Are the OQ-35 predicates declared `@Macro`, so they fold to constants and can drive `@Macro`-level branching and code generation?
+- What is the reflection surface reachable from `@Macro` code: type structure, fields, annotations, ownership modes? Does it subsume the build-time annotation processing that already replaces serializers, ORM mappers, and DI wiring (README, GH #14)?
+- How does a `@Macro` result interact with monomorphization: is a `@Macro` body re-evaluated per instantiation of the generic it sits in?
+
+**Why it matters.**
+A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogramming layer to replace the runtime reflection it drops, folds the OQ-35 predicates into zero-cost constants, and provides the substrate for the build-time code generation the language already relies on.
+
+**Related codes:** COMP, RESV; OQ-35; GH #14.
