@@ -676,7 +676,7 @@ var y = b.get();                 // @fix @bound Foo: b is @fix, so get() lends r
 The value is admitted equally on the inner-class `@mutating` of MUT-12.
 `@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the instance, so one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
 
-An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP), so it adds no runtime dispatch.
+An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02), so it adds no runtime dispatch.
 The receiver's mutability is a compile-time fact, so a caller reads which form it gets from the receiver it supplies (OWN-00).
 
 ### MUT-14 - Redundant, conflicting, and downgrading mutability annotations
@@ -2106,6 +2106,7 @@ The annotations are declared in `laterita.lang.annotation`. Stdlib static method
 |---|---|---|
 | `Intrinsics.give(x)` | Explicitly removes ownership from `x` | OWN-07 |
 | `Intrinsics.broken(reason?)` | Compilation fails if an execution path would lead to this statement | UNR-01 |
+| `Intrinsics.fix(x)` | Returns a `@fix` (non-mutable) borrow of `x` | MUT-15 |
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
