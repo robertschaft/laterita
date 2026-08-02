@@ -88,7 +88,7 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 
 ---
 
-## Mutability (MUT-01 through MUT-13)
+## Mutability (MUT-01 through MUT-15)
 
 ### Why `@mut` is the *unified* referent-mutability marker (MUT-01)
 
@@ -197,6 +197,17 @@ Laterita is a new language and is free to open the path, and it bounds the cost 
 
 The form stays legible under OWN-00 because the receiver's mutability is a compile-time fact, so a caller reads which variant it gets from the receiver it supplies, and monomorphization emits the two variants like any generic with no runtime dispatch.
 The selector is a named `InheritFrom` enum rather than a bare flag so the same inheritance can later extend to the other axes, `@mut(InheritFrom.RECEIVER)` and `@own(InheritFrom.RECEIVER)`, without inventing a second vocabulary.
+
+### Why the `@mut`/`@fix` annotation cases resolve as they do, and why `fix` exists (MUT-14, MUT-15)
+
+Mutability is a capability, so the two annotations move in only one direction.
+`@fix` removes the mutable surface and can always be applied, which is why `@fix` on a `@mut` value is a downgrade rather than an error and `@mut` on a value the class already makes mutable is a harmless no-op.
+`@mut` on a `@fix` value is the one combination that has to fail, because it would have to add a capability the class never declared, and nothing in a frozen class can honor it.
+The four cases are therefore not arbitrary policy but the only sound reading of a capability that subtracts freely and cannot be added.
+
+`fix` is the expression-position form of the same downgrade, standing to `@fix` as `give` stands to `@take`: the annotation freezes a declaration, the intrinsic freezes an expression.
+It earns its place because the downgrade is most often wanted mid-expression, on the source of a loop or a call argument, where no declaration exists to annotate.
+It returns a shared borrow rather than a copy, so the original stays usable and several fixed views coexist, which is precisely what makes a nested read over one collection type-check without cloning it.
 
 ### Why classes are marked `@mut` (MUT-05 through HIER-04)
 

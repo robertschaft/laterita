@@ -679,6 +679,34 @@ The value is admitted equally on the inner-class `@mutating` of MUT-12.
 An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP), so it adds no runtime dispatch.
 The receiver's mutability is a compile-time fact, so a caller reads which form it gets from the receiver it supplies (OWN-00).
 
+### MUT-14 - Redundant, conflicting, and downgrading mutability annotations
+
+An explicit `@mut` or `@fix` on a binding is resolved against the value's underlying mutability by these cases.
+
+| annotation | on a `@mut` value | on a `@fix` value |
+|---|---|---|
+| `@mut` | redundant, accepted | error |
+| `@fix` | downgrade, accepted | redundant, accepted |
+
+`@mut` on a value that is already `@mut` is a no-op, so writing it on any binding to a `@mut`-class value, owned or `@bound`, is accepted and changes nothing (MUT-01, MUT-05).
+`@mut` on a `@fix` value is a compile error, because a `@fix` class exposes no mutable surface and `@mut` cannot add one (MUT-05).
+`@fix` on a `@mut` value is an accepted downgrade that drops the mutable surface for that binding, the frozen view of MUT-01b (HIER-04, TARG-03).
+`@fix` on a value that is already `@fix` is the redundant case MUT-01b already admits.
+
+### MUT-15 - `fix` freezes a value into a `@fix` borrow
+
+`fix` is the stdlib intrinsic that applies the MUT-14 downgrade explicitly.
+
+```java
+public static <T> @fix T fix(@bound T in) { return in; }   // laterita.lang.Intrinsics
+```
+
+It returns a `@fix @bound` borrow bound to `in` (OWN-17), dropping the mutable surface for the returned binding.
+It is normally statically imported, like `give` (OWN-07), so a call site reads `fix(x)` unqualified.
+`fix` freezes transitively, because `@fix` on the type freezes every usage of it (TARG-03), so `fix(list)` has type `@fix @borrow List<@fix T>` and its elements are read-only too.
+On a value that is already `@fix` it is the redundant no-op of MUT-14, and on a `@mut` value it is the accepted downgrade.
+The original value is borrowed shared for the lifetime of the fixed view (OWN-03), so it stays readable and may be fixed again, admitting several `@fix` views at once, which is what lets nested reads over one collection type-check.
+
 ---
 
 ## HIER — Class Hierarchy and Override
