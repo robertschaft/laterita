@@ -60,7 +60,7 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 ## Ownership (OWN-00 through OWN-21)
 
-### Why the ownership contract lives in signatures (OWN-00)
+### Why a class declaration is its complete ownership contract (OWN-00)
 
 The borrow checker is modular.
 It verifies each method against its own signature and each caller against the signatures it uses, and it never opens a callee's body or private fields to do either.
