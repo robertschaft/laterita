@@ -1850,7 +1850,7 @@ The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-02).
 A `@mut` source therefore yields a modifiable `x` and a `@fix` source a read-only one, and reading a mutable list with a shared borrow (nested loops, or aliasing the container inside the loop) is expressed by iterating `fix(source)`.
 
-Structural modification — `remove`, `set`, `add` — lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive `@mut` borrow rather than an inherited one, because those operations always mutate the collection.
+Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive `@mut` borrow rather than an inherited one, because those operations always mutate the collection.
 An enhanced-for never reaches `ListIterator`, matching the fact that a for-each exposes no handle to remove.
 `ListIterator<T>.remove()` returns `T` rather than `void`: the removed element is yielded owned, and statement-form `it.remove();` drops it via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
 `Collection<T>.removeIf(Predicate<T> p)` remains the bulk-removal form, same name and meaning as `java.util.Collection.removeIf` (Java 8+).
@@ -2065,7 +2065,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@fix` | `METHOD` | - | Return is non-`@mut` | MUT-01b |
 | `@fix` | `TYPE_USE` | - | Generic type-argument usage is non-`@mut` (dual of `@mut`, requires nothing of the container) | TARG-03 |
 | `@fix` | `TYPE_PARAMETER` | - | `<@fix T>` is shorthand for `<T extends @fix Object>`: every usage of `T` is non-`@mut` | TARG-03 |
-| `@mutating` | `METHOD` | - | Method mutates its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | MUT-08, FN-01 |
+| `@mutating` | `METHOD` | carries an `InheritFrom` value, default `NONE` | Method mutates its receiver, or with `InheritFrom.RECEIVER` inherits the receiver's mutability, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | MUT-08, MUT-13, FN-01 |
+| `@mutating` | `TYPE` | only inside a `@mut` class | Non-static inner class holds a `@mut` borrow of its enclosing instance, or with `InheritFrom.RECEIVER` an inherited one | MUT-12, MUT-13 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
 | `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |

@@ -74,7 +74,7 @@ Which input the result is bound to, answered by `@bound` naming the source (OWN-
 For a receiver that mode is visible as the plain-versus-`@mutating` distinction (MUT-08, MUT-10), a plain method lending `this` shared and a `@mutating` method taking it exclusively, the direct analog of Rust's `&self` versus `&mut self`.
 A design in which the only witness of shared-versus-exclusive is a private field, so that a reader of the signature cannot tell whether the returned object may mutate the borrowed source, fails OWN-00 and is rejected as a missing distinction in the signature, not patched by inspecting the implementation.
 The iterator API is the worked example.
-A read-only cursor and a mutating cursor are two return types reachable by two differently named factories, `Iterator<T>` from a plain `iterator()` and a mutating cursor from a `@mutating` factory, so that the borrow each holds on the collection is legible from the call alone.
+A single `@mutating(InheritFrom.RECEIVER) iterator()` returns one `Iterator<T>` whose borrow on the collection is read off the receiver it was called on, exclusive over a `@mut` collection and shared over a `@fix` one (MUT-13), so the fact a caller must respect sits on the receiver's mutability and never only in the cursor's private fields.
 
 ### Why methods declare consumption of `this` with `@consuming` (OWN-15)
 
