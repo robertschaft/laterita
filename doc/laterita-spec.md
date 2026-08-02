@@ -604,6 +604,50 @@ A type that needs to mutate its contents through a bare receiver must hold those
 This is the only mechanism that bypasses MUT-09.
 `Cell<T>` is an unsafe primitive (UNS-02).
 
+### MUT-12 - A non-static inner class borrows its enclosing instance
+
+A non-static inner class holds an implicit borrow of the instance that created it.
+The borrow is a synthetic `final @borrow` field naming that enclosing instance, shared by default.
+By OWN-09 an inner instance is therefore `@bound` to its enclosing instance and cannot outlive it.
+The enclosing borrow's mode is fixed on the inner-class declaration, so a user of the inner type reads it without opening a body (OWN-00).
+
+`@mutating` in the inner-class declaration's modifier position widens the implicit borrow to `final @mut @borrow`, a mutable and so exclusive borrow of the enclosing instance.
+A `@mutating` inner class must also be declared `@mut`, because writing through the mutable enclosing borrow is done by `@mutating` methods and those may be declared only on a `@mut` class (MUT-08).
+It may appear only inside a `@mut` class, because a mutable borrow requires a `@mut` source (MUT-01).
+The two axes are independent: `@mut` or `@fix` fixes the inner class's own mutability, while `@mutating` or its absence fixes the borrow it takes on the enclosing instance, so a bare `@mut` inner class mutates its own fields while holding the enclosing instance only shared.
+
+Reaching an enclosing level beyond the direct one is transitive.
+A write to a field of an outer level succeeds only when every inner class between the write and that level is `@mutating`, making the whole access path a chain of `@mut` borrows.
+The first non-`@mutating` level borrows the level beyond it shared, and a write through that link is rejected (MUT-09).
+
+```java
+@mut class Document {
+    int revision;
+
+    @mutating @mut class Section {
+        int ordinal;
+
+        @mutating @mut class Paragraph {
+            @mutating void renumber() {
+                ordinal  = 2;   // OK: Paragraph is @mutating, so it holds Section as a @mut borrow
+                revision = 3;   // OK: every enclosing level is @mutating, so Document is reached @mut
+            }
+        }
+    }
+
+    @mut class Appendix {
+        int page;
+
+        @mutating @mut class Footnote {
+            @mutating void renumber() {
+                page = 2;       // OK: Footnote is @mutating, so it holds Appendix as a @mut borrow
+                // revision = 1; // ERROR: Appendix is not @mutating, so Document is only shared-borrowed (MUT-09)
+            }
+        }
+    }
+}
+```
+
 ---
 
 ## HIER — Class Hierarchy and Override

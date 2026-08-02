@@ -88,7 +88,7 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 
 ---
 
-## Mutability (MUT-01 through MUT-11)
+## Mutability (MUT-01 through MUT-12)
 
 ### Why `@mut` is the *unified* referent-mutability marker (MUT-01)
 
@@ -166,6 +166,21 @@ This is one of the largest correctness wins in the language, and it falls out of
 ### Why `Cell<T>` is the only escape hatch (MUT-11)
 
 There are real cases where a class is logically immutable but has internal caching (lazy initialization, memoization, mutex-protected state). Rust's answer is `UnsafeCell<T>`, the one type the compiler treats specially as a hole in the rules. Laterita adopts the same model: a single primitive marks the spot, every other interior-mutability mechanism is built on top of it. Concentrating the unsafe assumption in one place is what makes the rest of the language safely checkable.
+
+### Why a non-static inner class declares its enclosing borrow (MUT-12)
+
+A non-static inner class is a named closure over its enclosing instance, so it borrows that instance the same way a closure borrows a captured local.
+A closure infers its capture mode from the body (CLO-02), but an inner class cannot: it is a nominal, storable type, and the borrow it takes on its enclosing instance is part of the contract a holder relies on, so OWN-00 requires that borrow's mode to sit on the declaration rather than be recovered from a body.
+That is why the mode is written, as the presence or absence of `@mutating`, instead of inferred.
+
+The mechanism is deliberately not new.
+The implicit enclosing reference is one of the ordinary field forms of MUT-07b, `final @borrow` when shared and `final @mut @borrow` when the class is `@mutating`, so `@bound` instances (OWN-09), exclusivity (OWN-03), and transitive reach all fall out of rules already in force.
+A write to an outer level travels the chain of enclosing references, and MUT-09 rejects it at the first link that is only shared, which is exactly the first enclosing level that is not `@mutating`.
+The `@mutating` class must also be `@mut` because the only way to write through its mutable enclosing borrow is a `@mutating` method, and those need a `@mut` class (MUT-08).
+
+The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@fix` or `@mut Outer`, is rejected.
+It expresses the same borrow more heavily and discards the direct-field access that is the reason to write an inner class at all.
+Declaring the borrow on the class keeps both the access and the OWN-00 guarantee.
 
 ### Why classes are marked `@mut` (MUT-05 through HIER-04)
 
