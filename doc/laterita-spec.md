@@ -42,12 +42,8 @@ This section specifies how values are owned and borrowed, and how ownership tran
 
 ### OWN-00 - A class declaration is its complete ownership contract
 
-A class is used through its declared members alone.
-Their signatures fix every ownership and borrow fact a user must respect: for each value the class produces, whether it is owned or borrowed (OWN-01), which source a borrow is bound to (OWN-17, OWN-18), and whether that borrow is shared or mutable (OWN-03).
-Private fields and method bodies add nothing a user must know.
-
-The compiler checks each method body against the class's own declarations, and each user against the declarations it uses (OWN-19, OWN-20).
-A class whose safe use would require reading a private field or a method body is therefore ill-formed.
+Every ownership and borrow fact needed to use a class safely is carried by its declared members.
+Its private fields and method bodies add none, so a class whose safe use would require reading them is ill-formed.
 
 ### OWN-01 - Owned and borrowed values
 
