@@ -673,7 +673,7 @@ Lazy resolution gives near-zero cost in the common case (throw, catch, recover) 
 
 ---
 
-## Functional Interfaces (FN-01)
+## Functional Interfaces (FN-01 through FN-04)
 
 ### Why "functional interface" rather than "function type"
 
