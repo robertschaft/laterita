@@ -14,6 +14,7 @@ Currently the spec in doc is work in progress and needs to mature.
 
 - **Before proposing any new mechanism** for concurrency, ownership, error handling, optionality, cleanup, or syntax, check the "Rejected alternatives" table in `doc/resolved-questions.md`. If it is listed there, the decision is closed — do not re-raise it as an open question or re-propose it unless you have new evidence that directly contradicts the recorded reasoning.
 - Any new `.lat` form must be pure syntactic sugar with an exact desugaring to the Java-compatible surface (LAT-00). A construct that carries its own semantics belongs on the Java-compatible surface, expressed through annotations or intrinsics, not in the `LAT` topic.
+- State each fact once in `doc/laterita-spec.md` and reach it from elsewhere by a cross-reference (`per OWN-15`, `(UNS-02)`). Restating a cited rule is a defect, since only one copy gets amended later. The `spec-compactness-reviewer` agent reports spans that repeat information the spec already carries.
 - Do not change existing OQ numbers or spec codes. For new questions use unused numbers. Relocating a rule may leave a numbered gap; that is fine (stable IDs).
 
 ## Specification voice
