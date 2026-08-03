@@ -965,6 +965,9 @@ An unchecked index buys none, since the checked form computes the same result wh
 It also defeats what makes an `@unsafe` method auditable: a reviewer can verify a `Heap<T>` deref against a local invariant, while `a[i]` without a check is only correct with respect to whatever produced `i`, which is usually outside the method.
 The bounds check is also the cheap half of the array access.
 The comparison is a predictable branch next to a load that may miss cache, and a compiler that has already proved a loop's index in range is free to elide it, so the checked form and the hand-written unchecked form converge in exactly the loops where the cost would matter.
+The exposure is not hypothetical.
+Out-of-bounds reads and writes remain the defect class behind memory-safety CVEs in widely deployed native code, among them the V8 zero-day CVE-2026-11645 exploited in the wild, `pgcrypto`, and the XZ decoder in 7-Zip.
+A language that admits an unchecked index anywhere, even behind `@unsafe`, keeps that class reachable in exchange for a branch the compiler can usually elide anyway.
 Rust exposes `get_unchecked` and pays for it with a recurring source of soundness bugs in otherwise safe libraries.
 Code that genuinely needs unchecked raw memory goes through `Heap<T>` (STD-06), where the unchecked access is visible in the type rather than hidden in an ordinary-looking `a[i]`.
 

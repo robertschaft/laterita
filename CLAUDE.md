@@ -16,6 +16,13 @@ Currently the spec in doc is work in progress and needs to mature.
 - Any new `.lat` form must be pure syntactic sugar with an exact desugaring to the Java-compatible surface (LAT-00). A construct that carries its own semantics belongs on the Java-compatible surface, expressed through annotations or intrinsics, not in the `LAT` topic.
 - Do not change existing OQ numbers or spec codes. For new questions use unused numbers. Relocating a rule may leave a numbered gap; that is fine (stable IDs).
 
+## Specification voice
+
+`doc/laterita-spec.md` states rules, not arguments for them.
+It carries no rationale ("because...", "so that...", "this keeps X small", "deliberately") and no history ("previously", "the old rule", "we decided").
+Stating what a rule entails is normative and belongs in the spec, while stating why the rule is right belongs in `doc/laterita-reasoning.md`.
+The `spec-reasoning-auditor` agent checks a spec change against this rule and reports violations.
+
 ## Reasoning-document voice
 
 `doc/laterita-reasoning.md` must read as if the current spec were the first commit. It states *why the current rule holds*, not the history of how it was reached. Present discarded alternatives as evaluated-and-rejected, not as project history: write "X causes problem Y and is therefore rejected", never "in earlier drafts we did X" or "previously the spec said X". Do not narrate the design conversation.
