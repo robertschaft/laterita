@@ -1730,6 +1730,12 @@ Its lifetime is the intersection of the field sources (LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
+### ARR-05 — Array indexing is always bounds-checked
+
+Every array index expression `a[i]`, read or write, is bounds-checked, and an out-of-range index throws `ArrayIndexOutOfBoundsException` as in Java.
+There is no unchecked-indexing form and no annotation that suppresses the check, and the operation is not gated by `@unsafe` (UNS-02): the check applies inside `private @unsafe` methods exactly as it does in safe code.
+A compiler may elide a check it proves redundant.
+
 ---
 
 ## UNS — Unsafe
@@ -1761,7 +1767,6 @@ Only the following operations require `@unsafe` context:
 3. Cross-thread move of an `@local` type (STD-07).
 4. Lifetime extension or transmute.
 5. Foreign function calls (FFI / native).
-6. Unchecked array indexing.
 
 This list is closed. No other operation is gated by `@unsafe`.
 

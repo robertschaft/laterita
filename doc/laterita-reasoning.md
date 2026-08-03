@@ -843,7 +843,7 @@ Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tra
 
 ---
 
-## Arrays (ARR-01 through ARR-04)
+## Arrays (ARR-01 through ARR-05)
 
 ### Why a dedicated section for arrays
 
@@ -957,6 +957,20 @@ The candidate options for cross-thread split alone were all single-segment primi
 Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice, because `T[]` *is* the owning slice.
 The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 (`Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` for the in-thread borrowed return), so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
 
+### Why array indexing is never unchecked (ARR-05)
+
+An unchecked index is the one unsafe operation whose payoff is measured in nanoseconds and whose failure mode is a silent out-of-bounds read or write, so it is the worst possible fit for the audit model UNS-01 is built on.
+The other entries of UNS-02 are unavoidable: raw allocation, interior mutability, cross-thread moves, and FFI cannot be expressed in checked code at all, so gating them buys expressiveness the language would otherwise lack.
+An unchecked index buys none, since the checked form computes the same result whenever the program is correct.
+It also defeats what makes an `@unsafe` method auditable: a reviewer can verify a `Heap<T>` deref against a local invariant, while `a[i]` without a check is only correct with respect to whatever produced `i`, which is usually outside the method.
+The bounds check is also the cheap half of the array access.
+The comparison is a predictable branch next to a load that may miss cache, and a compiler that has already proved a loop's index in range is free to elide it, so the checked form and the hand-written unchecked form converge in exactly the loops where the cost would matter.
+The exposure is not hypothetical.
+Out-of-bounds reads and writes remain the defect class behind memory-safety CVEs in widely deployed native code, among them the V8 zero-day CVE-2026-11645 exploited in the wild, `pgcrypto`, and the XZ decoder in 7-Zip.
+A language that admits an unchecked index anywhere, even behind `@unsafe`, keeps that class reachable in exchange for a branch the compiler can usually elide anyway.
+Rust exposes `get_unchecked` and pays for it with a recurring source of soundness bugs in otherwise safe libraries.
+Code that genuinely needs unchecked raw memory goes through `Heap<T>` (STD-06), where the unchecked access is visible in the type rather than hidden in an ordinary-looking `a[i]`.
+
 ### Why method-level only, not classes or blocks (UNS-01)
 
 `@unsafe` only marks private methods, so the audit boundary is the method signature: a reviewer reads each `private @unsafe` method, verifies its preconditions, and trusts that the public API is safe by composition.
@@ -972,6 +986,8 @@ The slight visual heft is arguably a feature: unsafe operations can't be buried 
 Rust's `@unsafe` unlocks a known finite list of operations (deref raw pointer, call unsafe fn, etc.). Everything else still type-checks normally. This is what makes `@unsafe` audits tractable: you're not asking "is this whole function correct?", you're asking "is this `*ptr` deref valid?"
 
 Laterita does the same. The list of unsafe operations is small, fixed, and documented. Anything else still gets normal compiler checking.
+
+Laterita's list is one entry shorter than Rust's: unchecked indexing is not on it, so array bounds hold even in `@unsafe` methods (ARR-05).
 
 ### Why fields of unsafe types force the surrounding rules (UNS-03)
 

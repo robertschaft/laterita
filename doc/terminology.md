@@ -324,7 +324,7 @@ Each requirement in the spec carries a mnemonic code for cross-reference. Codes 
 | `DES` | Destruction: taking an owned object apart field by field (`give(obj.field)`) |
 | `UNR` | Unreachable paths (`broken()`) |
 | `STR` | String ownership and slicing |
-| `ARR` | Array methods and the `laterita.lang.Arrays` static surface |
+| `ARR` | Array methods, indexing, and the `laterita.lang.Arrays` static surface |
 | `FN` | Functional interfaces and anonymous function types |
 | `CLO` | Closures and lambda capture |
 | `EXC` | Exception handling and unwind semantics |
