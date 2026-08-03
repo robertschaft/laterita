@@ -77,8 +77,7 @@ A value's borrow state at any point is one of:
 - **one mutable borrow** — that borrow has exclusive access. The owner is frozen until the borrow ends.
 
 A mutable borrow writes through the value: it requires the source to be `@mut` (MUT-01) or the borrow to sit inside a `@mutating` method of the same object.
-A borrow of a value also borrows the slot that holds it, the source variable its RHS names (OWN-02).
-While any borrow of `x` is live, reassigning `x` is therefore excluded: it would pull the value out from under the borrow, and where `x` owns the value, drop it (DROP-01).
+A borrow of a value also borrows the slot that holds it, the source variable its RHS names (OWN-02), so reassigning `x` while any borrow of `x` is live is excluded.
 This exclusivity is subject to the disjoint-borrow exceptions of OWN-04 and OWN-05.
 The compiler must reject programs that violate this.
 
@@ -111,10 +110,10 @@ That reduces to ordinary slice expressions this rule covers.
 ### OWN-06 - Destruction transfers an owned object's fields to its scope
 
 Only an owned object with no borrow of it outstanding can be destructed (OWN-03, LIFE-01).
-Destruction consumes the object rather than mutating it, so it requires ownership but not `@mut`.
+Destruction requires ownership but not `@mut`.
 At its first destructing operation (DES) each of its fields transfers to the scope where the destruction was initiated.
 A formerly owned field becomes an independent value owned by that scope.
-A `@borrow` field transfers as a `@bound` value still bound to its original source (OWN-09, LIFE-03), a borrow carried out unchanged rather than converted to ownership.
+A `@borrow` field transfers as a `@bound` value still bound to its original source (OWN-09, LIFE-03).
 
 ### OWN-07 - An unowned value drops at end of statement
 
@@ -146,10 +145,8 @@ The field is dropped with the enclosing instance (DROP-05).
 
 `@borrow` on a field or record component declares that the field holds a borrow rather than an owned value.
 An instance of a class with any `@borrow` field can only be produced as a `@bound` value.
-This includes the case where the `@borrow` arises via a `@borrow`-substituted generic argument (TARG-01).
 `@bound` marks the value as a borrow rather than owned.
 The producer fixes the initial sources.
-A later call receiving a `@take @borrow` parameter adds its source from that call onward (OWN-21, LIFE-03).
 See OWN-17 and OWN-18 for returns, and LIFE-02 for intersection across multiple sources.
 
 ```java
@@ -158,10 +155,7 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be
 
 ### OWN-10 - `@take` is rejected on fields and locals
 
-`@take` describes a transfer of ownership into a parameter slot at a call site.
-It has no meaning on a field, a record component, or a local declaration.
-A field either owns (the default) or `@borrow`s the value (OWN-08, OWN-09).
-A local's mode follows its RHS (OWN-02).
+`@take` is rejected on a field, a record component, and a local declaration (OWN-02, OWN-08, OWN-09).
 
 ### OWN-11 - Constructor initializes every field exactly once
 
@@ -172,7 +166,6 @@ Non-`final` fields can also be reassigned later through a `@mut` receiver of a `
 ### OWN-12 - Record components follow field rules
 
 A record component is a field for the purposes of OWN-08 through OWN-10.
-It is owned by default, optionally `@borrow`, never `@take`.
 
 ### OWN-13 - Parameter ownership modes
 
@@ -308,13 +301,11 @@ The diagnostic identifies the contributing source the body actually uses.
 ### OWN-21 - A `@take @borrow` parameter caps `this` at its source
 
 A `@take @borrow` parameter receives a borrow and retains it.
-The cap is part of the signature: from the call onward the parameter's source is a source of `this` (LIFE-02, LIFE-03), so `this` may not outlive it (LIFE-01), whether or not the body actually stores the borrow.
-Because the cap names `this`, the form is meaningful only on instance methods: a retained borrow may be stored only into a `@borrow` field of `this`, and on a `static` method the form is rejected.
-It is the same caller-side check TARG-05 applies to a generic `@take T` parameter given a borrowed argument, and the directly written spelling of that form.
+The cap is part of the signature: from the call onward the parameter's source is a source of `this` (LIFE-02, LIFE-03), whether or not the body actually stores the borrow.
+The form is meaningful only on instance methods: a retained borrow may be stored only into a `@borrow` field of `this`, and on a `static` method the form is rejected.
 Storing a borrow into a `@borrow` field of `this` requires this parameter form, and the assignment itself additionally requires a `@mut` receiver (MUT-07b), but declaring the parameter does not: a non-mutating method may declare `@take @borrow` and merely narrow the caller's `this`.
-On a `@borrowCapped` class the source must stay live until the instance's scope exit, not only its last use (LIFE-04).
 A bare `@borrow` parameter without `@take` retains nothing and equals a plain borrow parameter (OWN-13).
-A constructor needs no marked parameter: the borrows it stores into the instance's `@borrow` fields are the initial sources the producer fixes (OWN-09, LIFE-03), the construction-time counterpart of this rule.
+A constructor needs no marked parameter: the borrows it stores are the initial sources of OWN-09.
 
 ```java
 @mut class Cursor {
@@ -350,7 +341,6 @@ It is bounded by the shortest-lived marked source.
 
 A `@bound` instance produced from `@borrow` fields takes each field's source into LIFE-02's intersection.
 The instance is usable only while every field's source remains live.
-A borrow received by a `@take @borrow` parameter (OWN-21) joins the same intersection from that call onward, whether or not the body stores it.
 
 ```java
 record EntryView<K, V>(@borrow K key, @borrow V value) {}
@@ -436,8 +426,7 @@ A local bound to an immutable value, or to a shared borrow (OWN-02), is not.
 | `final @fix T x = e` | no | no |
 | `@mut T x = e` | yes | mutable borrow when `e` names a source, otherwise inherited |
 
-An owned mutable local therefore needs no marker, and `@mut` on one is redundant.
-`@mut` stays meaningful on a borrowing local: a naming RHS borrows shared by default (OWN-02), and `@mut` requests a mutable borrow instead, which requires a `@mut` source and is exclusive (OWN-03, OWN-04).
+`@mut` is redundant on an owned local and meaningful on a borrowing one, where it requests a mutable borrow instead of the shared borrow OWN-02 gives by default.
 
 ```java
 var sb = new StringBuilder();   // mutate-through: StringBuilder is @mut (MUT-05)
@@ -453,8 +442,7 @@ Reassigning a slot that owns its value drops the previous value first (DROP-01).
 ### MUT-03 - `final` locks the slot, orthogonal to `@mut`
 
 `final` is Java's slot lock.
-It forbids reassignment and nothing else.
-It composes with the referent axis (MUT-02): `final` governs the slot.
+It forbids reassignment and nothing else, and composes with the referent axis (MUT-02).
 
 ```java
 final Properties config = loadConfig();  // referent mutability inherited from loadConfig()
@@ -462,8 +450,7 @@ config.setProperty("verbose", "true");   // OK: loadConfig() yields an owned @mu
 config = loadConfig();                   // ERROR: final locks the slot
 ```
 
-Because the bare slot is reassignable by default, `final` is never redundant on a local: it removes the reassignment the slot would otherwise grant.
-The slot axis therefore behaves exactly as Java's `final` does.
+`final` is never redundant on a local.
 
 ### MUT-04 - Parameter mutability modes
 
@@ -496,8 +483,7 @@ When neither `@mut` nor `@fix` is written, the kind defaults from the supertype 
 No `@mutating` method may be declared on an immutable class.
 In an immutable class, all fields are treated like `final` (MUT-07b).
 An immutable interface may declare only methods without `@mutating`.
-Because no mutation is observable through an immutable variable, a copy of an immutable instance is interchangeable with a borrow under the same lifetime constraints.
-The compiler may substitute either.
+Under the same lifetime constraints the compiler may substitute a copy of an immutable instance for a borrow of it, and the reverse.
 
 `Object` is special.
 It may carry `@fix` or `@mut` when used as a type, such as a container element or a variable.
@@ -551,10 +537,8 @@ The two axes are independent, giving four field forms.
 A method annotated `@mutating` may mutate `this`.
 It may reassign the instance's non-`final` fields, mutate through its `@mut` fields, and call other `@mutating` methods on `this`.
 A method without it cannot.
-`@mutating` sits in modifier position.
-It is orthogonal to `@consuming` (OWN-15).
-A method that both mutates and consumes carries both.
-`@mutating` carries an `InheritFrom` value, `InheritFrom.NONE` by default, which is the always-mutating form specified here.
+`@mutating` sits in modifier position and is orthogonal to `@consuming` (OWN-15).
+It carries an `InheritFrom` value, `InheritFrom.NONE` by default, which is the always-mutating form specified here.
 `InheritFrom.RECEIVER` selects the receiver-inherited form (MUT-13).
 
 `@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
@@ -610,13 +594,12 @@ This is the only mechanism that bypasses MUT-09.
 
 A non-static inner class holds an implicit borrow of the instance that created it.
 The borrow is a synthetic `final @borrow` field naming that enclosing instance, shared by default.
-By OWN-09 an inner instance is therefore `@bound` to its enclosing instance and cannot outlive it.
-The enclosing borrow's mode is fixed on the inner-class declaration, so a user of the inner type reads it without opening a body (OWN-00).
+By OWN-09 an inner instance is therefore `@bound` to its enclosing instance.
+The enclosing borrow's mode is fixed on the inner-class declaration (OWN-00).
 
-`@mutating` in the inner-class declaration's modifier position widens the implicit borrow to `final @mut @borrow`, a mutable and so exclusive borrow of the enclosing instance.
-A `@mutating` inner class must also be declared `@mut`, because writing through the mutable enclosing borrow is done by `@mutating` methods and those may be declared only on a `@mut` class (MUT-08).
-It may appear only inside a `@mut` class, because a mutable borrow requires a `@mut` source (MUT-01).
-The two axes are independent: `@mut` or `@fix` fixes the inner class's own mutability, while `@mutating` or its absence fixes the borrow it takes on the enclosing instance, so a bare `@mut` inner class mutates its own fields while holding the enclosing instance only shared.
+`@mutating` in the inner-class declaration's modifier position widens the implicit borrow to `final @mut @borrow`, an exclusive borrow of the enclosing instance.
+A `@mutating` inner class must also be declared `@mut` (MUT-08) and may appear only inside a `@mut` class (MUT-01).
+The two axes are independent: `@mut` or `@fix` fixes the inner class's own mutability, while `@mutating` or its absence fixes the borrow it takes on the enclosing instance.
 
 Reaching an enclosing level beyond the direct one is transitive.
 A write to a field of an outer level succeeds only when every inner class between the write and that level is `@mutating`, making the whole access path a chain of `@mut` borrows.
@@ -652,9 +635,7 @@ The first non-`@mutating` level borrows the level beyond it shared, and a write 
 
 ### MUT-13 - `@mutating(InheritFrom.RECEIVER)` inherits the receiver's mutability
 
-`@mutating` carries an `InheritFrom` value, `InheritFrom.NONE` by default (MUT-08).
-`NONE` is the plain form: the receiver is always `@mut` and the method may always mutate it.
-`RECEIVER` makes the receiver mode polymorphic, so the method requires only the mutability its caller supplies.
+`InheritFrom.RECEIVER` (MUT-08) makes the receiver mode polymorphic, so the method requires only the mutability its caller supplies.
 Called on a `@mut` receiver it behaves as `@mutating`, taking an exclusive receiver (MUT-10), and called on a `@fix` or shared receiver it behaves as a plain method that never mutates.
 
 A `@bound` return of an `InheritFrom.RECEIVER` method inherits the receiver's mutability.
@@ -677,8 +658,7 @@ The value is admitted equally on the inner-class `@mutating` of MUT-12.
 `@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the inner instance.
 So one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
 
-An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02), so it adds no runtime dispatch.
-The receiver's mutability is a compile-time fact, so a caller reads which form it gets from the receiver it supplies (OWN-00).
+An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability (COMP-02).
 
 ### MUT-14 - Redundant, conflicting, and downgrading mutability annotations
 
@@ -689,10 +669,7 @@ An explicit `@mut` or `@fix` on a binding is resolved against the value's underl
 | `@mut` | redundant, accepted | error |
 | `@fix` | downgrade, accepted | redundant, accepted |
 
-`@mut` on a value that is already `@mut` is a no-op, so writing it on any binding to a `@mut`-class value, owned or `@bound`, is accepted and changes nothing (MUT-01, MUT-05).
-`@mut` on a `@fix` value is a compile error, because a `@fix` class exposes no mutable surface and `@mut` cannot add one (MUT-05).
-`@fix` on a `@mut` value is an accepted downgrade that drops the mutable surface for that binding, the frozen view of MUT-01b (HIER-04, TARG-03).
-`@fix` on a value that is already `@fix` is the redundant case MUT-01b already admits.
+The downgrade drops the mutable surface for that binding, the frozen view of MUT-01b (HIER-04, TARG-03).
 
 ### MUT-15 - `fix` freezes a value into a `@fix` borrow
 
@@ -702,8 +679,7 @@ An explicit `@mut` or `@fix` on a binding is resolved against the value's underl
 public static <T> @fix T fix(@bound T in) { return in; }   // laterita.lang.Intrinsics
 ```
 
-It returns a `@fix @bound` borrow bound to `in` (OWN-17), dropping the mutable surface for the returned binding.
-It is normally statically imported, like `give` (OWN-07), so a call site reads `fix(x)` unqualified.
+It returns a `@fix @bound` borrow bound to `in` (OWN-17).
 
 ---
 
@@ -731,10 +707,7 @@ Unless explicitly declared `@mut` or `@fix` it is neither, so a direct subclass 
 
 An immutable class extending a `@mut` class inherits its ancestors' `@mut` fields and `@mutating` methods.
 The inherited `@mutating` methods are not callable on the immutable class (MUT-10).
-The immutable class is a frozen view of the inherited surface.
-This is the mechanism for deriving an immutable variant of a mutable class.
-Examples include a collection, a configuration holder, or a builder, derived without re-declaring its API.
-Because extending a `@mut` class defaults to `@mut` (HIER-02), the immutable subclass must be declared `@fix`.
+The immutable subclass must be declared `@fix` (HIER-02).
 
 ```java
 @mut class Counter {
@@ -760,8 +733,6 @@ The widened value may not initialize, be assigned to, or be passed to a `@mut` v
 The cast `(@mut Super) v` is rejected when `v`'s static type is immutable.
 Widening to a bare (immutable) variable of the supertype remains permitted.
 
-Together with HIER-01 this guarantees that any `@mut` variable whose static type is a `@mut` class or interface refers to an instance whose dynamic class is `@mut`.
-That is what makes MUT-10's static check sound.
 `@mut` access originates only at construction of a `@mut` class.
 It propagates only through `@mut` variables, parameters, returns, and fields.
 
@@ -789,10 +760,6 @@ An override of an inherited method (subclass override or interface implementatio
 | `@consuming` | method | ✓ (to `@mutating` or bare) | ✗ | Drops the ownership demand on the receiver |
 | `@mut` | class | ✓ (immutable subclass of `@mut` parent) | ✗ | HIER-02 |
 | Call mode of an FI slot | parameter (FI type) | ✗ | ✓ (strengthen) | A stronger slot accepts strictly more closures (CLO-05) |
-
-The FI call-mode row inverts surface direction because what is being relaxed is *closure-acceptance*.
-A stronger call mode (bare to `@mutating` to `@consuming`) accepts strictly more closures.
-Every closure the base accepted remains accepted.
 
 ```java
 interface Visitor {
@@ -824,8 +791,6 @@ An override may declare fewer or narrower checked exceptions than the inherited 
 `@borrow` may appear inside a generic type argument.
 It declares that the values substituted for that type parameter are borrows, the same role `@borrow` plays on a field (OWN-09).
 When a `@borrow`-substituted argument is stored in a field, that field becomes a `@borrow` field, so the instance can only be produced as a `@bound` value bound to the sources of the borrowed arguments (OWN-09, LIFE-03).
-No struct-level lifetime parameters are introduced.
-A local holding such an instance follows its initializer (OWN-02) and needs no marker.
 
 ```java
 record Pair<L, R>(L left, R right) {}
@@ -883,10 +848,6 @@ list.add(config);                                     // element source: `config
     // dropped until the outer scope; its drop skips the borrowed elements (DROP-05)
 ```
 
-The rule is what lets `Container<@borrow T>` compose through any method whose return is `@bound E`.
-The substituted form does not introduce a "borrow of a borrow" indirection.
-It accumulates lifetime constraints on a single borrow.
-
 ### TARG-05 - `@take` transfers a borrowed type argument by value
 
 A generic `@take T` parameter monomorphized with a borrowed type argument becomes `@take @borrow T`, or `@take @mut @borrow T` for an exclusive element.
@@ -926,7 +887,6 @@ A method declared with a bare (owned) `T` return, monomorphized with a borrowed 
 For an owned type argument the return is owned (OWN-16).
 For a borrowed one the return is the borrow, bound to the receiver (OWN-18), whose lifetime already intersects every element source (LIFE-03).
 This is the return-side counterpart of TARG-05.
-It is the conservative choice: the returned borrow is capped at the container's lifetime rather than the element's own source, which is stricter than necessary but needs no per-element source tracking.
 
 ```java
 @mut class List<T> { @mutating T remove(int i); }
@@ -961,8 +921,6 @@ static Arc<Config>                 BUILTIN  = new Arc<>(Config.DEFAULT);
 ### STAT-03 - Static field type must be non-`@local`
 
 The declared type of a static field must be non-`@local` (STD-07).
-A static slot is reachable from every thread.
-A `@local` type stored there would be reachable cross-thread, exactly the case `@local` exists to forbid.
 `static Rc<T>`, `static Cell<T>`, and `static Heap<T>` are rejected.
 Use `static Arc<T>`.
 
@@ -1031,7 +989,8 @@ The annotation `@internal` declares that a method may be invoked only by compile
 
 `onDrop()` is the only `@internal` method introduced by this specification. The compiler emits its invocations at scope exits (DROP-01), on destruction paths (DROP-04), on exception unwind (EXC-02), and as part of the drop sequence (DROP-05).
 
-`@internal` is reserved for future compiler-orchestrated hooks. It is not a general-purpose access-control level; ordinary visibility scoping continues to use `public`, `protected`, `private`, and package-default.
+`@internal` is reserved for compiler-orchestrated hooks.
+It is not a general-purpose access-control level.
 
 ### DROP-07 — Exceptions from `onDrop()` terminate the body, not the drop sequence
 
@@ -1039,7 +998,7 @@ An exception propagating out of an `onDrop()` body terminates that body, but the
 
 If multiple invocations along a drop path throw — sibling variables (DROP-02), nested field drops, the body and a field of the same value, or any of these during an exception unwind (EXC-02) — the first thrown exception is the propagating one; later throws are attached to it via `Throwable.addSuppressed`.
 
-`onDrop()` implementations that perform fallible operations (network flushes, file syncs) may either catch internally or allow exceptions to propagate. DROP-10 guarantees that no external reference to the value can survive into step 4, so the drop sequence is safe to complete even after the body throws.
+An `onDrop()` implementation may either catch internally or allow exceptions to propagate.
 
 ### DROP-08 — A class with `onDrop()` cannot be destructed
 
@@ -1049,9 +1008,11 @@ The diagnostic identifies the field, the destruction, and the `onDrop()` declara
 
 ### DROP-09 — `onDrop()` implementations only on `final` classes
 
-A class may implement `onDrop()` only if it is declared `final`. An `onDrop()` implementation on a non-`final` class is a compile error; `onDrop()` may not be declared `abstract`, and an interface may neither declare it nor supply it as a `default`. A class without an implementation contributes no body to its drop sequence (DROP-05 step 1). At most one user-written `onDrop()` body therefore runs per instance, on the instance's (necessarily `final`) dynamic class.
+A class may implement `onDrop()` only if it is declared `final`.
+An `onDrop()` implementation on a non-`final` class is a compile error, `onDrop()` may not be declared `abstract`, and an interface may neither declare it nor supply it as a `default`.
+At most one user-written `onDrop()` body therefore runs per instance, on the instance's (necessarily `final`) dynamic class.
 
-A class that needs cleanup beyond what its fields' own `onDrop()`s provide must be `final`. Extensible types compose `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose `onDrop()`s perform the release during the owner's drop sequence (DROP-05, step 2).
+Extensible types compose `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose `onDrop()`s perform the release during the owner's drop sequence (DROP-05, step 2).
 
 ```java
 final class Connection { … }              // OK: final, may implement onDrop
@@ -1067,7 +1028,8 @@ abstract class Resource {
 
 ### DROP-10 — `this` does not escape `onDrop()`
 
-Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the call. It may not be given (`give(this)`) to another function, returned, stored in a field or global, or otherwise made reachable after the body returns. This is the rule that makes the once-per-instance guarantee on `onDrop()` (DROP-09) and the storage release in DROP-05 step 4 sound — no external reference to the value can survive into field teardown or beyond, so the drop sequence is safe to complete even when the body throws (DROP-07).
+Within an `onDrop()` body, the receiver `this` has a lifetime bounded by the call.
+It may not be given (`give(this)`) to another function, returned, stored in a field or global, or otherwise made reachable after the body returns.
 
 ### DROP-11 — `onDrop()` access to `@borrow` fields requires `@borrowCapped`
 
@@ -1136,9 +1098,7 @@ if (n < 0) broken("n must be non-negative");
 
 ## DES — Destruction
 
-This topic covers the details of destruction.
-Other topics describe when it is allowed and what it does: only an owner may destruct an owned object, with no borrow of it outstanding (OWN-06) and no `onDrop()` (DROP-08), which transfers its fields into the initiating scope as independent values (OWN-06) and ends the object's lifetime (DES-02).
-It is part of the Java-compatible surface, so every form here is expressible as annotated `.java` that `javac` parses.
+When destruction is permitted, and what it does, are OWN-06 and DROP-08.
 
 ### DES-01 — Destruct by `give`-ing a directly accessible field
 
@@ -1372,7 +1332,9 @@ Mapping to Rust: bare = `Fn`, `@mutating` = `FnMut`, `@consuming` = `FnOnce`; CL
 
 Two anonymous FI types are *identical* — the same compile-time type — only when their call mode, arity, parameter modes, underlying types, return type, and `@bound` relationships all match exactly. Distinct expressions denote distinct types. A nominal FI and an anonymous one are never identical, even when their SAMs match — the nominal one carries an interface identity the anonymous one lacks.
 
-For most code, identity is the wrong question: anonymous types can't be reflected on or compared at runtime. What matters is *assignability* — when a value of FI type `A` may flow into a slot of FI type `B`. This is HIER-05's override variance applied to the SAM: read the slot `B` as the base declaration and the value `A` as the override. `A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s — its call mode is `≤` `B`'s (CLO-04 containment), a `@mut` or `@bound` parameter may be dropped, `@take` is invariant, a `@bound` return may be strengthened to owned, and the underlying parameter and return types agree.
+*Assignability* governs when a value of FI type `A` may flow into a slot of FI type `B`.
+It is HIER-05's override variance applied to the SAM, reading the slot `B` as the base declaration and the value `A` as the override.
+`A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s, its call mode is `≤` `B`'s (CLO-04), and the underlying parameter and return types agree.
 
 ```java
 (@mut Job) -> String           // type α — slot
@@ -1546,7 +1508,7 @@ Doubler pure     = (x) -> x * 2;                           // read lambda → sh
 
 A functional-interface parameter has two annotation axes — the *call-mode prefix* on the FI type (FN-01: bare / `@mutating` / `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@mut`, `@bound`). Both follow HIER-05's unified override-variance table.
 
-The call-mode axis is the row in HIER-05 whose surface direction inverts: an override may *strengthen* the slot's call mode (bare → `@mutating` → `@consuming`) because a stronger slot accepts strictly more closures (CLO-04: shared-call accepts read only; mut-call adds mutate; once-call adds consume). The override continues to accept every closure the inherited declaration accepted.
+On the call-mode axis an override may *strengthen* the slot's call mode (bare → `@mutating` → `@consuming`), so it continues to accept every closure the inherited declaration accepted (CLO-04).
 
 The variable-mode annotations on the FI parameter — `@take`, `@mut`, `@bound` — follow HIER-05 directly: they govern how the override's variable holds the FI value, not which closures fit the slot.
 
@@ -1584,7 +1546,7 @@ When the closure escapes through a return, its captured parameters are the `@bou
 ### STR-07 — `String` is immutable
 
 `String` is an immutable class (MUT-05): no `@mutating` method exists or can be added by extension (HIER-01).
-A non-`final` `String` field in a `@mut` class is reassignable (MUT-07b), and a non-`final` `String` local is reassignable (MUT-02), but `@mut String` grants nothing because `String` is immutable with no method that mutates in place, and on an owned local it would be redundant anyway since mutability is inherited (MUT-02), so `@fix String` is likewise redundant (MUT-01b).
+`@mut` and `@fix` on a `String` are inert (MUT-14).
 Bulk text construction belongs in `StringBuilder`, which is `@mut`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per variable
@@ -1824,7 +1786,9 @@ Raw heap-allocation primitive. Provides allocation, dereference, and free. All o
 
 ### STD-07 — `@local` marker
 
-Cross-thread safety in Laterita is expressed by a single negative marker, `@local`. The language does **not** provide `Send` or `Sync` traits; that vocabulary belongs to Rust and has no analog here. Inter-thread communication uses `Mutex<T>` (STD-09) for shared mutable state and the existing `java.util.concurrent` channel-like classes (e.g., `BlockingQueue`) for hand-off — no auto-trait machinery is involved.
+Cross-thread safety is expressed by a single negative marker, `@local`.
+There are no `Send` or `Sync` traits.
+Inter-thread communication uses `Mutex<T>` (STD-09) for shared mutable state and the `java.util.concurrent` channel-like classes such as `BlockingQueue` for hand-off.
 
 A type carries the `@local` property if its instances cannot safely cross thread boundaries.
 
@@ -2126,7 +2090,7 @@ Java's existing keywords and their meanings are otherwise preserved unless expli
 
 ## LAT — `.lat` Surface Forms
 
-A laterita source file uses one of two extensions (COMP-06): `.java`, the Java-compatible subset that `javac` parses, and `.lat`, which additionally admits the forms specified in this section. Every rule outside this section belongs to the `.java`-compatible surface.
+This section specifies the forms a `.lat` source additionally admits (COMP-06).
 
 ### LAT-00 — The `.lat` surface is pure syntactic sugar
 
