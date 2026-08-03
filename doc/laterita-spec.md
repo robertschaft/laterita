@@ -1735,7 +1735,6 @@ The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are 
 Every array index expression `a[i]`, read or write, is bounds-checked, and an out-of-range index throws `ArrayIndexOutOfBoundsException` as in Java.
 There is no unchecked-indexing form and no annotation that suppresses the check, and the operation is not gated by `@unsafe` (UNS-02): the check applies inside `private @unsafe` methods exactly as it does in safe code.
 A compiler may elide a check it proves redundant.
-Unchecked memory access is available only through `Heap<T>` (STD-06), whose operations require `@unsafe` context.
 
 ---
 
@@ -1770,7 +1769,6 @@ Only the following operations require `@unsafe` context:
 5. Foreign function calls (FFI / native).
 
 This list is closed. No other operation is gated by `@unsafe`.
-Array indexing is not on the list and is bounds-checked everywhere, including inside `@unsafe` methods (ARR-05).
 
 ### UNS-03 — Unsafe-typed fields force private + `@unsafe`
 
