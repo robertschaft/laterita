@@ -58,7 +58,23 @@ Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02)
 
 ---
 
-## Ownership (OWN-01 through OWN-21)
+## Ownership (OWN-00 through OWN-21)
+
+### Why a class declaration is its complete ownership contract (OWN-00)
+
+The borrow checker is modular.
+It verifies each method against its own signature and each caller against the signatures it uses, and it never opens a callee's body or private fields to do either.
+This is what lets a library evolve its internals without breaking callers, and what keeps checking cost linear in one function at a time rather than whole-program.
+The property only holds if every ownership and borrow fact a caller must respect is already present on the signatures it can see.
+So OWN-00 states that requirement directly and makes any declaration that would hide such a fact ill-formed.
+
+The rule is also a design test for the annotation vocabulary itself.
+When a returned object borrows one of a call's inputs, the caller needs two facts to check its own code.
+Which input the result is bound to, answered by `@bound` naming the source (OWN-17, OWN-18), and whether that borrow is shared or exclusive, answered by the source's mode at the call.
+For a receiver that mode is visible as the plain-versus-`@mutating` distinction (MUT-08, MUT-10), a plain method lending `this` shared and a `@mutating` method taking it exclusively, the direct analog of Rust's `&self` versus `&mut self`.
+A design in which the only witness of shared-versus-exclusive is a private field, so that a reader of the signature cannot tell whether the returned object may mutate the borrowed source, fails OWN-00 and is rejected as a missing distinction in the signature, not patched by inspecting the implementation.
+The iterator API is the worked example.
+A single `@mutating(InheritFrom.RECEIVER) iterator()` returns one `Iterator<T>` whose borrow on the collection is read off the receiver it was called on, exclusive over a `@mut` collection and shared over a `@fix` one (MUT-13), so the fact a caller must respect sits on the receiver's mutability and never only in the cursor's private fields.
 
 ### Why methods declare consumption of `this` with `@consuming` (OWN-15)
 
@@ -72,7 +88,7 @@ Const-only initialization keeps the AOT story honest. There is no classloader (C
 
 ---
 
-## Mutability (MUT-01 through MUT-11)
+## Mutability (MUT-01 through MUT-15)
 
 ### Why `@mut` is the *unified* referent-mutability marker (MUT-01)
 
@@ -150,6 +166,48 @@ This is one of the largest correctness wins in the language, and it falls out of
 ### Why `Cell<T>` is the only escape hatch (MUT-11)
 
 There are real cases where a class is logically immutable but has internal caching (lazy initialization, memoization, mutex-protected state). Rust's answer is `UnsafeCell<T>`, the one type the compiler treats specially as a hole in the rules. Laterita adopts the same model: a single primitive marks the spot, every other interior-mutability mechanism is built on top of it. Concentrating the unsafe assumption in one place is what makes the rest of the language safely checkable.
+
+### Why a non-static inner class declares its enclosing borrow (MUT-12)
+
+A non-static inner class is a named closure over its enclosing instance, so it borrows that instance the same way a closure borrows a captured local.
+A closure infers its capture mode from the body (CLO-02), but an inner class cannot: it is a nominal, storable type, and the borrow it takes on its enclosing instance is part of the contract a holder relies on, so OWN-00 requires that borrow's mode to sit on the declaration rather than be recovered from a body.
+That is why the mode is written, as the presence or absence of `@mutating`, instead of inferred.
+
+The mechanism is deliberately not new.
+The implicit enclosing reference is one of the ordinary field forms of MUT-07b, `final @borrow` when shared and `final @mut @borrow` when the class is `@mutating`, so `@bound` instances (OWN-09), exclusivity (OWN-03), and transitive reach all fall out of rules already in force.
+A write to an outer level travels the chain of enclosing references, and MUT-09 rejects it at the first link that is only shared, which is exactly the first enclosing level that is not `@mutating`.
+The `@mutating` class must also be `@mut` because the only way to write through its mutable enclosing borrow is a `@mutating` method, and those need a `@mut` class (MUT-08).
+
+The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@fix` or `@mut Outer`, is rejected.
+It expresses the same borrow more heavily and discards the direct-field access that is the reason to write an inner class at all.
+Declaring the borrow on the class keeps both the access and the OWN-00 guarantee.
+
+### Why `@mutating` can inherit the receiver's mutability (MUT-13)
+
+Without receiver-inherited mutation, every operation that reads or lends part of a receiver is written twice, once for a shared receiver and once for a `@mut` one: `iterator` and `iteratorMut`, `get` and `getMut`, `first` and `firstMut`.
+The two bodies are identical apart from a single mutability qualifier, and the caller carries the burden of picking the right name.
+`InheritFrom.RECEIVER` writes the operation once and lets the receiver's mutability flow to the result, so a single `iterator()` serves both read and in-place-update iteration and the enhanced-for needs no cursor-selection rule.
+The `Iterable`/`MutIterable` and `Iterator`/`MutIterator` splits that a two-method design forces both collapse onto it.
+
+The mechanism has precedent in statically typed languages shaped by exactly this duplication.
+D's `inout` is a mutability wildcard that binds to an argument's actual mutability and transfers it to the return, added to stop functions being triplicated across mutable, const, and immutable.
+C++ met the same `begin`/`begin() const` duplication first with const-overloading and then, in C++23, with an explicit object parameter generic over the receiver's qualification.
+Rust deliberately did not: its standard library pays the duplication (`iter`/`iter_mut`, `get`/`get_mut`, `Index`/`IndexMut`) rather than adopt reference-mutability polymorphism, judging its inference and diagnostic cost too high for a language earning trust incrementally.
+Laterita is a new language and is free to open the path, and it bounds the cost by keeping the inherited form opt-in: plain `@mutating` still means always-mutating (`InheritFrom.NONE`), and `InheritFrom.RECEIVER` is written only where the one-definition win is wanted.
+
+The form stays legible under OWN-00 because the receiver's mutability is a compile-time fact, so a caller reads which variant it gets from the receiver it supplies, and monomorphization emits the two variants like any generic with no runtime dispatch.
+The selector is a named `InheritFrom` enum rather than a bare flag so the same inheritance can later extend to the other axes, `@mut(InheritFrom.RECEIVER)` and `@own(InheritFrom.RECEIVER)`, without inventing a second vocabulary.
+
+### Why the `@mut`/`@fix` annotation cases resolve as they do, and why `fix` exists (MUT-14, MUT-15)
+
+Mutability is a capability, so the two annotations move in only one direction.
+`@fix` removes the mutable surface and can always be applied, which is why `@fix` on a `@mut` value is a downgrade rather than an error and `@mut` on a value the class already makes mutable is a harmless no-op.
+`@mut` on a `@fix` value is the one combination that has to fail, because it would have to add a capability the class never declared, and nothing in a frozen class can honor it.
+The four cases are therefore not arbitrary policy but the only sound reading of a capability that subtracts freely and cannot be added.
+
+`fix` is the expression-position form of the same downgrade, standing to `@fix` as `give` stands to `@take`: the annotation freezes a declaration, the intrinsic freezes an expression.
+It earns its place because the downgrade is most often wanted mid-expression, on the source of a loop or a call argument, where no declaration exists to annotate.
+It returns a shared borrow rather than a copy, so the original stays usable and several fixed views coexist, which is precisely what makes a nested read over one collection type-check without cloning it.
 
 ### Why classes are marked `@mut` (MUT-05 through HIER-04)
 
@@ -615,7 +673,7 @@ Lazy resolution gives near-zero cost in the common case (throw, catch, recover) 
 
 ---
 
-## Functional Interfaces (FN-01)
+## Functional Interfaces (FN-01 through FN-04)
 
 ### Why "functional interface" rather than "function type"
 

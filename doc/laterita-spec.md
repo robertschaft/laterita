@@ -40,6 +40,11 @@ Codes are grouped by area:
 
 This section specifies how values are owned and borrowed, and how ownership transfers across local variables, parameters, returns, and fields.
 
+### OWN-00 - A class declaration is its complete ownership contract
+
+All rules adhere to one basic concept: every mutability, ownership, and borrow fact needed to interact with a class is fully carried by its declaration.
+To check that a class is used correctly, the compiler never needs the class's actual implementation.
+
 ### OWN-01 - Owned and borrowed values
 
 Each value has one **owner**: the variable that drops it (DROP-01) at scope exit.
@@ -549,6 +554,8 @@ A method without it cannot.
 `@mutating` sits in modifier position.
 It is orthogonal to `@consuming` (OWN-15).
 A method that both mutates and consumes carries both.
+`@mutating` carries an `InheritFrom` value, `InheritFrom.NONE` by default, which is the always-mutating form specified here.
+`InheritFrom.RECEIVER` selects the receiver-inherited form (MUT-13).
 
 `@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
 Override variance is HIER-05.
@@ -598,6 +605,105 @@ c2.inc();                   // OK: c2 inherits @mut from new Counter() (MUT-02)
 A type that needs to mutate its contents through a bare receiver must hold those contents inside `Cell<T>`.
 This is the only mechanism that bypasses MUT-09.
 `Cell<T>` is an unsafe primitive (UNS-02).
+
+### MUT-12 - A non-static inner class borrows its enclosing instance
+
+A non-static inner class holds an implicit borrow of the instance that created it.
+The borrow is a synthetic `final @borrow` field naming that enclosing instance, shared by default.
+By OWN-09 an inner instance is therefore `@bound` to its enclosing instance and cannot outlive it.
+The enclosing borrow's mode is fixed on the inner-class declaration, so a user of the inner type reads it without opening a body (OWN-00).
+
+`@mutating` in the inner-class declaration's modifier position widens the implicit borrow to `final @mut @borrow`, a mutable and so exclusive borrow of the enclosing instance.
+A `@mutating` inner class must also be declared `@mut`, because writing through the mutable enclosing borrow is done by `@mutating` methods and those may be declared only on a `@mut` class (MUT-08).
+It may appear only inside a `@mut` class, because a mutable borrow requires a `@mut` source (MUT-01).
+The two axes are independent: `@mut` or `@fix` fixes the inner class's own mutability, while `@mutating` or its absence fixes the borrow it takes on the enclosing instance, so a bare `@mut` inner class mutates its own fields while holding the enclosing instance only shared.
+
+Reaching an enclosing level beyond the direct one is transitive.
+A write to a field of an outer level succeeds only when every inner class between the write and that level is `@mutating`, making the whole access path a chain of `@mut` borrows.
+The first non-`@mutating` level borrows the level beyond it shared, and a write through that link is rejected (MUT-09).
+
+```java
+@mut class Document {
+    int revision;
+
+    @mutating @mut class Section {
+        int ordinal;
+
+        @mutating @mut class Paragraph {
+            @mutating void renumber() {
+                ordinal  = 2;   // OK: Paragraph is @mutating, so it holds Section as a @mut borrow
+                revision = 3;   // OK: every enclosing level is @mutating, so Document is reached @mut
+            }
+        }
+    }
+
+    @mut class Appendix {
+        int page;
+
+        @mutating @mut class Footnote {
+            @mutating void renumber() {
+                page = 2;       // OK: Footnote is @mutating, so it holds Appendix as a @mut borrow
+                // revision = 1; // ERROR: Appendix is not @mutating, so Document is only shared-borrowed (MUT-09)
+            }
+        }
+    }
+}
+```
+
+### MUT-13 - `@mutating(InheritFrom.RECEIVER)` inherits the receiver's mutability
+
+`@mutating` carries an `InheritFrom` value, `InheritFrom.NONE` by default (MUT-08).
+`NONE` is the plain form: the receiver is always `@mut` and the method may always mutate it.
+`RECEIVER` makes the receiver mode polymorphic, so the method requires only the mutability its caller supplies.
+Called on a `@mut` receiver it behaves as `@mutating`, taking an exclusive receiver (MUT-10), and called on a `@fix` or shared receiver it behaves as a plain method that never mutates.
+
+A `@bound` return of an `InheritFrom.RECEIVER` method inherits the receiver's mutability.
+Bound to a `@mut` receiver the returned borrow is `@mut`, and bound to a `@fix` receiver it is `@fix`.
+When the return is a container or cursor, the mutability of the elements it lends inherits the same way.
+
+```java
+@mut class Box<T> {
+    T value;
+    @mutating(InheritFrom.RECEIVER) @bound T get() { return value; }   // one definition, both modes
+}
+
+@mut Box<Foo> a = makeBox();
+var x = a.get();                 // @mut @bound Foo: a is @mut, so get() lends mutably
+@fix Box<Foo> b = fix(a);
+var y = b.get();                 // @fix @bound Foo: b is @fix, so get() lends read-only
+```
+
+The value is admitted equally on the inner-class `@mutating` of MUT-12.
+`@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the inner instance.
+So one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
+
+An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02), so it adds no runtime dispatch.
+The receiver's mutability is a compile-time fact, so a caller reads which form it gets from the receiver it supplies (OWN-00).
+
+### MUT-14 - Redundant, conflicting, and downgrading mutability annotations
+
+An explicit `@mut` or `@fix` on a binding is resolved against the value's underlying mutability by these cases.
+
+| annotation | on a `@mut` value | on a `@fix` value |
+|---|---|---|
+| `@mut` | redundant, accepted | error |
+| `@fix` | downgrade, accepted | redundant, accepted |
+
+`@mut` on a value that is already `@mut` is a no-op, so writing it on any binding to a `@mut`-class value, owned or `@bound`, is accepted and changes nothing (MUT-01, MUT-05).
+`@mut` on a `@fix` value is a compile error, because a `@fix` class exposes no mutable surface and `@mut` cannot add one (MUT-05).
+`@fix` on a `@mut` value is an accepted downgrade that drops the mutable surface for that binding, the frozen view of MUT-01b (HIER-04, TARG-03).
+`@fix` on a value that is already `@fix` is the redundant case MUT-01b already admits.
+
+### MUT-15 - `fix` freezes a value into a `@fix` borrow
+
+`fix(x)` is the stdlib intrinsic that applies the MUT-14 downgrade explicitly.
+
+```java
+public static <T> @fix T fix(@bound T in) { return in; }   // laterita.lang.Intrinsics
+```
+
+It returns a `@fix @bound` borrow bound to `in` (OWN-17), dropping the mutable surface for the returned binding.
+It is normally statically imported, like `give` (OWN-07), so a call site reads `fix(x)` unqualified.
 
 ---
 
@@ -1730,19 +1836,27 @@ The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
 - A move (OWN-07) of a `@local` value across a thread boundary outside `@unsafe` (UNS-02 already gates this).
 
-### STD-08 — Borrow-checked mutable iteration
+### STD-08 — Borrow-checked iteration
 
-Three operations support in-place modification of collections under the borrow rules:
+Iteration reuses Java's `Iterator<T>` and `ListIterator<T>` by name.
+`Iterable<T>.iterator()` is `@mutating(InheritFrom.RECEIVER)` (MUT-13), so the cursor it returns inherits the collection's mutability.
+Over a `@mut` collection the cursor holds an exclusive `@mut` borrow and `next()` yields `@mut @bound T`, so elements may be modified in place.
+Over a `@fix` collection, such as `fix(list)`, it holds a shared borrow and `next()` yields `@fix @bound T`, so several cursors coexist and nested reads are admitted (OWN-03).
+There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`, not separate methods.
 
-- **`Collection<T>.removeIf(Predicate<T> p)`** — bulk removal of every element matching `p`. Same name and meaning as `java.util.Collection.removeIf` (Java 8+).
-- **`Iterator<T>` and `ListIterator<T>`** — Java's existing iterator types, reused by name and by method set (`hasNext`, `next`, `hasPrevious`, `previous`, `nextIndex`, `previousIndex`, `remove`, `set`, `add`).
-- **`next()` and `previous()` return `@bound T`** — a borrow into the underlying collection's storage, bound to the iterator. Any iterator-mutating call (`remove`, `set`, `add`) invalidates the borrow at the type level via OWN-03.
+The enhanced-for consumes exactly this.
+`for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-02).
+A `@mut` source therefore yields a modifiable `x` and a `@fix` source a read-only one, and reading a mutable list with a shared borrow (nested loops, or aliasing the container inside the loop) is expressed by iterating `fix(source)`.
 
-The one signature deviation from Java: **`Iterator<T>.remove()` and `ListIterator<T>.remove()` return `T`** rather than `void`. The removed element is yielded to the caller as an owned value. Statement-form `it.remove();` (ignoring the return) drops the value via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive `@mut` borrow rather than an inherited one, because those operations always mutate the collection.
+An enhanced-for never reaches `ListIterator`, matching the fact that a for-each exposes no handle to remove.
+`ListIterator<T>.remove()` returns `T` rather than `void`: the removed element is yielded owned, and statement-form `it.remove();` drops it via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+`Collection<T>.removeIf(Predicate<T> p)` remains the bulk-removal form, same name and meaning as `java.util.Collection.removeIf` (Java 8+).
+`Iterator<T>.remove()` exists for source compatibility with `java.util.Iterator` but is `broken()` by default (UNR-01), so calling it through a read cursor is a compile error, while `ListIterator<T>` overrides it with the working form.
 
-Holding a `@mut Iterator<T>` or `@mut ListIterator<T>` is a mutable borrow of the underlying collection per OWN-03. Concurrent modification through any other path is rejected at compile time; `ConcurrentModificationException` is not part of Laterita's runtime semantics, and `modCount`-style runtime guards are not required.
-
-Implementations of these operations are permitted (and expected) to use `private @unsafe` (UNS-01) for the internal aliasing they require. User code remains safe.
+Holding a cursor borrows the collection per OWN-03: an inherited-`@mut` cursor or a `ListIterator` is an exclusive borrow, a `@fix` cursor a shared one.
+Concurrent modification through any other path is rejected at compile time, so `ConcurrentModificationException` is not part of Laterita's runtime semantics and `modCount`-style guards are not required.
+Implementations are permitted, and expected, to use `private @unsafe` (UNS-01) for the internal aliasing they require, and user code remains safe.
 
 ### STD-09 — `Mutex<T>`
 
@@ -1950,7 +2064,10 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@fix` | `METHOD` | - | Return is non-`@mut` | MUT-01b |
 | `@fix` | `TYPE_USE` | - | Generic type-argument usage is non-`@mut` (dual of `@mut`, requires nothing of the container) | TARG-03 |
 | `@fix` | `TYPE_PARAMETER` | - | `<@fix T>` is shorthand for `<T extends @fix Object>`: every usage of `T` is non-`@mut` | TARG-03 |
-| `@mutating` | `METHOD` | - | Method mutates its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | MUT-08, FN-01 |
+| `@mutating` | `METHOD` | default `InheritFrom` | Method mutates its receiver, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | MUT-08, FN-01 |
+| `@mutating(InheritFrom.RECEIVER)` | `METHOD` | - | Method inherits the receiver's mutability | MUT-08, MUT-13 |
+| `@mutating` | `TYPE` | only inside a `@mut` class | Non-static inner class holds a `@mut` borrow of its enclosing instance | MUT-12 |
+| `@mutating(InheritFrom.RECEIVER)` | `TYPE` | only inside a `@mut` class | Non-static inner class inherits the mutability of its enclosing instance | MUT-12, MUT-13 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
 | `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |
@@ -1990,6 +2107,7 @@ The annotations are declared in `laterita.lang.annotation`. Stdlib static method
 |---|---|---|
 | `Intrinsics.give(x)` | Explicitly removes ownership from `x` | OWN-07 |
 | `Intrinsics.broken(reason?)` | Compilation fails if an execution path would lead to this statement | UNR-01 |
+| `Intrinsics.fix(x)` | Returns a `@fix` (non-mutable) borrow of `x` | MUT-15 |
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls; the laterita compiler attaches the additional semantics specified in the rules above.
 
