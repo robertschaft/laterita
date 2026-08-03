@@ -674,7 +674,8 @@ var y = b.get();                 // @fix @bound Foo: b is @fix, so get() lends r
 ```
 
 The value is admitted equally on the inner-class `@mutating` of MUT-12.
-`@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the instance, so one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
+`@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the inner instance.
+So one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
 
 An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02), so it adds no runtime dispatch.
 The receiver's mutability is a compile-time fact, so a caller reads which form it gets from the receiver it supplies (OWN-00).
@@ -695,7 +696,7 @@ An explicit `@mut` or `@fix` on a binding is resolved against the value's underl
 
 ### MUT-15 - `fix` freezes a value into a `@fix` borrow
 
-`fix` is the stdlib intrinsic that applies the MUT-14 downgrade explicitly.
+`fix(x)` is the stdlib intrinsic that applies the MUT-14 downgrade explicitly.
 
 ```java
 public static <T> @fix T fix(@bound T in) { return in; }   // laterita.lang.Intrinsics
@@ -705,7 +706,6 @@ It returns a `@fix @bound` borrow bound to `in` (OWN-17), dropping the mutable s
 It is normally statically imported, like `give` (OWN-07), so a call site reads `fix(x)` unqualified.
 `fix` freezes transitively, because `@fix` on the type freezes every usage of it (TARG-03), so `fix(list)` has type `@fix @borrow List<@fix T>` and its elements are read-only too.
 On a value that is already `@fix` it is the redundant no-op of MUT-14, and on a `@mut` value it is the accepted downgrade.
-The original value is borrowed shared for the lifetime of the fixed view (OWN-03), so it stays readable and may be fixed again, admitting several `@fix` views at once, which is what lets nested reads over one collection type-check.
 
 ---
 
@@ -1854,6 +1854,7 @@ Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obt
 An enhanced-for never reaches `ListIterator`, matching the fact that a for-each exposes no handle to remove.
 `ListIterator<T>.remove()` returns `T` rather than `void`: the removed element is yielded owned, and statement-form `it.remove();` drops it via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
 `Collection<T>.removeIf(Predicate<T> p)` remains the bulk-removal form, same name and meaning as `java.util.Collection.removeIf` (Java 8+).
+`Iterator<T>.remove()` exists for source compatibility with `java.util.Iterator` but is `broken()` by default (UNR-01), so calling it through a read cursor is a compile error, while `ListIterator<T>` overrides it with the working form.
 
 Holding a cursor borrows the collection per OWN-03: an inherited-`@mut` cursor or a `ListIterator` is an exclusive borrow, a `@fix` cursor a shared one.
 Concurrent modification through any other path is rejected at compile time, so `ConcurrentModificationException` is not part of Laterita's runtime semantics and `modCount`-style guards are not required.
@@ -2065,8 +2066,10 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@fix` | `METHOD` | - | Return is non-`@mut` | MUT-01b |
 | `@fix` | `TYPE_USE` | - | Generic type-argument usage is non-`@mut` (dual of `@mut`, requires nothing of the container) | TARG-03 |
 | `@fix` | `TYPE_PARAMETER` | - | `<@fix T>` is shorthand for `<T extends @fix Object>`: every usage of `T` is non-`@mut` | TARG-03 |
-| `@mutating` | `METHOD` | carries an `InheritFrom` value, default `NONE` | Method mutates its receiver, or with `InheritFrom.RECEIVER` inherits the receiver's mutability, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | MUT-08, MUT-13, FN-01 |
-| `@mutating` | `TYPE` | only inside a `@mut` class | Non-static inner class holds a `@mut` borrow of its enclosing instance, or with `InheritFrom.RECEIVER` an inherited one | MUT-12, MUT-13 |
+| `@mutating` | `METHOD` | default `InheritFrom` | Method mutates its receiver, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | MUT-08, FN-01 |
+| `@mutating(InheritFrom.RECEIVER)` | `METHOD` | - | Method inherits the receiver's mutability | MUT-08, MUT-13 |
+| `@mutating` | `TYPE` | only inside a `@mut` class | Non-static inner class holds a `@mut` borrow of its enclosing instance | MUT-12 |
+| `@mutating(InheritFrom.RECEIVER)` | `TYPE` | only inside a `@mut` class | Non-static inner class inherits the mutability of its enclosing instance | MUT-12, MUT-13 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
 | `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |

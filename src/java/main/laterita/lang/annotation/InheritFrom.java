@@ -13,14 +13,15 @@ package laterita.lang.annotation;
  */
 public enum InheritFrom {
 
-    /** State the mode outright: the annotation carries its own, fixed meaning. The default. */
+    /** The annotation carries its own, fixed meaning. The default. */
     NONE,
 
     /**
-     * Inherit the mode from the receiver. A declaration so marked is polymorphic in the
-     * receiver's mutability: it behaves as the plain annotation on a {@code @fix} or shared
-     * receiver and as the mutating form on a {@code @mut} receiver, and a {@code @bound} return
-     * inherits the receiver's mutability (MUT-13). Monomorphized once per receiver mutability.
+     * Inherit the mode from the receiver.
+     *
+     * <p>Two variants of the annotated method or class are generated: one as if this annotation is
+     * active and another with it inactive. The variant aligned with the static mutability of the
+     * object (receiver) at the method's call site is used (MUT-13).
      */
     RECEIVER
 }

@@ -20,12 +20,14 @@
 package java.util;
 
 import laterita.lang.annotation.*;
+import static laterita.lang.Intrinsics.broken;   // marks an unsupported path (UNR-01)
 
 /**
  * A read-or-update cursor over a collection. The distinction between a read cursor and an
  * in-place-update cursor is not two types: it is which mutability this instance inherited from
- * the {@link Iterable#iterator()} receiver that produced it (MUT-13). Structural modification
- * ({@code remove}, {@code set}, {@code add}) is not here but on {@link ListIterator}.
+ * the {@link Iterable#iterator()} receiver that produced it (MUT-13). Structural {@code set} and
+ * {@code add} live on {@link ListIterator}; {@code remove()} is declared here for source
+ * compatibility with {@code java.util.Iterator} but is {@code broken()} by default.
  *
  * @param <T> the element type
  */
@@ -42,4 +44,14 @@ import laterita.lang.annotation.*;
      * {@code @mut} collection, {@code @fix @bound T} for one built from a {@code @fix} collection.
      */
     @mutating @bound T next();
+
+    /**
+     * Removes the last element returned by {@link #next()}, present for source compatibility with
+     * {@code java.util.Iterator}. A plain read cursor cannot remove, so this is {@code broken()} by
+     * default (STD-08): calling it is a compile error unless overridden, as {@link ListIterator}
+     * does with the working form.
+     */
+    default @mutating T remove() {
+        broken("Iterator.remove: obtain a ListIterator to remove elements");
+    }
 }

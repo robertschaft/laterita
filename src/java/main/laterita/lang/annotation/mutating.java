@@ -12,15 +12,23 @@ import java.lang.annotation.Target;
 /**
  * Declares receiver mutation.
  *
- * <p>On a method (MUT-08): the method may mutate {@code this}, and may be called only on a
- * {@code @mut} receiver (MUT-10). On a non-static inner class (MUT-12): the class holds a
- * {@code @mut} borrow of its enclosing instance.
+ * <p>On a method (MUT-08), a {@code @mutating} method may:
+ * <ul>
+ *   <li>reassign the receiver's non-{@code final} fields,</li>
+ *   <li>mutate through its {@code @mut} fields, and return mutable borrows of them,</li>
+ *   <li>call other {@code @mutating} methods on {@code this}.</li>
+ * </ul>
+ * A method without {@code @mutating} can do none of these. It may be declared only on a
+ * {@code @mut} class and called only on a {@code @mut} receiver (MUT-10).
  *
- * <p>The {@link InheritFrom} value chooses between the always-mutating form and the
- * receiver-inherited form (MUT-13). {@link InheritFrom#NONE}, the default, is always-mutating.
- * {@link InheritFrom#RECEIVER} makes the receiver mode, and any {@code @bound} return's
- * mutability, inherit the actual receiver: mutating over a {@code @mut} receiver, read-only over
- * a {@code @fix} or shared one.
+ * <p>On a non-static inner class (MUT-12), {@code @mutating} instead declares that the class holds
+ * a {@code @mut} borrow of its enclosing instance, so its methods may also mutate that enclosing
+ * instance. Such a class must itself be {@code @mut} and sit inside a {@code @mut} class.
+ *
+ * <p>The {@link InheritFrom} value chooses the form (MUT-13). {@link InheritFrom#NONE}, the
+ * default, is the always-mutating form above. {@link InheritFrom#RECEIVER} behaves as plain
+ * {@code @mutating} when the method is called on a {@code @mut} object and as a non-mutating method
+ * otherwise, and a {@code @bound} return inherits the receiver's mutability the same way.
  *
  * <p>Compile-time only: Laterita attaches no runtime metadata (COMP).
  */
