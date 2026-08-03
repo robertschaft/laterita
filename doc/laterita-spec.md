@@ -704,8 +704,6 @@ public static <T> @fix T fix(@bound T in) { return in; }   // laterita.lang.Intr
 
 It returns a `@fix @bound` borrow bound to `in` (OWN-17), dropping the mutable surface for the returned binding.
 It is normally statically imported, like `give` (OWN-07), so a call site reads `fix(x)` unqualified.
-`fix` freezes transitively, because `@fix` on the type freezes every usage of it (TARG-03), so `fix(list)` has type `@fix @borrow List<@fix T>` and its elements are read-only too.
-On a value that is already `@fix` it is the redundant no-op of MUT-14, and on a `@mut` value it is the accepted downgrade.
 
 ---
 
