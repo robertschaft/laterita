@@ -185,14 +185,13 @@ void store(@take String s);      // takes ownership of s
 
 A **bare argument** (a variable name) fills a bare parameter with a shared borrow for the duration of the call.
 It fills a `@take` parameter with an implicit ownership transfer.
-Explicit `give(arg)` is the same operation written for clarity.
+Explicit `give(arg)` is the same operation.
 A **temporary expression** (call result, constructor, literal) is owned at the call site and fills either parameter form.
 
 Illegal cases:
 
-- `give(arg)` to a bare parameter. The caller asks to transfer, but the function will not accept ownership.
+- `give(arg)` to a bare parameter.
 - A bare argument holding only a borrow to a `@take` parameter whose type is owned.
-There is no ownership to give.
 A `@take @borrow` parameter instead expects the borrow itself (TARG-05).
 
 ```java
@@ -224,11 +223,8 @@ It runs therefore exactly one of the special operations that are normally only p
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
 
-`@consuming` sits in modifier position alongside `public`, `final`, `@mutating`.
-It composes with `@mutating` (MUT-08).
-A method that both mutates and consumes carries both.
-`@consuming` calls require an owned receiver.
-The call site needs no `give(...)` wrapper.
+`@consuming` sits in modifier position and composes with `@mutating` (MUT-08), so a method that both mutates and consumes carries both.
+`@consuming` calls require an owned receiver and no `give(...)` wrapper.
 
 ```java
 class Connection {
@@ -852,7 +848,7 @@ list.add(config);                                     // element source: `config
 
 A generic `@take T` parameter monomorphized with a borrowed type argument becomes `@take @borrow T`, or `@take @mut @borrow T` for an exclusive element.
 `@take` transfers the value by value into the slot.
-Because a `@borrow` value is a reference, `@take @borrow` keeps the reference itself, not the value it points at, which stays owned where it was.
+`@take @borrow` keeps the reference itself, not the value it points at, which stays owned where it was.
 The cost follows copyability: a shared borrow is copied, so the caller keeps its own, and an exclusive `@mut` borrow is moved, so the caller loses access.
 The transferred borrow keeps its original source (LIFE-01), so the slot's enclosing value is `@bound` (OWN-09).
 A bare borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
@@ -1185,7 +1181,7 @@ class SecretKey {
 
 ### OBJ-02 — Auto-generated `clone()` method
 
-Every class has a public `Self clone()` method, synthesized as `return new Self(this);` when not provided by the user. `clone()` is the standard duplication API for code that does not statically know the concrete class — generic code over a type parameter, and polymorphic code holding a value at a supertype or interface — because the call dispatches virtually to the actual class's `clone()`.
+Every class has a public `Self clone()` method, synthesized as `return new Self(this);` when not provided by the user. The call dispatches virtually to the actual class's `clone()`, so `clone()` is the duplication API for code that does not statically know the concrete class.
 
 ```java
 <T> List<T> deepCopy(List<T> source) {
@@ -1399,7 +1395,7 @@ Closures are classified by how they use captured variables:
 - **Consume** — captured variables include a moved value; closure may be invoked exactly once.
 
 A captured local must be effectively final (MUT-02): neither the closure body nor the enclosing method may reassign it.
-This is Java's own lambda-capture rule (JLS 15.27.2), kept so that every closure form remains expressible on the `.java` surface (COMP-06).
+This is Java's own lambda-capture rule (JLS 15.27.2).
 Mutation of captured state therefore always goes through the referent axis: the closure captures a `@mut` local and mutates through it, the checked form of Java's holder idiom.
 Such a closure is a mut-call value (CLO-04), invocable only through a `@mut` variable (CLO-03).
 
@@ -1608,13 +1604,12 @@ The laterita compiler treats `T[]` as a class with the following methods (`.lat`
 }
 ```
 
-`splitAt` re-borrows the receiver (MUT-10), and the returned record is `@bound` to the receiver's source, so the receiver is frozen until both halves expire (LIFE-02).
+`splitAt` re-borrows the receiver (MUT-10), and the returned record is `@bound` to the receiver's source (LIFE-02).
 `forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
 Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction.
-No `@unsafe` is required: each operation reduces to ordinary slice expressions covered by OWN-05.
 Fold-style reductions express by capturing a `@mut` accumulator in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
 
-`splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface. The distinct name from `splitAt` follows OWN-13 (annotation-only differences are duplicate declarations).
+`splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops). Each half is a regular `T[]` supporting the full ARR-01 surface.
 
 **Example — long-lived workers.** Each half is pre-extracted by destruction (OWN-06) before spawning, so each thread captures and consumes its own owning variable.
 
@@ -1657,7 +1652,10 @@ public final class Arrays {
 }
 ```
 
-`stream` borrows the source array and exposes its elements through the JDK `Stream<T>` type. The borrow lives on the parameter (`@bound T[] arr`), not on the return — `stream` is static, so the receiver-source `@bound` form on the return type does not apply per OWN-18. The bare `Stream<T>` return is bound to `arr` by the parameter-source rule, as in `firstWord(@bound String s)` (OWN-17). Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`; callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice. Parallel terminal operations require Read-mode closures (CLO-01); a `@mut` capture is rejected at compile time because concurrent invocation would violate the borrow rules. In-place parallel *mutation* of the receiver is not a stream operation — the source array is borrowed, not consumed, and the stream does not write back into it. That use case stays on the `splitOff` path (or the in-thread `forEachChunk` family) per ARR-01.
+`stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter rather than to a receiver (OWN-17, OWN-18).
+Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`, and callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)`.
+Parallel terminal operations require Read-mode closures (CLO-01), so a `@mut` capture is rejected at compile time.
+In-place parallel *mutation* of the receiver is not a stream operation and stays on the `splitOff` path or the in-thread `forEachChunk` family (ARR-01).
 
 ### ARR-03 — `MutableConsumer<T>`
 
@@ -1685,10 +1683,10 @@ public record Pair<L, R>(L left, R right) {}
 
 Instantiations encountered in this spec:
 
-- `Pair<T[], T[]>` — owned pair, returned by `splitOff`. The accessors `left()` and `right()` return borrows bound to the pair (OWN-18). To obtain the owning halves the pair is destructed by direct component access — `give(p.left)`, `give(p.right)` — a destruction (OWN-06) available in `.lat`, where record components are public (LAT-08). `Pair` declares no `onDrop()`, so DROP-08 does not apply, and each half becomes an independently owned `T[]`. A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors.
-- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>` — pair of mutable borrows, returned by `splitAt`.
-The enclosing variable is `@bound` because the instance contains `@borrow`-substituted parameters (TARG-01), and the `@mut` element marks are admitted because the `Pair` is itself `@mut` (TARG-03).
-Its lifetime is the intersection of the field sources (LIFE-02).
+- `Pair<T[], T[]>` — owned pair, returned by `splitOff`.
+The owning halves are obtained by destructing the pair, `give(p.left)` and `give(p.right)` (OWN-06, LAT-08).
+A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors (OWN-18).
+- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>` — pair of mutable borrows, returned by `splitAt` (TARG-01, TARG-03, LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
@@ -1767,10 +1765,11 @@ The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a bo
 ### STD-03 — `WeakReference<T>`
 
 A non-owning back-reference. The class name and method names follow `java.lang.ref.WeakReference`. Provides:
-- `new WeakReference<T>(Rc<T> source)` / `new WeakReference<T>(Arc<T> source)` — constructs a weak handle from a strong one. Mirrors Java's `new WeakReference<T>(referent)` shape but takes the strong handle, because the weak handle is bound to a refcount, not to a GC-tracked referent.
+- `new WeakReference<T>(Rc<T> source)` / `new WeakReference<T>(Arc<T> source)` — constructs a weak handle from the strong one.
 - `Rc<T>? get()` (or `Arc<T>? get()`, matching the source flavor) — returns a strong handle if the value is still alive, otherwise `null`. Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap per STD-04).
 
-The return type of `get()` differs from `java.lang.ref.WeakReference.get()`: Java returns the bare referent `T` because the GC keeps it alive across the call site; Laterita returns a fresh strong handle `Rc<T>?` / `Arc<T>?` because liveness during use must be carried by an owning handle, not by a collector. Once the caller drops the returned handle, the value may be reclaimed at the next refcount-zero.
+`get()` returns a fresh strong handle rather than the bare referent `java.lang.ref.WeakReference.get()` returns.
+Once the caller drops the returned handle, the value may be reclaimed at the next refcount-zero.
 
 ### STD-04 — Race-safe `Arc<T>` upgrade
 
@@ -1815,17 +1814,17 @@ There is one cursor type and one factory: the read and update forms are the two 
 
 The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-02).
-A `@mut` source therefore yields a modifiable `x` and a `@fix` source a read-only one, and reading a mutable list with a shared borrow (nested loops, or aliasing the container inside the loop) is expressed by iterating `fix(source)`.
+Reading a mutable list with a shared borrow (nested loops, or aliasing the container inside the loop) is expressed by iterating `fix(source)`.
 
-Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive `@mut` borrow rather than an inherited one, because those operations always mutate the collection.
-An enhanced-for never reaches `ListIterator`, matching the fact that a for-each exposes no handle to remove.
-`ListIterator<T>.remove()` returns `T` rather than `void`: the removed element is yielded owned, and statement-form `it.remove();` drops it via `onDrop` (DROP-01), matching the observable behavior of Java's void-returning `remove`.
+Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive `@mut` borrow rather than an inherited one.
+An enhanced-for never reaches `ListIterator`.
+`ListIterator<T>.remove()` returns the removed element owned rather than `void` (OWN-07).
 `Collection<T>.removeIf(Predicate<T> p)` remains the bulk-removal form, same name and meaning as `java.util.Collection.removeIf` (Java 8+).
 `Iterator<T>.remove()` exists for source compatibility with `java.util.Iterator` but is `broken()` by default (UNR-01), so calling it through a read cursor is a compile error, while `ListIterator<T>` overrides it with the working form.
 
 Holding a cursor borrows the collection per OWN-03: an inherited-`@mut` cursor or a `ListIterator` is an exclusive borrow, a `@fix` cursor a shared one.
 Concurrent modification through any other path is rejected at compile time, so `ConcurrentModificationException` is not part of Laterita's runtime semantics and `modCount`-style guards are not required.
-Implementations are permitted, and expected, to use `private @unsafe` (UNS-01) for the internal aliasing they require, and user code remains safe.
+Implementations are permitted to use `private @unsafe` (UNS-01) for the internal aliasing they require.
 
 ### STD-09 — `Mutex<T>`
 
@@ -1838,8 +1837,6 @@ The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value
 **Scoped acquisition.** `<R> R with(@mut @mutating (@mut T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result. `<R> Optional<R> tryWith(@mut @mutating (@mut T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped. The action slot is mut-call (FN-01 `@mutating` prefix) so the closure may capture state by mutable borrow — the typical critical-section shape; CLO-04's containment also admits read-only closures. The protected `T` is reachable only as the parameter of `action`; there is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
 **Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock. `tryWith` throws `PoisonedException` only.
-
-**Poison on closure throw.** If `action` propagates an exception, `with` / `tryWith` mark the mutex poisoned (THR-10) before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning.
 
 **Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
 
@@ -1922,9 +1919,11 @@ CPU-bound code that does not reach a stdlib blocking primitive and does not poll
 
 A user-defined or stdlib `onDrop()` body (DROP-01) must not contain an interruption point (THR-04). The compiler must reject any `onDrop()` definition whose body transitively reaches a stdlib blocking operation.
 
-To enforce the user-code half of THR-04 conservatively, the compiler must additionally reject `Thread.currentThread().isInterrupted()` and the static `Thread.interrupted()` calls inside an `onDrop()` body. Calls of the form `otherThread.isInterrupted()` (reading another thread's flag) remain permitted, since they are observations and cannot react to the running thread's own state.
+The compiler must additionally reject `Thread.currentThread().isInterrupted()` and the static `Thread.interrupted()` calls inside an `onDrop()` body.
+Calls of the form `otherThread.isInterrupted()` remain permitted (THR-04).
 
-`Thread.onDrop()` (THR-06) is exempt: it is the cancellation orchestrator and runs in the parent's stack, not in a body subject to interruption. The rule applies to every other `onDrop`.
+`Thread.onDrop()` (THR-06) is exempt.
+The rule applies to every other `onDrop`.
 
 Resources whose cleanup needs to block (flush-on-close for buffered IO, drain on channel teardown) belong in an explicit `close()` method, not in `onDrop()`.
 
@@ -1938,7 +1937,8 @@ Resources whose cleanup needs to block (flush-on-close for buffered IO, drain on
 
 To trigger `Thread.onDrop()` before natural scope exit, use `give(worker);` as a statement (OWN-07).
 
-`Thread` is `final`: it implements `onDrop()`, so DROP-09 applies. The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable; pass a `Runnable` or lambda to the constructor instead (THR-01, THR-02), and compose rather than extend when a richer thread wrapper is needed.
+`Thread` is `final` (DROP-09).
+The Java pattern of subclassing `Thread` (`class Worker extends Thread { … }`) is unavailable, and a `Runnable` or lambda is passed to the constructor instead (THR-01, THR-02).
 
 ### THR-07 — `Thread.interrupt()`
 
@@ -1946,9 +1946,11 @@ To trigger `Thread.onDrop()` before natural scope exit, use `give(worker);` as a
 
 ### THR-08 — `InterruptedException`
 
-`InterruptedException` is the exception thrown at an interruption point (THR-04) when the running thread's interrupt flag is set. It propagates through the standard exception unwind path (EXC-02). Catching `InterruptedException` does not clear the interrupt flag (THR-03); the next interruption point in the same thread throws it again.
+`InterruptedException` is the exception thrown at an interruption point (THR-04) when the running thread's interrupt flag is set.
+It propagates through the standard exception unwind path (EXC-02).
+Catching it does not clear the interrupt flag (THR-03).
 
-`InterruptedException` is unchecked per EXC-05; methods containing interruption points are not required to declare it.
+`InterruptedException` is unchecked per EXC-05.
 
 ### THR-09 — `Thread.join()`
 
@@ -1960,9 +1962,10 @@ To trigger `Thread.onDrop()` before natural scope exit, use `give(worker);` as a
 
 A `Mutex<T>` is **poisoned** when the closure passed to its `with` / `tryWith` call (STD-09) propagates an exception — `InterruptedException` or any other — out of the critical section. `with` / `tryWith` set the poison flag inside the `catch` clause that wraps the closure invocation, before releasing the lock and rethrowing. A normal closure return releases the lock without poisoning.
 
-`Mutex<T>.with()` and `tryWith()` throw `PoisonedException` on a poisoned mutex. There is no bypass: a poisoned mutex's contents are no longer reachable through the locking API. Programs that need to recover from poisoning replace the entire `Mutex<T>` (typically the surrounding `Arc<Mutex<T>>`); the replaced instance is dropped along with its protected value through the standard `onDrop` path (STD-09).
+There is no bypass: a poisoned mutex's contents are unreachable through the locking API (STD-09).
+Programs that need to recover from poisoning replace the entire `Mutex<T>`, typically the surrounding `Arc<Mutex<T>>`.
 
-Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection. `isPoisoned()` reads the flag without acquiring the lock.
+Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection.
 
 ---
 
@@ -1997,7 +2000,7 @@ A laterita source file uses one of two extensions:
 - **`.lat`** — full surface. Additionally admits the `.lat` surface forms specified in the `LAT` topic.
 - **`.java`** — Java-compatible subset, parseable by `javac` and Java-aware IDEs. The `.lat` forms are rejected; equivalent meaning is expressed through their `.java`-surface desugarings.
 
-Both extensions denote the same language: the type system, annotation/intrinsic surface (RESV), and emitted artifacts are identical, and cross-unit variables work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity. Because every `.lat` form is pure syntactic sugar (LAT-00), migration tooling may mechanically translate between the two forms.
+Both extensions denote the same language: the type system, annotation/intrinsic surface (RESV), and emitted artifacts are identical, and cross-unit variables work uniformly. Whether a type was declared in `.lat` or `.java` is not part of its identity.
 
 ### COMP-07 — Compiler invocation
 
@@ -2097,12 +2100,10 @@ This section specifies the forms a `.lat` source additionally admits (COMP-06).
 Forms LAT-01 through LAT-07 are syntactic sugar: each has an exact `.java`-surface equivalent into which the compiler desugars it. Consequently:
 
 - Any `.lat` source built from LAT-01–LAT-07 can be mechanically rewritten to an equivalent `.java` source and the reverse; this rewrite is total and meaning-preserving.
-- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension. Whether a declaration was written in `.lat` or `.java` is not part of its identity (COMP-06). LAT-08 (record-component visibility) is no exception: a destructed record keeps its `record` identity in the `.java` mirror and the destruction desugars to generated members on the Java-compatible surface.
+- A program's meaning over the LAT-01–LAT-07 forms never depends on its file extension (COMP-06). LAT-08 is no exception.
 - A proposed sugar form that cannot be expressed as a desugaring to the `.java` surface does not belong in this section. A construct that carries its own semantics belongs in the core spec as a `.java`-surface rule, expressed through the annotation and intrinsic surface of the `RESV` topic.
 
-Most of these forms desugar before any type analysis; the operator sugar LAT-07 is resolved with operand types, exactly as Java already resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
-
-The sugar forms are listed below with their `.java`-surface desugarings.
+Most of these forms desugar before any type analysis. The operator sugar LAT-07 is resolved with operand types, as Java resolves its own built-in operators, and still rewrites to a `.java`-surface method call or built-in operator.
 
 ### LAT-01 — `T?` nullable-type suffix
 
@@ -2166,7 +2167,7 @@ Arithmetic desugars to an **instance** method annotated `@Operator(op)` (RESV). 
 | `-a` | `a.negate()` | `@Operator(NEGATE)`, no parameters |
 | `a < b` (and `<=`, `>`, `>=`) | `a.compareTo(b) < 0` (resp. `<= > >=`) | implements `Comparable<S>`, `b` assignable to `S` |
 
-The method name is unconstrained. `@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method or where arity does not match. An operator parameter should be a plain borrow (`@take` / `@mut` discouraged). Comparison needs no annotation because implementing `Comparable` is the opt-in.
+The method name is unconstrained. `@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged. `@Operator` is rejected on a `static` method or where arity does not match. An operator parameter should be a plain borrow (`@take` / `@mut` discouraged). Implementing `Comparable` is the opt-in for comparison, which carries no annotation.
 
 `a OP b` is resolved by the static type of the left operand (or for unary `-a`, by `a`). If that type supplies the operator applicable to the right operand, the form is the call. Otherwise, if both operands are primitive-numeric (including GEN-01 `@Delegate` records whose generated forwarder widens to a numeric base), the built-in operator applies. Otherwise it is a type error. Resolution never dispatches on the right operand and never inserts implicit conversion.
 
@@ -2201,7 +2202,7 @@ For a record `Record(T left, S right)` destructed by a `.lat` source the generat
 ```
 
 `intoClass()` is a `@consuming` method (OWN-15) running inside the record's own body, where the components are accessible, so it may move each one out into the companion (OWN-06).
-The companion is a POJO whose component fields are `public`, the destructable shape OWN-06 already requires, so it destructs field by field on the plain `.java` surface.
+The companion is a POJO whose component fields are `public`, so it destructs field by field on the plain `.java` surface (DES-01).
 A destruction site rewrites accordingly:
 
 ```java
@@ -2214,9 +2215,8 @@ var h = give(s.head);      // var h = give(s$class.head);
 var t = give(s.tail);      // var t = give(s$class.tail);
 ```
 
-The record keeps its `record` identity in the `.java` mirror, and the destruction reduces to a `@consuming` method plus an ordinary POJO destruction, both already in the Java-compatible surface, so record destruction adds no semantics of its own (LAT-00).
-`intoClass()` and the companion are generated members like any in the `GEN` topic: an explicit declaration of the same signature shadows them, and the generators deduce the laterita annotations they imply (`@take` on the constructor's owned parameters per GEN-03, `@consuming` on the method).
-A record's `.java` identity therefore no longer depends on whether it is destructed.
+The record keeps its `record` identity in the `.java` mirror.
+`intoClass()` and the companion are generated members like any in the `GEN` topic.
 
 ---
 
@@ -2244,7 +2244,7 @@ Per the shadowing rule, declaring the methods you want to change and letting `@D
 
 `@Delegate` on a `@Nullable` field is a compile error. When two `@Delegate` fields would generate the same signature, that signature is a compile error until an explicit declaration resolves it. Cyclic delegation, where the delegated type transitively forwards back to the owner, is a compile error.
 
-Two optional attributes mirror Lombok: `types` restricts forwarding to the methods of the listed types instead of the field's whole declared surface, and `excludes` removes the methods of the listed types. Because laterita monomorphizes generics (COMP-02), both attributes accept generic types directly and a generic method forwards with its concrete instantiated signature. The generics limitations Lombok documents for `@Delegate` do not apply.
+Two optional attributes mirror Lombok: `types` restricts forwarding to the methods of the listed types instead of the field's whole declared surface, and `excludes` removes the methods of the listed types. Both attributes accept generic types directly, and a generic method forwards with its concrete instantiated signature (COMP-02). The generics limitations Lombok documents for `@Delegate` do not apply.
 
 A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 gives it the component's layout and COMP-08 inlines the forwarders, so it is a distinct nominal type that exposes the wrapped interface at zero runtime overhead. The component accessor is the only path back to the wrapped value, and no implicit widening exists.
 
@@ -2273,7 +2273,7 @@ public @mutating void setBorrowed(@take @borrow S value);   // stores the borrow
 // generated: Shipment(@take String trackingId, Carrier carrier)
 ```
 
-`Shipment` drops at end of life the owned `trackingId` (OWN-08), so the constructor marks it `@take`. The `@borrow` field only borrows, so the field is marked `@borrow` and its constructor parameter is unmarked (bare = borrow). The lifetime of a `Shipment` instance is itself bound to the `Carrier` it borrows (LIFE-03).
+The lifetime of a `Shipment` instance is bound to the `Carrier` it borrows (LIFE-03).
 
 ### GEN-04 — `@ToString`
 
@@ -2285,7 +2285,7 @@ public @mutating void setBorrowed(@take @borrow S value);   // stores the borrow
 
 ### GEN-06 — `@Data` and `@Value`
 
-`@Data` bundles `@Getter`, `@Setter`, `@ToString`, `@EqualsAndHashCode`, and `@RequiredArgsConstructor`. Because it includes `@Setter`, a `@Data` class is `@mut`. `@Value` is the immutable bundle: `@Getter`, `@ToString`, `@EqualsAndHashCode`, `@AllArgsConstructor`, with all fields final and the class final. A `@Value` class is immutable (MUT-05), for which a `record` is the idiomatic equivalent.
+`@Data` bundles `@Getter`, `@Setter`, `@ToString`, `@EqualsAndHashCode`, and `@RequiredArgsConstructor`, so a `@Data` class is `@mut` (GEN-02). `@Value` is the immutable bundle: `@Getter`, `@ToString`, `@EqualsAndHashCode`, `@AllArgsConstructor`, with all fields final and the class final. A `@Value` class is immutable (MUT-05), for which a `record` is the idiomatic equivalent.
 
 ### GEN-07 — `@Builder`
 
@@ -2299,7 +2299,7 @@ public @mutating void setBorrowed(@take @borrow S value);   // stores the borrow
 - bare (no annotation) when the field is `@borrow` — the result's lifetime is also bound to `value`;
 - `@mut` when the field is `@mut`.
 
-Internally, other owned fields are `clone()`d from `this` (OBJ-02), because the receiver is borrowed not consumed. `@With` needs a constructor covering all fields, as in Lombok.
+Internally, other owned fields are `clone()`d from `this` (OBJ-02). `@With` needs a constructor covering all fields, as in Lombok.
 
 ### GEN-09 — `@NonNull`
 
