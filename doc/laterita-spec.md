@@ -192,7 +192,7 @@ Illegal cases:
 
 - `give(arg)` to a bare parameter.
 - A bare argument holding only a borrow to a `@take` parameter whose type is owned.
-A `@take @borrow` parameter instead expects the borrow itself (TARG-05).
+A `@take @borrow` parameter instead expects the borrow itself (OWN-21, TARG-05).
 
 ```java
 var name = makeName();
@@ -649,7 +649,7 @@ The value is admitted equally on the inner-class `@mutating` of MUT-12.
 `@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the inner instance.
 So one class serves as a mutable cursor when built from a `@mut` enclosing instance and a read cursor when built from a shared one.
 
-An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability (COMP-02).
+An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02).
 
 ### MUT-14 - Redundant, conflicting, and downgrading mutability annotations
 
@@ -2030,8 +2030,8 @@ Below is a list of laterita annotations. Combinations not listed are currently n
 | `@mut` | `TYPE` | Not supported on enum and record | Class or interface has a mutable surface | MUT-05 |
 | `@mut` | `LOCAL_VARIABLE` | redundant on an owned local, meaningful on a borrowing local | Requests a mutable borrow on a borrowing local, otherwise the inherited capability (the slot axis is separate: reassignable by default, locked by `final`) | MUT-02 |
 | `@mut` | `FIELD` | only in a `@mut` class | Grants mutate-through on the field (the slot axis is MUT-07b) | MUT-07a |
-| `@mut` | `PARAMETER` | inert when the type is immutable (STR-07) | Mutable parameter (mutable borrow) | MUT-04 |
-| `@mut` | `METHOD` | inert when the type is immutable (STR-07) | Return is a `@mut` variable | MUT-01 |
+| `@mut` | `PARAMETER` | inert when the type is immutable (MUT-14) | Mutable parameter (mutable borrow) | MUT-04 |
+| `@mut` | `METHOD` | inert when the type is immutable (MUT-14) | Return is a `@mut` variable | MUT-01 |
 | `@mut` | `TYPE_USE` | a `@mut` borrow of a held value needs an exclusive holder | redundant on an owned `@mut`-class `T` (inherited), requests a mutable borrow on a `@borrow` `T` | TARG-03 |
 | `@fix` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-05 |
 | `@fix` | `LOCAL_VARIABLE` | - | Forces the referent non-mutable, opting out of the inherited mutability of MUT-02 | MUT-01b |

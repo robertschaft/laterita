@@ -89,7 +89,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 ## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
 
-**Surfaced when:** STAT-01 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
+**Surfaced when:** STAT-02 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
 
 **The issue.** Const-only static initialization keeps the AOT story (COMP-01) honest — no classloader, no static-init-order fiasco, no observable initialization race. But it leaves a real case unspecified: statics whose value genuinely requires runtime work — a compiled regex, a config loaded from disk, a precomputed table, a service registry. Java handles these in `static {}` blocks under the classloader's per-class init lock; Rust uses `LazyLock<T>` / `OnceLock<T>` from `std::sync`. Laterita has neither yet, so every such case must hand-roll a `Mutex<T?>` and a first-access check at every read site.
 
@@ -102,7 +102,7 @@ Laterita has a structural lever Java does not: FN-01 anonymous functional interf
 
 **Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site. The pattern is universal; the shape of the stdlib carrier is what's open.
 
-**Related codes:** STAT-01, STAT-03, STD-09, THR-10, COMP-01.
+**Related codes:** STAT-02, STAT-03, STD-09, THR-10, COMP-01.
 
 ---
 

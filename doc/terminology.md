@@ -135,7 +135,7 @@ The ability to mutate an object's contents through a non-`@mut` (immutable) vari
 An overriding method's parameter must **match exactly** the base method's parameter. No relaxation allowed. See `HIER-05`. (Contrast with contravariance.)
 
 ### .lat / .java (source file extensions)
-The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in the `LAT` topic (`LAT-00`–`LAT-05`). Both extensions share the same type system, annotations, and intrinsics.
+The two file extensions accepted by `latc`. `.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`. `.java` is the Java-compatible subset; the `.lat` forms and their `.java`-surface desugarings are specified in the `LAT` topic. Both extensions share the same type system, annotations, and intrinsics.
 
 ### latc (laterita compiler)
 The reference laterita compiler. Accepts `.lat` and `.java` in a single compilation unit, dispatches by extension per `COMP-06`, and emits artifacts per `COMP-01`–`COMP-04`. See `COMP-07`.
