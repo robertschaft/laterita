@@ -800,6 +800,13 @@ A field-level `@Setter` needs an already-`@mut` class, since a lone mutable fiel
 
 `@Delegate` is the one experimental annotation kept, because it is the keystone of the newtype idiom and of composition-over-inheritance generally. Lombok flags it as permanently experimental for reasons that do not carry over. Its generics handling is erasure-bound and version-fragile, but laterita monomorphizes (COMP-02), so a forwarded generic method has a concrete signature and the attribute restrictions disappear. Lombok also cannot let you implement some methods and delegate the rest, but laterita's shadowing rule gives exactly that for free. The pitfalls that keep `@Delegate` experimental in Java are artifacts of the JVM, so Laterita keeps the core (the forwarded methods appear on the owner and behave like the original) and drops the caveats.
 
+### Why the constructor generators default `@Nullable` fields to `null` (GEN-03)
+
+OWN-11 requires every field to be assigned exactly once on every path through every constructor, so a generated constructor must account for each field or fail to compile.
+Read literally, that gives `@NoArgsConstructor` a parameter for every field without an initializer, which is the whole of what the annotation exists to remove, and makes `@RequiredArgsConstructor` demand a value for fields whose declared type already admits `null`.
+Treating a `@Nullable` field as initialized to `null` satisfies OWN-11 from the declaration alone and leaves both generated signatures the shape a Lombok user expects.
+A non-`@Nullable` field carries no such default, so `@NoArgsConstructor` still requires an initializer on every one of them.
+
 ### How Laterita supports the newtype idiom
 
 The newtype pattern decomposes into three independent rules that each have value elsewhere: NABI-01 (single-field layout, needed for FFI regardless), GEN-01 (`@Delegate` codegen, useful for any composition-over-inheritance wrapper), and COMP-08 (inlining, a general optimization). A dedicated `@newtype` annotation would only restate that `@Delegate` is present. A named unifying rule would bundle three orthogonal concepts into one composite. The composition is the design.

@@ -746,16 +746,16 @@ An override of an inherited method (subclass override or interface implementatio
 - **Parameters** and **the receiver** describe what the method demands. An override may demand less.
 - **The return** describes what the method gives back. An override may give more.
 
-| Annotation | Position | Override may drop | Override may add | Reason |
-|---|---|---|---|---|
-| `@take` | parameter | ✗ | ✗ | Either direction breaks the caller's transfer expectation |
-| `@mut` | parameter | ✓ | ✗ | Override needs only shared access. Adding `@mut` rejects shared-borrow callers |
-| `@bound` | parameter | ✓ (jointly with return) | ✗ | Source for a return borrow. Dropping requires the return to drop `@bound` too |
-| `@bound` | return | ✓ | ✗ | Owned return is a stronger guarantee than receiver-bound |
-| `@mutating` | method | ✓ | ✗ | Drops the `@mut` demand on the receiver |
-| `@consuming` | method | ✓ (to `@mutating` or bare) | ✗ | Drops the ownership demand on the receiver |
-| `@mut` | class | ✓ (immutable subclass of `@mut` parent) | ✗ | HIER-02 |
-| Call mode of an FI slot | parameter (FI type) | ✗ | ✓ (strengthen) | A stronger slot accepts strictly more closures (CLO-05) |
+| Annotation | Position | Override may drop | Override may add |
+|---|---|---|---|
+| `@take` | parameter | ✗ | ✗ |
+| `@mut` | parameter | ✓ | ✗ |
+| `@bound` | parameter | ✓ (jointly with return) | ✗ |
+| `@bound` | return | ✓ | ✗ |
+| `@mutating` | method | ✓ | ✗ |
+| `@consuming` | method | ✓ (to `@mutating` or bare) | ✗ |
+| `@mut` | class | ✓ (immutable subclass of a `@mut` parent, HIER-02) | ✗ |
+| Call mode of an FI slot | parameter (FI type) | ✗ | ✓ (strengthen, CLO-05) |
 
 ```java
 interface Visitor {
@@ -946,9 +946,8 @@ Equivalently, when several locals leave scope at the same point, the shortest-li
 
 ### DROP-04 — A destructed object's fields drop independently
 
-Destruction (OWN-06) replaces an owned object with its formerly owned fields, each now an independent value owned by the scope, and ends the object's own lifetime (DES-02).
-A destructed object is therefore never dropped as a whole.
-Each of those fields drops at scope exit like any other owned variable (DROP-01, DROP-02), unless it has since been moved away.
+Per OWN-06 and DES-02, a destructed object is never dropped as a whole.
+Each of its formerly owned fields drops at scope exit like any other owned variable (DROP-01, DROP-02), unless it has since been moved away.
 The compiler records per field whether it is still owned at each exit point, a drop flag, and emits the drop only for the fields still owned there.
 Implementations may optimize away drop flags when static analysis proves them constant.
 
@@ -964,7 +963,7 @@ Dropping a value runs cleanup in the reverse of construction order. For an insta
 Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 and 3.
 Each surviving owned field is dropped recursively by this same procedure.
 The step-1 body runs before any field teardown of that class.
-It may read every owned field visible to it, and on a `@mut` class may reassign its non-`final` fields and mutate through its `@mut` fields (MUT-07b, MUT-10).
+It may read every owned field visible to it, and mutates under MUT-10.
 A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
 
 ```java
@@ -1029,8 +1028,7 @@ It may not be given (`give(this)`) to another function, returned, stored in a fi
 
 ### DROP-11 — `onDrop()` access to `@borrow` fields requires `@borrowCapped`
 
-An `onDrop()` body may access an owned field freely (DROP-05).
-It may access a `@borrow` field (OWN-09), its own or an inherited one, only if the class is `@borrowCapped`, declared or inherited (LIFE-04).
+An `onDrop()` body may access a `@borrow` field (OWN-09), its own or an inherited one, only if the class is `@borrowCapped`, declared or inherited (LIFE-04).
 Accessing a `@borrow` field otherwise is a compile error.
 The diagnostic names the field and points to `@borrowCapped`.
 
@@ -1255,7 +1253,7 @@ class User {
 
 ### NULL-09 — `onDrop()` skips null
 
-When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional: if the value is `null`, no call is made; otherwise `onDrop()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment — the compiler already tracks per-variable "still live?" state.
+When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional: if the value is `null`, no call is made; otherwise `onDrop()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment.
 
 ### NULL-10 — Move and borrow on `T?`
 
@@ -1267,7 +1265,7 @@ When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call
 
 ### EXC-01 — Existing Java exception syntax is preserved
 
-Java's exception syntax is preserved unchanged: `throws`, `try`/`catch`/`finally`, and the `Throwable` hierarchy. The checked/unchecked distinction is removed per EXC-05; the `throws` clause becomes documentary.
+Java's exception syntax is preserved unchanged: `throws`, `try`/`catch`/`finally`, and the `Throwable` hierarchy. The checked/unchecked distinction is removed per EXC-05.
 
 ### EXC-02 — Cleanup runs on exception unwind
 
@@ -1301,7 +1299,7 @@ An anonymous functional interface is written
 [ @mutating | @consuming ] (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` follows OWN-13 / MUT-04 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per OWN-17 or OWN-18), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03): bare → shared-call, `@mutating` → mut-call, `@consuming` → once-call. The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface. The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)` — there is no call-on-variable syntax.
+where each `Pi` follows OWN-13 / MUT-04 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per OWN-17 or OWN-18), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03). The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface. The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)` — there is no call-on-variable syntax.
 
 Examples — each comment describes what a lambda assigned to that parameter type may do:
 
@@ -1375,7 +1373,7 @@ An anonymous functional-interface type expression (FN-01) may be written as:
 
 It may not be written as:
 
-- the declared type of a field — stored function values use a nominal FI, which keeps a stable name for documentation and debugging
+- the declared type of a field (FN-03)
 - the declared type of a local variable — `var` inference still holds an anonymous FI value when the RHS produces one
 
 The restrictions govern the written type expression, not value flow: a `var` local may hold an anonymous-FI value whose type is inferred, such as the result of a closure-returning call.
@@ -1693,7 +1691,7 @@ The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are 
 ### ARR-05 — Array indexing is always bounds-checked
 
 Every array index expression `a[i]`, read or write, is bounds-checked, and an out-of-range index throws `ArrayIndexOutOfBoundsException` as in Java.
-There is no unchecked-indexing form and no annotation that suppresses the check, and the operation is not gated by `@unsafe` (UNS-02): the check applies inside `private @unsafe` methods exactly as it does in safe code.
+There is no unchecked-indexing form and no annotation that suppresses the check (UNS-02, UNS-04).
 A compiler may elide a check it proves redundant.
 
 ---
@@ -1759,7 +1757,7 @@ A cycle of `Rc<T>` handles whose strong references form a closed loop is not rec
 
 The cross-thread analog of `Rc<T>`, with atomic reference-count operations.
 The copy constructor `new Arc<T>(Arc<T> other)` performs the atomic refcount bump.
-`Arc<T>` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
+`Arc<T>` may be moved or borrowed across thread boundaries (STD-07).
 The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a borrowed type argument is rejected.
 
 ### STD-03 — `WeakReference<T>`
@@ -1777,11 +1775,11 @@ Once the caller drops the returned handle, the value may be reclaimed at the nex
 
 ### STD-05 — `Cell<T>`
 
-Interior-mutability primitive. Permits mutation of contents through a non-`@mut` variable. Construction and content mutation require `@unsafe` context per UNS-02. Used as a building block for `Arc<T>`, `Mutex<T>`, lazy initializers, etc.
+Interior-mutability primitive. Permits mutation of contents through a non-`@mut` variable (UNS-02). Used as a building block for `Arc<T>`, `Mutex<T>`, lazy initializers, etc.
 
 ### STD-06 — `Heap<T>`
 
-Raw heap-allocation primitive. Provides allocation, dereference, and free. All operations require `@unsafe` context per UNS-02. `Heap<T>.clone()` reaches `broken()`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()` with the appropriate semantics.
+Raw heap-allocation primitive. Provides allocation, dereference, and free (UNS-02). `Heap<T>.clone()` reaches `broken()`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()` with the appropriate semantics.
 
 ### STD-07 — `@local` marker
 
@@ -1795,14 +1793,14 @@ The standard library declares `@local`:
 - `Rc<T>` (STD-01)
 - `Cell<T>` (STD-05)
 - `Heap<T>` (STD-06)
+- `LockGuard` (STD-11)
 
 A class with any transitively `@local` field must carry an explicit `@local` annotation — either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation). Failure to declare one is a compile error; the choice is the author's, not the compiler's. A class with no `@local` fields is non-`@local` by default; it may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
 
-`@local(false)` asserts that the class encapsulates its `@local` fields — the compiler does not verify the assertion. The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify (notably cross-thread move of `@local`). `@local(false)` lives on the class, `@unsafe` lives on individual methods — they are independent. The stdlib types `Arc<T>` (STD-02), `Mutex<T>`, and `Thread` (THR-01) are declared `@local(false)`.
+`@local(false)` asserts that the class encapsulates its `@local` fields — the compiler does not verify the assertion. The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify (notably cross-thread move of `@local`). `@local(false)` lives on the class, `@unsafe` lives on individual methods — they are independent. The stdlib types `Arc<T>` (STD-02), `Mutex<T>` (STD-09), `ReentrantLock` (STD-10), and `Thread` (THR-01) are declared `@local(false)`.
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
-- A move (OWN-07) of a `@local` value across a thread boundary outside `@unsafe` (UNS-02 already gates this).
 
 ### STD-08 — Borrow-checked iteration
 
@@ -1842,7 +1840,7 @@ The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
-`Mutex<T>` is declared `@local(false)` per STD-07. Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods; the closure-scoped surface above is safe.
+Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods; the closure-scoped surface above is safe.
 
 ### STD-10 — `ReentrantLock`
 
@@ -1858,11 +1856,10 @@ A reentrant mutual-exclusion primitive without a protected value: the lock alone
 
 **Condition variables.** `@bound Condition newCondition()` — returns a fresh `Condition` (STD-12) bound to this lock. May be called any number of times; one lock can pair with multiple conditions (the classic bounded-buffer "not full" / "not empty" pattern).
 
-`ReentrantLock` is `@local(false)` per STD-07.
 
 ### STD-11 — `LockGuard`
 
-A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` is `@local`; it cannot be borrowed across threads.
+A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` cannot be borrowed across threads (STD-07).
 
 `LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
 
@@ -1880,9 +1877,9 @@ As `java.util.concurrent.locks.Condition`, created by `ReentrantLock.newConditio
 
 `Thread` is the standard `java.lang.Thread` class reused minus the deprecated methods (`stop()`, `suspend()`, `resume()`, `destroy()`, etc.) and with two changes per THR-03 and THR-06.
 
-A `Thread`'s lifetime is bound to its owner: when the owning variable goes out of scope, `Thread.onDrop()` runs (DROP-03), interrupting the worker and waiting for it to terminate. Long-lived threads (server accept loops, background flushers) must be owned by variables whose lifetime matches — typically a top-level variable in `main` or a field of an object that is itself owned at top level.
+A `Thread`'s lifetime is bound to its owner: when the owning variable goes out of scope, `Thread.onDrop()` runs (DROP-03, THR-06). Long-lived threads (server accept loops, background flushers) must be owned by variables whose lifetime matches — typically a top-level variable in `main` or a field of an object that is itself owned at top level.
 
-`Thread` is declared `@local(false)` per STD-07 and may be moved or borrowed across thread boundaries.
+`Thread` may be moved or borrowed across thread boundaries (STD-07).
 
 ### THR-02 — Thread creation
 
@@ -1973,7 +1970,7 @@ Poisoning is per-mutex, sticky, and not cleared by lock release or by inspection
 
 ### COMP-01 — Native compilation, no GC
 
-Laterita is intended to be compiled ahead-of-time to native code. There is no garbage collector at runtime. Memory management is determined by static ownership, borrow tracking, and `onDrop()` insertion at scope exits. reference-counted types (`Rc<T>`, `Arc<T>`) introduce dynamic refcount-based reclamation; cycles among such handles leak per STD-01. No tracing collector is provided.
+Laterita is intended to be compiled ahead-of-time to native code. There is no garbage collector at runtime. Memory management is determined by static ownership, borrow tracking, and `onDrop()` insertion at scope exits. Reference-counted types (`Rc<T>`, `Arc<T>`) introduce dynamic refcount-based reclamation (STD-01). No tracing collector is provided.
 
 ### COMP-02 — Generic monomorphization
 
@@ -2154,7 +2151,7 @@ Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .la
 
 ### LAT-07 — Operator sugar
 
-In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Other operators are currently not supported in this way for various reasons.
+In `.lat`, the arithmetic operators `+ - * /` and unary `-` and the comparison operators `< <= > >=` are sugar for method calls. Other operators have no method-call sugar.
 
 Arithmetic desugars to an **instance** method annotated `@Operator(op)` (RESV). Comparison desugars through `java.lang.Comparable`:
 
@@ -2234,7 +2231,7 @@ Laterita supports the stable [Project Lombok](https://projectlombok.org/) annota
 
 A generator supplies the laterita annotation a generated member implies (e.g. `setX(@take X x)` when x is owned). It also deduces the laterita class-level annotations: a class annotated with `@Setter` or `@Data` is automatically also `@mut` (MUT-05).
 
-An explicitly declared member with the same name and erased parameter types shadows the generated one, so a generator never conflicts with hand-written code. Annotations and attributes not listed in this section pass through to downstream annotation processors unchanged. Several generators duplicate what a `record` or immutable class already provides. They stay supported for source compatibility even where the idiomatic laterita form is a `record`.
+An explicitly declared member with the same name and erased parameter types shadows the generated one, so a generator never conflicts with hand-written code. Annotations and attributes not listed in this section pass through to downstream annotation processors unchanged. Several generators duplicate what a `record` or immutable class already provides.
 
 ### GEN-01 — `@Delegate`
 
@@ -2263,7 +2260,7 @@ public @mutating void setBorrowed(@take @borrow S value);   // stores the borrow
 
 ### GEN-03 — Constructor generators
 
-`@AllArgsConstructor` generates a constructor containing every field; `@NoArgsConstructor` generates one with no parameters. `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that carries no initializer, since OWN-11 leaves no field over for later assignment. In all three, an owned field's parameter is marked `@take`; a `@borrow` field's parameter is unmarked (bare = borrow per OWN-13). To follow the intent of the Lombok annotations for less boilerplate, `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, working around NULL-01. `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
+`@AllArgsConstructor` generates a constructor containing every field; `@NoArgsConstructor` generates one with no parameters. `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that carries no initializer, since OWN-11 leaves no field over for later assignment. In all three, an owned field's parameter is marked `@take`; a `@borrow` field's parameter is unmarked (bare = borrow per OWN-13). `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, satisfying OWN-11 without an explicit initializer. `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
 
 ```java
 @AllArgsConstructor class Shipment {
