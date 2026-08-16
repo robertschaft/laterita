@@ -66,7 +66,7 @@ print(b);                   // OK
 
 Reassigning a non-`final` local (MUT-02) re-applies this rule to the new RHS.
 The slot's owned-or-borrowed status, and for a borrow its source, are taken from the most recent assignment and checked flow-sensitively (LIFE-01).
-Referent mutability is re-derived from each new RHS the same way (MUT-02), independently of the slot axis that `final` governs.
+Referent mutability is re-derived from each new RHS the same way (MUT-02).
 
 ### OWN-03 - Borrow exclusivity
 
@@ -161,7 +161,7 @@ record EntryView<K, V>(@borrow K key, @borrow V value) {}   // instances must be
 
 Every field of a class must be assigned exactly once on every path through every constructor, before any method on `this` is invoked.
 `final` fields, with or without `@mut`, can be assigned only in constructors.
-Non-`final` fields can also be reassigned later through a `@mut` receiver of a `@mut` class (MUT-07b), in practice in a `@mutating` method (MUT-08) or an `onDrop()` body (MUT-10).
+Non-`final` fields may be reassigned later per MUT-07b.
 
 ### OWN-12 - Record components follow field rules
 
@@ -465,8 +465,6 @@ A temporary fills a `@mut` parameter directly.
 A non-`@mut` source passed to a `@mut` parameter is rejected.
 There is no mutable access to lend.
 
-`@fix` on a parameter is redundant except where the parameter's type is a type parameter assumed `@mut` (TARG-03).
-
 ### MUT-05 - `@mut` and `@fix` class declarations
 
 A class, abstract class, or interface may be declared `@mut` (`@mut class C`, `@mut abstract class C`, `@mut interface I`) or `@fix` (`@fix class C`, and so on).
@@ -477,7 +475,6 @@ A class, abstract class, or interface may be declared `@mut` (`@mut class C`, `@
 `@fix` declares an *immutable class*.
 When neither `@mut` nor `@fix` is written, the kind defaults from the supertype and implemented interfaces (HIER-02).
 No `@mutating` method may be declared on an immutable class.
-In an immutable class, all fields are treated like `final` (MUT-07b).
 An immutable interface may declare only methods without `@mutating`.
 Under the same lifetime constraints the compiler may substitute a copy of an immutable instance for a borrow of it, and the reverse.
 
@@ -499,8 +496,7 @@ Without `@mut` a field cannot be mutated through.
 A `@mut` field may be *declared* only in a class declared `@mut`.
 An immutable class may *inherit* a `@mut` field from a `@mut` ancestor (HIER-03) but may not declare one.
 The declared type is unrestricted.
-On a field of immutable type `@mut` grants nothing observable, since the referent has no mutating surface, and is redundant.
-`@fix` on a field is redundant except where the field's type is a type parameter assumed `@mut` (TARG-03).
+On a field of immutable type `@mut` grants nothing observable and is redundant.
 
 ### MUT-07b - Non-`final` field is reassignable through a `@mut` receiver
 
@@ -537,7 +533,6 @@ A method without it cannot.
 It carries an `InheritFrom` value, `InheritFrom.NONE` by default, which is the always-mutating form specified here.
 `InheritFrom.RECEIVER` selects the receiver-inherited form (MUT-13).
 
-`@mutating` may be declared only on a `@mut` class or `@mut` interface (MUT-05).
 Override variance is HIER-05.
 
 ```java
@@ -774,9 +769,6 @@ class BadReader implements Reader {
     @Override void read(@mut Node n) { ... }                   // ERROR: adds @mut, rejects shared callers
 }
 ```
-
-The rule mirrors Java's existing treatment of `throws`.
-An override may declare fewer or narrower checked exceptions than the inherited signature, never more.
 
 ---
 
