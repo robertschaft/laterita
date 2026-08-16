@@ -1245,7 +1245,9 @@ class User {
 
 ### NULL-09 — `onDrop()` skips null
 
-When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional: if the value is `null`, no call is made; otherwise `onDrop()` is invoked on the contained value. This composes with DROP-04's drop-flag treatment.
+When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional.
+If the value is `null` no call is made, otherwise `onDrop()` is invoked on the contained value.
+This composes with DROP-04's drop-flag treatment.
 
 ### NULL-10 — Move and borrow on `T?`
 
@@ -1291,7 +1293,9 @@ An anonymous functional interface is written
 [ @mutating | @consuming ] (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` follows OWN-13 / MUT-04 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per OWN-17 or OWN-18), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03). The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface. The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)` — there is no call-on-variable syntax.
+where each `Pi` follows OWN-13 / MUT-04 parameter form (bare `T`, `@mut T`, `@take T`, with optional `@bound` per OWN-17 or OWN-18), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03).
+The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface.
+The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)`, and there is no call-on-variable syntax.
 
 Examples — each comment describes what a lambda assigned to that parameter type may do:
 
@@ -1673,10 +1677,10 @@ public record Pair<L, R>(L left, R right) {}
 
 Instantiations encountered in this spec:
 
-- `Pair<T[], T[]>` — owned pair, returned by `splitOff`.
+- `Pair<T[], T[]>`: owned pair, returned by `splitOff`.
 The owning halves are obtained by destructing the pair, `give(p.left)` and `give(p.right)` (OWN-06, LAT-08).
 A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors (OWN-18).
-- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>` — pair of mutable borrows, returned by `splitAt` (TARG-01, TARG-03, LIFE-02).
+- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>`: pair of mutable borrows, returned by `splitAt` (TARG-01, TARG-03, LIFE-02).
 
 The record itself is non-`@local`. Heterogeneous (`L ≠ R`) instantiations are permitted.
 
@@ -1755,7 +1759,7 @@ The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a bo
 ### STD-03 — `WeakReference<T>`
 
 A non-owning back-reference. The class name and method names follow `java.lang.ref.WeakReference`. Provides:
-- `new WeakReference<T>(Rc<T> source)` / `new WeakReference<T>(Arc<T> source)` — constructs a weak handle from the strong one.
+- `new WeakReference<T>(Rc<T> source)` / `new WeakReference<T>(Arc<T> source)`: constructs a weak handle from the strong one.
 - `Rc<T>? get()` (or `Arc<T>? get()`, matching the source flavor) — returns a strong handle if the value is still alive, otherwise `null`. Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap per STD-04).
 
 `get()` returns a fresh strong handle rather than the bare referent `java.lang.ref.WeakReference.get()` returns.
@@ -1771,7 +1775,10 @@ Interior-mutability primitive. Permits mutation of contents through a non-`@mut`
 
 ### STD-06 — `Heap<T>`
 
-Raw heap-allocation primitive. Provides allocation, dereference, and free (UNS-02). `Heap<T>.clone()` reaches `broken()`: a raw allocation has no defined duplication semantics — duplicating the handle would create two owners of the same memory. Wrapper types built on `Heap<T>` (e.g., `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()` with the appropriate semantics.
+Raw heap-allocation primitive.
+Provides allocation, dereference, and free (UNS-02).
+`Heap<T>.clone()` reaches `broken()` (UNR-01).
+Wrapper types built on `Heap<T>` (e.g. `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()`.
 
 ### STD-07 — `@local` marker
 
@@ -1789,7 +1796,10 @@ The standard library declares `@local`:
 
 A class with any transitively `@local` field must carry an explicit `@local` annotation — either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation). Failure to declare one is a compile error; the choice is the author's, not the compiler's. A class with no `@local` fields is non-`@local` by default; it may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
 
-`@local(false)` asserts that the class encapsulates its `@local` fields — the compiler does not verify the assertion. The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify (notably cross-thread move of `@local`). `@local(false)` lives on the class, `@unsafe` lives on individual methods — they are independent. The stdlib types `Arc<T>` (STD-02), `Mutex<T>` (STD-09), `ReentrantLock` (STD-10), and `Thread` (THR-01) are declared `@local(false)`.
+`@local(false)` asserts that the class encapsulates its `@local` fields, and the compiler does not verify the assertion.
+The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify, notably cross-thread move of `@local`.
+`@local(false)` lives on the class and `@unsafe` on individual methods, independently.
+The stdlib types `Arc<T>` (STD-02), `Mutex<T>` (STD-09), `ReentrantLock` (STD-10), and `Thread` (THR-01) are declared `@local(false)`.
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
@@ -1832,7 +1842,8 @@ The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
-Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods; the closure-scoped surface above is safe.
+Its internals (a raw OS lock primitive and a `Cell<T>`-backed protected value) are accessed through `@unsafe` methods.
+The closure-scoped surface above is safe.
 
 ### STD-10 — `ReentrantLock`
 
@@ -1851,7 +1862,10 @@ A reentrant mutual-exclusion primitive without a protected value: the lock alone
 
 ### STD-11 — `LockGuard`
 
-A value witnessing that the calling thread holds a `ReentrantLock` (STD-10). Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`; not user-constructible. `@bound` to its source `ReentrantLock`. A `LockGuard` cannot be borrowed across threads (STD-07).
+A value witnessing that the calling thread holds a `ReentrantLock` (STD-10).
+Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`, and not user-constructible.
+`@bound` to its source `ReentrantLock`.
+A `LockGuard` cannot be borrowed across threads (STD-07).
 
 `LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
 
@@ -1869,7 +1883,8 @@ As `java.util.concurrent.locks.Condition`, created by `ReentrantLock.newConditio
 
 `Thread` is the standard `java.lang.Thread` class reused minus the deprecated methods (`stop()`, `suspend()`, `resume()`, `destroy()`, etc.) and with two changes per THR-03 and THR-06.
 
-A `Thread`'s lifetime is bound to its owner: when the owning variable goes out of scope, `Thread.onDrop()` runs (DROP-03, THR-06). Long-lived threads (server accept loops, background flushers) must be owned by variables whose lifetime matches — typically a top-level variable in `main` or a field of an object that is itself owned at top level.
+A `Thread`'s lifetime is bound to its owner: when the owning variable goes out of scope, `Thread.onDrop()` runs (DROP-03, THR-06).
+Long-lived threads (server accept loops, background flushers) must be owned by variables whose lifetime matches, typically a top-level variable in `main` or a field of an object that is itself owned at top level.
 
 `Thread` may be moved or borrowed across thread boundaries (STD-07).
 
@@ -2252,7 +2267,12 @@ public @mutating void setBorrowed(@take @borrow S value);   // stores the borrow
 
 ### GEN-03 — Constructor generators
 
-`@AllArgsConstructor` generates a constructor containing every field; `@NoArgsConstructor` generates one with no parameters. `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that carries no initializer, since OWN-11 leaves no field over for later assignment. In all three, an owned field's parameter is marked `@take`; a `@borrow` field's parameter is unmarked (bare = borrow per OWN-13). `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, satisfying OWN-11 without an explicit initializer. `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
+`@AllArgsConstructor` generates a constructor containing every field.
+`@NoArgsConstructor` generates one with no parameters.
+`@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that carries no initializer (OWN-11).
+In all three, an owned field's parameter is marked `@take` and a `@borrow` field's parameter is unmarked (bare = borrow per OWN-13).
+`@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, satisfying OWN-11 without an explicit initializer.
+`@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
 
 ```java
 @AllArgsConstructor class Shipment {
