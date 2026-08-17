@@ -785,7 +785,7 @@ It declares that the values substituted for that type parameter are borrows, the
 When a `@borrow`-substituted argument is stored in a field, that field becomes a `@borrow` field, so the instance can only be produced as a `@bound` value bound to the sources of the borrowed arguments (OWN-09, LIFE-03).
 
 ```java
-record Pair<L, R>(L left, R right) {}
+// laterita.lang.Pair<L, R> (ARR-04)
 
 Pair<String, Integer>                 p1   = new Pair<>("hello".clone(), 42);
 Pair<@borrow String, @borrow Integer> view = new Pair<>(name, count);   // view bound to name, count
@@ -1559,7 +1559,7 @@ Whether the variable that receives the value can invoke its SAM is the separate 
 ```java
 @mut interface Doubler { @mutating int apply(int x); }   // mut-call
 
-@mut List<Integer> seen = new ArrayList<>();               // effectively final slot, @mut referent
+List<Integer> seen = new ArrayList<>();                    // owned local, mutability inherited (MUT-02)
 Doubler counting = (x) -> { seen.add(x); return x * 2; };  // mutates through seen → mutate lambda → mut-call: OK
 Doubler pure     = (x) -> x * 2;                           // read lambda → shared-call ≤ mut-call: OK
 
@@ -1666,7 +1666,7 @@ The `.lat` surface here uses the inline functional-interface spelling of LAT-05,
 
 ```java
 @mut class T[] {
-    @mutating @bound Pair<@borrow @mut T[], @borrow @mut T[]> splitAt(int mid);
+    @mutating(InheritFrom.RECEIVER) @bound Pair<@borrow T[], @borrow T[]> splitAt(int mid);
 
     @mutating void forEachChunk(int chunkSize,
             @mut @mutating (@mut T[]) -> void body);
@@ -1678,7 +1678,8 @@ The `.lat` surface here uses the inline functional-interface spelling of LAT-05,
 }
 ```
 
-`splitAt` re-borrows the receiver (MUT-10), and the returned record is `@bound` to the receiver's source (LIFE-02).
+`splitAt` re-borrows the receiver (MUT-10), and the returned pair is `@bound` to the receiver's source (LIFE-02).
+Over a `@mut` receiver the halves lend mutably, and over a `@fix` or shared receiver they lend read-only (MUT-13), so one declaration serves both the in-place-update and the read split.
 `forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
 Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction.
 Fold-style reductions express by capturing a `@mut` accumulator in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
@@ -1691,8 +1692,8 @@ Each half is a regular `T[]` supporting the full ARR-01 surface.
 ```java
 var arr   = readInput();
 var split = arr.splitOff(arr.length / 2);
-var left  = give(split.left);       // .lat destruction: left component moved out of the pair (OWN-06, LAT-08)
-var right = give(split.right);      // right component; split now fully destructed
+var left  = give(split.left);       // left field moved out of the pair (OWN-06)
+var right = give(split.right);      // right field moved out, split now fully destructed
 var t1 = Thread.ofVirtual().start(() -> heavy(left));
 var t2 = Thread.ofVirtual().start(() -> heavy(right));
 t1.join();
@@ -1709,8 +1710,8 @@ package laterita.lang;
 public final class Arrays {
     private Arrays() {}
 
-    public static <T> @mut @bound Pair<@borrow @mut T[], @borrow @mut T[]> splitAt(
-            @bound @mut T[] arr, int mid);
+    public static <T> @bound Pair<@borrow T[], @borrow T[]> splitAt(
+            @bound T[] arr, int mid);
 
     public static <T> void forEachChunk(
             @mut T[] arr, int chunkSize,
@@ -1726,6 +1727,9 @@ public final class Arrays {
     public static <T> Stream<T> stream(@bound T[] arr);
 }
 ```
+
+`splitAt` binds its return to the `@bound` parameter rather than to a receiver (OWN-17), and that return inherits the mutability of the argument the parameter receives, the parameter-side reading of MUT-13.
+A `@mut` argument yields a pair whose halves lend mutably, and a `@fix` or shared argument yields one whose halves lend read-only.
 
 `stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter rather than to a receiver (OWN-17, OWN-18).
 Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`, and callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)`.
@@ -1749,23 +1753,33 @@ public interface MutableConsumer<T> {
 
 ### ARR-04 — `Pair<L, R>`
 
-General-purpose record carrying two values.
+General-purpose class carrying two values.
 A single declaration covers owned, borrow, and mixed cases: the mode is driven by what is substituted for `L` and `R` (TARG-01).
+It is declared `@mut`, so a binding of it takes the mutability its producer supplies and `@fix` yields the frozen view (MUT-05, MUT-14).
 
 ```java
 package laterita.lang;
 
-public record Pair<L, R>(L left, R right) {}
+@mut
+public class Pair<L, R> {
+    public final L left;
+    public final R right;
+
+    public Pair(@take L left, @take R right);
+}
 ```
+
+The components are `public final` fields rather than record components, so the pair destructs by direct field access on both surfaces (OWN-06) and needs no `.lat`-only spelling (LAT-08).
+Their mutability is the type-parameter assumption of TARG-03, not a `@mut` field declaration (MUT-07a).
 
 Instantiations encountered in this spec:
 
 - `Pair<T[], T[]>`: owned pair, returned by `splitOff`.
-The owning halves are obtained by destructing the pair, `give(p.left)` and `give(p.right)` (OWN-06, LAT-08).
-A `.java` caller of the ARR-02 mirror can only borrow the halves through the accessors (OWN-18).
-- `@mut @bound Pair<@borrow @mut T[], @borrow @mut T[]>`: pair of mutable borrows, returned by `splitAt` (TARG-01, TARG-03, LIFE-02).
+The owning halves are obtained by destructing the pair, `give(p.left)` and `give(p.right)` (OWN-06).
+- `@bound Pair<@borrow T[], @borrow T[]>`: pair of borrowed halves, returned by `splitAt` (TARG-01, LIFE-02).
+Whether those halves lend mutably follows the receiver `splitAt` was called on (MUT-13).
 
-The record itself is non-`@local`.
+The class itself is non-`@local`.
 Heterogeneous (`L ≠ R`) instantiations are permitted.
 
 ### ARR-05 — Array indexing is always bounds-checked
@@ -1891,11 +1905,10 @@ Inter-thread communication uses `Mutex<T>` (STD-09) for shared mutable state and
 
 A type carries the `@local` property if its instances cannot safely cross thread boundaries.
 
-The standard library declares `@local`:
+Standard-library types declaring `@local` include:
 - `Rc<T>` (STD-01)
 - `Cell<T>` (STD-05)
 - `Heap<T>` (STD-06)
-- `LockGuard` (STD-11)
 
 A class with any transitively `@local` field must carry an explicit `@local` annotation, either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation).
 Failure to declare one is a compile error.
@@ -1906,7 +1919,7 @@ It may be annotated `@local` to opt in for thread-affine resources whose affinit
 `@local(false)` asserts that the class encapsulates its `@local` fields, and the compiler does not verify the assertion.
 The internal access to those fields uses `@unsafe` methods (UNS-01) for the operations in UNS-02 that the compiler cannot verify, notably cross-thread move of `@local`.
 `@local(false)` lives on the class and `@unsafe` on individual methods, independently.
-The stdlib types `Arc<T>` (STD-02), `Mutex<T>` (STD-09), `ReentrantLock` (STD-10), and `Thread` (THR-01) are declared `@local(false)`.
+Stdlib types declaring `@local(false)` include `Arc<T>` (STD-02), `Mutex<T>` (STD-09), and `Thread` (THR-01).
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
@@ -2197,7 +2210,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@mut` | `FIELD` | only in a `@mut` class | Grants mutate-through on the field (the slot axis is MUT-07b) | MUT-07a |
 | `@mut` | `PARAMETER` | inert when the type is immutable (MUT-14) | Mutable parameter (mutable borrow) | MUT-04 |
 | `@mut` | `METHOD` | inert when the type is immutable (MUT-14) | Return is a `@mut` variable | MUT-01 |
-| `@mut` | `TYPE_USE` | a `@mut` borrow of a held value needs an exclusive holder | redundant on an owned `@mut`-class `T` (inherited), requests a mutable borrow on a `@borrow` `T` | TARG-03 |
+| `@mut` | `TYPE_USE` | - | redundant on an owned `@mut`-class `T` (inherited), requests a mutable borrow on a `@borrow` `T` | TARG-03 |
 | `@fix` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-05 |
 | `@fix` | `LOCAL_VARIABLE` | - | Forces the referent non-mutable, opting out of the inherited mutability of MUT-02 | MUT-01b |
 | `@fix` | `FIELD` | redundant unless the field type is a `@mut`-assumed type parameter (TARG-03) | Forces the referent non-mutable | MUT-01b |
@@ -2338,7 +2351,7 @@ The `.java` mirror writes the diamond explicitly: a diamond-less `new Pair("hell
 Migration tooling rewriting `.lat` to `.java` inserts `<>` on every parameterized-class constructor call that omits it.
 
 ```java
-record Pair<L, R>(L left, R right) {}
+// laterita.lang.Pair<L, R> (ARR-04)
 
 Pair<String, Int> p = new Pair("hello".clone(), 42);     // .lat: diamond implicit
 Pair<String, Int> q = new Pair<>("hello".clone(), 42);   // also accepted in .lat

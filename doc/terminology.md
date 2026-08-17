@@ -60,7 +60,7 @@ Parameter, return (`OWN-17`, `OWN-18`).
 Field, record component, generic type argument, and parameter with `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
 - `@mut`.
 Local, field, parameter, return.
-In a type argument it requests a mutable borrow of a `@borrow` `T` and is redundant on an owned `@mut`-class `T`, with a `@mut` borrow of a held value gated by an exclusive holder (`TARG-03`).
+In a type argument it requests a mutable borrow of a `@borrow` `T` and is redundant on an owned `@mut`-class `T` (`TARG-03`).
 - `@fix`.
 Local, field, parameter, return, type argument, type-parameter declaration, and class or interface declaration.
 The explicit non-mutability dual of `@mut`, mutually exclusive with it (`MUT-01b`, `TARG-03`).
@@ -81,7 +81,7 @@ Laterita does not auto-box at the type level, so a null-bearing integer is writt
 
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views.
-Single-thread: `T[].splitAt` → `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` (borrowed halves), `forEachChunk` → borrowed slices via callback.
+Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-13`), `forEachChunk` → borrowed slices via callback.
 Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves), `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`.
 See `ARR-01`, `ARR-02`, `ARR-04`.
 
@@ -349,9 +349,9 @@ Example: OQ-20 (pattern matching and destructuring under ownership).
 Not part of the normative spec.
 
 ### Pair<L, R>
-General-purpose record in `laterita.lang` carrying two values.
+General-purpose `@mut` class in `laterita.lang` carrying two values.
 The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01.
-Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct component access `give(p.left)` / `give(p.right)` in `.lat`, OWN-06 / LAT-08) and as `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` by `T[].splitAt` (borrowed mutable halves, read through the accessors).
+Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct field access `give(p.left)` / `give(p.right)`, OWN-06) and as `@bound Pair<@borrow T[], @borrow T[]>` by `T[].splitAt` (borrowed halves whose mutability follows the receiver, MUT-13).
 See `ARR-04`.
 
 ### ownership

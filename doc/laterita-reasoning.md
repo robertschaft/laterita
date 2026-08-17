@@ -1173,13 +1173,13 @@ The `.java` and `.lat` surfaces differ on two features the array API depends on:
 The `.lat` surface uses both (ARR-01), the `.java` mirror substitutes static methods on `laterita.lang.Arrays` and named FIs (ARR-02, ARR-03).
 Migration tooling translates between them.
 
-For the two-way split, three shapes were considered, continuation-passing, record return, multi-return language feature.
-The record form reads as ordinary Java:
+For the two-way split, three shapes were considered, continuation-passing, pair return, multi-return language feature.
+The pair form reads as ordinary Java:
 
 ```java
 var s = arr.splitAt(mid);
-var worker = spawnWorker(s.left());      // borrows the left half, bound to s which must survive worker
-processLocally(s.right());
+var worker = spawnWorker(s.left);        // borrows the left half, bound to s which must survive worker
+processLocally(s.right);
 ```
 
 vs. the continuation-passing form which forces a lambda for an otherwise straight-line bind.
@@ -1222,7 +1222,7 @@ Rust draws the same line: a value produced through `&self` is owned by the calle
 Even the aliasing case adds no generic-specific rule.
 A `@mut` borrow of a held value re-borrows the whole structure (OWN-03, MUT-10), exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), so it is available only while the structure is held `@mut`, the same as drawing a `@mut` borrow from any holder.
 Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows can never each draw a `@mut` borrow of the same held value, and a local owning its structure satisfies the exclusivity by inheritance (MUT-02).
-A `@borrow` held value keeps `@mut` as a meaningful marker that distinguishes a mutable borrow from a shared one, which is why `@borrow @mut T[]` in `splitAt`'s return (ARR-01) is unaffected.
+A `@borrow` held value keeps `@mut` as a meaningful marker that distinguishes a mutable borrow from a shared one, which is why a `@borrow` type argument may still carry it.
 A genuinely shared structure whose held values mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ### Why a type parameter assumes worst-case mutability, and `@fix` opts out (TARG-03)
@@ -1296,7 +1296,15 @@ Using distinct names (`splitAt` for the borrowed return, `splitOff` for the cons
 
 The candidate options for cross-thread split alone were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway: (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata.
 Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice, because `T[]` *is* the owning slice.
-The pair shape rides on a single general-purpose `Pair<L, R>` record (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 (`Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` for the in-thread borrowed return), so any future API returning a two-tuple can reuse the same record rather than minting a new domain type.
+The pair shape rides on a single general-purpose `Pair<L, R>` class (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 (`Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow T[], @borrow T[]>` for the in-thread borrowed return), so any future API returning a two-tuple can reuse the same class rather than minting a new domain type.
+
+`Pair` is a class rather than a record because `splitAt` must hand back halves that can be mutated independently, and a record cannot carry that.
+A record is immutable by construction (MUT-06), so `@mut` on it is an error (MUT-14) and every borrow drawn through it is shared (MUT-09).
+Keeping records uniformly `@fix` is worth more than reusing the record syntax for one stdlib type, so the pair is a `@mut` class whose bindings take the mutability their producer supplies.
+
+Which mutability that is comes from `@mutating(InheritFrom.RECEIVER)` on `splitAt` (MUT-13), the same mechanism that collapses read and update iteration onto one `iterator()` (STD-08).
+A `@mut` receiver yields a pair lending mutable halves and a `@fix` receiver one lending read-only halves, so the alternative of two split methods, or of a second pair type, buys nothing.
+Making the components `public final` fields rather than record components also lets `splitOff`'s owning halves be destructed on the `.java` surface (OWN-06), where the record form reached them only through the `.lat`-only component spelling of LAT-08.
 
 ### Why array indexing is never unchecked (ARR-05)
 
