@@ -3,7 +3,8 @@
 This document records unresolved **language-design** questions.
 Each entry references the spec code(s) it relates to, where applicable.
 
-Resolving any of these requires a separate decision; the spec deliberately leaves them open.
+Resolving any of these requires a separate decision.
+The spec deliberately leaves them open.
 On resolution, follow the workflow in `CLAUDE.md`: document the reasoning in `doc/laterita-reasoning.md`, remove the entry here, and tombstone it in `doc/resolved-questions.md`.
 
 Non-language-design items (tooling, migration, and roadmap work) are tracked as GitHub issues, not here:
@@ -34,7 +35,8 @@ A JEP 440 record deconstruction pattern reads a value through its named componen
 That is distinct from `DES` destruction, which is the unconditional move form: it always moves an owned object's fields out by `give(p.x)`.
 Keeping the two terms separate is why the move-based take-apart operation was renamed from deconstruct to destruct, leaving deconstruct free for the JEP 440 borrow-into-parts reading.
 
-**Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums; without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
+**Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums.
+Without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
 **Related codes:** OWN-02, OWN-13, OWN-06, DES, DROP-04.
 
@@ -52,7 +54,8 @@ Outside of generic SAM-based APIs, checked exceptions work fine, direct method c
 Laterita has a structural lever Java does not: FN-01 anonymous functional interfaces.
 A functional-interface type written `(P1, …, Pn) -> R` could be extended to `(P1, …, Pn) -> R throws E1, E2`, with the throws set being part of the structural type.
 A library API written generically over the throws set could then accept lambdas that throw, without each library declaring a parallel `ThrowingFunction` interface as Apache Commons `FailableStream` does today.
-FN-01 restricts the anonymous form to parameter and return positions; this does not narrow the lever, because the throws-polymorphic use cases are exactly those positions (a generic API accepting a throwing lambda as a parameter) and a throws-extended form would inherit the same restriction.
+FN-01 restricts the anonymous form to parameter and return positions.
+This does not narrow the lever, because the throws-polymorphic use cases are exactly those positions (a generic API accepting a throwing lambda as a parameter) and a throws-extended form would inherit the same restriction.
 
 **The question.**
 - Is EXC-05 reversed: does Laterita restore Java's distinction between checked and unchecked exceptions, with `throws` declarations required on method signatures for checked exceptions?
@@ -117,7 +120,7 @@ With it, library composition tightens substantially.
 
 **The issue.** Const-only static initialization keeps the AOT story (COMP-01) honest, no classloader, no static-init-order fiasco, no observable initialization race.
 But it leaves a real case unspecified: statics whose value genuinely requires runtime work, a compiled regex, a config loaded from disk, a precomputed table, a service registry.
-Java handles these in `static {}` blocks under the classloader's per-class init lock; Rust uses `LazyLock<T>` / `OnceLock<T>` from `std::sync`.
+Java handles these in `static {}` blocks under the classloader's per-class init lock, Rust uses `LazyLock<T>` / `OnceLock<T>` from `std::sync`.
 Laterita has neither yet, so every such case must hand-roll a `Mutex<T?>` and a first-access check at every read site.
 
 **The question.**
@@ -131,7 +134,8 @@ Falls out of the previous answer.
 A `static Lazy<L>` where `L` is `@local` puts the `L` cross-thread on first access: STAT-03 presumably extends through the wrapper.
 
 **Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site.
-The pattern is universal; the shape of the stdlib carrier is what's open.
+The pattern is universal.
+The shape of the stdlib carrier is what's open.
 
 **Related codes:** STAT-02, STAT-03, STD-09, THR-10, COMP-01.
 
@@ -163,8 +167,9 @@ Primitives have no heap identity: there is nothing to point at, nothing to drop,
 **The issue.**
 A `@mut int x` parameter in Laterita can be made to behave like Rust's `&mut i32`, the compiler passes a pointer to the caller's int slot and the callee mutates through it.
 This is implementable (Laterita compiles natively per COMP-01) but unusual.
-The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `AtomicI32` with interior mutability; `&mut <primitive>` is rare even in Rust stdlib (it shows up generically through `mem::swap` / `mem::replace`, not as a deliberate out-parameter).
-The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern; struct and array out-pointers dominate.
+The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `AtomicI32` with interior mutability.
+`&mut <primitive>` is rare even in Rust stdlib (it shows up generically through `mem::swap` / `mem::replace`, not as a deliberate out-parameter).
+The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern, struct and array out-pointers dominate.
 Java itself has no equivalent: primitives are pass-by-value.
 
 If primitives sit outside the borrow system entirely, follow-on rules need to be specified.
@@ -212,7 +217,7 @@ What is the result for a generic `T` whose mode is itself inherited (MUT-13)?
 **Why it matters.**
 Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-13's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
 
-**Related codes:** OWN-01, OWN-03, MUT-01, MUT-13; OQ-37.
+**Related codes:** OWN-01, OWN-03, MUT-01, MUT-13, OQ-37.
 
 ## OQ-37 — Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
 
@@ -234,4 +239,4 @@ Does it subsume the build-time annotation processing that already replaces seria
 **Why it matters.**
 A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogramming layer to replace the runtime reflection it drops, folds the OQ-36 predicates into zero-cost constants, and provides the substrate for the build-time code generation the language already relies on.
 
-**Related codes:** COMP-02, RESV; OQ-36; GH #14.
+**Related codes:** COMP-02, RESV, OQ-36, GH #14.

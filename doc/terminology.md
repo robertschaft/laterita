@@ -23,7 +23,8 @@ Variables are the primary unit of lifetime tracking.
 
 ### borrow / borrowed variable
 A variable that refers to a value owned elsewhere, rather than owning it itself.
-A borrowed variable cannot be moved; when it leaves scope, the compiler does not invoke `onDrop()`.
+A borrowed variable cannot be moved.
+When it leaves scope, the compiler does not invoke `onDrop()`.
 There are two kinds: shared (immutable) and mutable.
 See `OWN-03` for the rules.
 
@@ -120,11 +121,11 @@ They cover at minimum primitive arithmetic, string literals, and the const-eligi
 To transfer ownership of a value from one variable to another, or to invoke a method that consumes its receiver.
 Once consumed, the original variable is no longer usable.
 Marked at the call site with `give(x)`, a static method on `laterita.lang.Intrinsics` normally statically imported as `give`.
-In Rust, this is a "move"; Laterita uses the verb `give` in Java's vocabulary.
+In Rust, this is a "move", Laterita uses the verb `give` in Java's vocabulary.
 
 ### @consuming (annotation)
 Declares that a method consumes its receiver: the body owns `this`, and after the call returns the variable that held the receiver is consumed and subsequent uses are rejected.
-A modifier-position annotation on the method, parallel to `@mutating` (MUT-08); the two compose.
+A modifier-position annotation on the method, parallel to `@mutating` (MUT-08), the two compose.
 See `OWN-15`.
 
 ### @fix (annotation)
@@ -165,7 +166,7 @@ See `UNR-01`.
 ### drop / onDrop()
 To clean up a value when its owning variable leaves scope.
 The compiler automatically calls the value's `onDrop()` method at every scope exit (normal return, exception, break, continue, etc.).
-A `final` class implements `onDrop()` to release resources (files, locks, memory); non-`final` classes hold resources by composition instead.
+A `final` class implements `onDrop()` to release resources (files, locks, memory), non-`final` classes hold resources by composition instead.
 See `DROP-01`, `DROP-09`.
 
 ### drop flag
@@ -200,8 +201,8 @@ Ownership, borrow state, and null narrowing are tracked flow-sensitively, so a v
 
 ### functional interface (also "function type")
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`.
-The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04); fields and declared local types use a nominal functional interface instead.
-`.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position.
+The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04), fields and declared local types use a nominal functional interface instead.
+`.lat`-only per LAT-05, `.java` sources use a nominal functional interface at the same position.
 The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode, its call mode (CLO-03).
 Laterita treats nominal and anonymous forms uniformly.
 Used for callbacks, functional operations, and closure types.
@@ -210,14 +211,17 @@ See `FN-01`.
 ### give (static method on `laterita.lang.Intrinsics`)
 The move-expression carrier.
 An ordinary stdlib helper, `static <T> T give(@take T t) { return t; }` in `laterita.lang.Intrinsics`, normally statically imported.
-`give(x)` consumes `x` via `@take` and returns its owned value; `var b = give(a)` rebinds; `give(x);` as a statement leaves the result unbound and drops it at the semicolon (OWN-07).
-Method-level receiver consumption is *not* spelled `give`; it is the `@consuming` annotation on the method (OWN-15).
+`give(x)` consumes `x` via `@take` and returns its owned value.
+`var b = give(a)` rebinds.
+`give(x);` as a statement leaves the result unbound and drops it at the semicolon (OWN-07).
+Method-level receiver consumption is *not* spelled `give`.
+It is the `@consuming` annotation on the method (OWN-15).
 
 ### Heap<T>
 A raw heap-allocation primitive.
 Provides direct allocation and deallocation.
 All operations require `@unsafe` context per `UNS-02`.
-Rarely used by application code; typically wrapped by smart pointers like `Rc<T>` or `Arc<T>`.
+Rarely used by application code, typically wrapped by smart pointers like `Rc<T>` or `Arc<T>`.
 
 ### @internal (annotation)
 An annotation marking that a method may only be called by compiler-emitted code, never by user code.
@@ -257,7 +261,8 @@ See `COMP-07`.
 
 ### lifetime
 The span of time during which a variable is valid.
-A borrowed variable's lifetime is bounded by the variable it borrows from; it cannot outlive the referent.
+A borrowed variable's lifetime is bounded by the variable it borrows from.
+It cannot outlive the referent.
 A compiler error to use a variable after the value it refers to is dropped.
 See `LIFE-01`.
 
@@ -266,7 +271,8 @@ Declared on a class to express its relationship to threads.
 `@local` (or `@local(true)`) pins instances to a single thread: they cannot be moved across threads or captured by closures that might run on other threads.
 `@local(false)` asserts the inverse: the class encapsulates any transitively `@local` fields and is safe to use across threads.
 A class with `@local` fields must carry one form or the other explicitly.
-Examples: `Rc<T>`, `Cell<T>` are `@local`; `Arc<T>`, `Mutex<T>`, `Thread` are `@local(false)`.
+Examples: `Rc<T>`, `Cell<T>` are `@local`.
+`Arc<T>`, `Mutex<T>`, `Thread` are `@local(false)`.
 See `STD-07`.
 
 ### monomorphization
@@ -312,7 +318,8 @@ The result is a distinct nominal type (not a subtype of the component's type, no
 ### nullable type (also `T?` / `@Nullable T`)
 A type that admits both a value and the special value `null`.
 Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`).
-Different from Java's implicit nullability; a bare `T` in Laterita is non-nullable.
+Different from Java's implicit nullability.
+A bare `T` in Laterita is non-nullable.
 See `NULL-02`, `LAT-01`.
 
 ### @Delegate (annotation on fields)
@@ -328,12 +335,12 @@ Marks an instance method as the desugaring target for an arithmetic operator in 
 The annotation names the operator (`@Operator(PLUS)`, `MINUS`, `TIMES`, `DIVIDE`, `NEGATE`) and the method name is unconstrained, so `BigDecimal.add`, `Instant.plus`/`minus`, and `Duration.negated` qualify under their existing names.
 Arity must match the operator (one parameter for the binary kinds, zero for `NEGATE`).
 `a + b` then means the annotated `PLUS` method call on `a`.
-The operator set is bounded (no `%`, `[]`, or compound assignment) with no user-defined or trait-based overloading; the comparison operators `< <= > >=` desugar separately through `Comparable.compareTo`, needing no annotation.
+The operator set is bounded (no `%`, `[]`, or compound assignment) with no user-defined or trait-based overloading, the comparison operators `< <= > >=` desugar separately through `Comparable.compareTo`, needing no annotation.
 See `LAT-07`.
 
 ### onDrop()
 A method the compiler invokes to clean up a value.
-Only a `final` class may implement it with a body (`DROP-09`); a class without an implementation contributes no body.
+Only a `final` class may implement it with a body (`DROP-09`), a class without an implementation contributes no body.
 The compiler runs the implementation (if any) as step 1 of the value's drop sequence (`DROP-05`: own body, then own fields in reverse, then each superclass), and triggers the drop sequence on every variable that leaves scope, in reverse declaration order (`DROP-01`, `DROP-02`).
 
 ### OQ (prefix in OQ-N)
@@ -356,7 +363,8 @@ See `OWN-01`.
 ### override variance
 The rules governing whether an overriding method's signature may differ from the base method's.
 One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse.
-`@take` on a parameter is invariant; `@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added.
+`@take` on a parameter is invariant.
+`@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added.
 The FI-slot call-mode axis inverts surface direction (override may *strengthen* the slot (bare → `@mutating` → `@consuming`)) because the annotation governs closure acceptance, not parameter variable.
 See `HIER-05` for the unified table.
 
@@ -374,7 +382,7 @@ See `THR-10`.
 ### Rc<T>
 A reference-counted smart pointer for single-threaded shared ownership.
 Like Java's garbage collector but manual: each holder holds a handle, the refcount is explicitly bumped with `.share()`, and the value is freed when the refcount reaches zero.
-Single-threaded only; use `Arc<T>` for cross-thread sharing.
+Single-threaded only, use `Arc<T>` for cross-thread sharing.
 See `STD-01`.
 
 ### ReentrantLock
@@ -387,13 +395,15 @@ See `STD-10`.
 ### LockGuard
 A value witnessing that the calling thread holds a `ReentrantLock`.
 Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`.
-Owns one acquisition; releases it via `onDrop` when its scope ends.
+Owns one acquisition.
+Releases it via `onDrop` when its scope ends.
 The owning scope is therefore the critical section.
 See `STD-11`.
 
 ### Condition
 A condition variable bound to a `ReentrantLock`, created by `lock.newCondition()`.
-`await` atomically releases the bound lock and blocks; on signal, re-acquires.
+`await` atomically releases the bound lock and blocks.
+On signal, re-acquires.
 `signal` / `signalAll` wake waiters.
 Names and shapes match `java.util.concurrent.locks.Condition`.
 The "caller must hold the bound lock" precondition is a runtime check: laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime.
@@ -406,7 +416,7 @@ The receiver's variable mode must support the receiver mode (e.g., a bare variab
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler.
 **Unsafe code** is a method annotated `@unsafe` that performs operations otherwise forbidden (raw memory access, cross-thread moves of `@local` types, etc.).
-The compiler still type-checks `@unsafe` methods; the annotation only unlocks specific operations per `UNS-02`.
+The compiler still type-checks `@unsafe` methods, the annotation only unlocks specific operations per `UNS-02`.
 See `UNS-01`.
 
 ### SAM (Single Abstract Method)
@@ -441,8 +451,8 @@ See `STR-06`, `LIFE-01`.
 
 ### string literal
 A quoted string expression in source code (e.g., `"hello"`), which has type `@bound String` with a static lifetime.
-The literal is not a heap allocation; it resides in the program's read-only memory segment.
-A variable initialized from a literal is borrowed; to obtain an owned heap-allocated `String`, call `.clone()`.
+The literal is not a heap allocation, it resides in the program's read-only memory segment.
+A variable initialized from a literal is borrowed, to obtain an owned heap-allocated `String`, call `.clone()`.
 See `STR-06`.
 
 ### smart pointer
@@ -456,7 +466,8 @@ Laterita's compiler performs static analysis of ownership, borrows, lifetime, mu
 
 ### static field
 A field declared `static`, class- or module-level storage with one instance per program.
-Immutable per `STAT-01` and initialized from a const expression; `@mut static` is rejected.
+Immutable per `STAT-01` and initialized from a const expression.
+`@mut static` is rejected.
 The declared type must be non-`@local` (`STAT-03`).
 Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
 
@@ -471,7 +482,7 @@ See `CLO-04`.
 
 ### @take (annotation)
 Declares that a parameter receives ownership of its argument (consumed upon call).
-At the call site, a bare variable passed to a `@take` parameter is implicitly consumed (equivalent to `give(variable)`); or explicitly written as `give(variable)`.
+At the call site, a bare variable passed to a `@take` parameter is implicitly consumed (equivalent to `give(variable)`), or explicitly written as `give(variable)`.
 See `OWN-13`. (Receiver consumption is the separate `@consuming` annotation on the method, OWN-15.)
 
 ### thread-affine (also "thread-local")
