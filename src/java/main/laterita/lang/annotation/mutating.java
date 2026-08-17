@@ -32,14 +32,13 @@ import java.lang.annotation.Target;
  *
  * <p>{@code @mutating} methods can only be called on a {@code @mut} receiver (MUT-10).
  *
- * <p>On a non-static inner class (MUT-12), {@code @mutating} instead declares that the class holds
- * a {@code @mut} borrow of its enclosing instance, so its methods may also mutate that enclosing
- * instance. Both, inner and enclosing class, must be {@code @mut}.
+ * <p>On a non-static inner class (MUT-12), {@code @mutating} instead declares that the class holds a {@code @mut} borrow of its enclosing instance, so its methods may also mutate that enclosing instance.
+ * Both, inner and enclosing class, must be {@code @mut}.
  *
- * <p>The {@link InheritFrom} value chooses the form (MUT-13). {@link InheritFrom#NONE}, the
- * default, is the always-mutating form above. {@link InheritFrom#RECEIVER} behaves as plain
- * {@code @mutating} when the object is effectively mutable at the method site. Otherwise the method
- * is used as a non-mutating method: returned values are treated as non-mutable.
+ * <p>The {@link InheritFrom} value chooses the form (MUT-13).
+ * {@link InheritFrom#NONE}, the default, is the always-mutating form above.
+ * {@link InheritFrom#RECEIVER} behaves as plain {@code @mutating} when the object is effectively mutable at the method site.
+ * Otherwise the method is used as a non-mutating method: returned values are treated as non-mutable.
  *
  * <p>A method marked {@code @mutating(InheritFrom.RECEIVER)} may:
  * <ul>
@@ -53,6 +52,9 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.SOURCE)
 public @interface mutating {
 
-    /** How the receiver mode is determined. Defaults to the always-mutating form. */
+    /**
+     * How the receiver mode is determined.
+     * Defaults to the always-mutating form.
+     */
     InheritFrom value() default InheritFrom.NONE;
 }
