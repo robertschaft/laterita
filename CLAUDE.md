@@ -44,7 +44,8 @@ Apply both rules to every line a PR modifies, even a single-character change, an
 
 Applies to `.java` and `.lat` sources (COMP-06).
 
-Lines are at most 100 characters.
+Lines are at most 80 characters, the OpenJDK limit.
 Comment prose follows the documentation style above, so a sentence starts on its own line and is wrapped only where it exceeds the line limit.
 The semicolon and em-dash rule reaches comment prose only, since a semicolon in code is a statement terminator.
-Commented-out code and the OpenJDK file headers are code and headers rather than prose, and are left as they are.
+Commented-out code is code rather than prose, and keeps its semicolons.
+The OpenJDK file headers are exempt from the prose rules, though the line limit still covers the lines the fork adds to them.
