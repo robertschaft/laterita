@@ -86,7 +86,7 @@ See `ARR-01`, `ARR-02`, `ARR-04`.
 
 ### call mode
 A property of a functional-interface *type*: the receiver mode of its single abstract method.
-**shared-call** (bare SAM — invocable through a shared borrow), **mut-call** (`@mutating` SAM — invocable through a `@mut` variable), or **once-call** (`@consuming` SAM — invocable once, consuming the value).
+**shared-call** (bare SAM, invocable through a shared borrow), **mut-call** (`@mutating` SAM, invocable through a `@mut` variable), or **once-call** (`@consuming` SAM, invocable once, consuming the value).
 The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM.
 Distinct from the *variable mode* of the variable that holds the value.
 See `CLO-03`.
@@ -123,7 +123,7 @@ Marked at the call site with `give(x)`, a static method on `laterita.lang.Intrin
 In Rust, this is a "move"; Laterita uses the verb `give` in Java's vocabulary.
 
 ### @consuming (annotation)
-Declares that a method consumes its receiver — the body owns `this`, and after the call returns the variable that held the receiver is consumed and subsequent uses are rejected.
+Declares that a method consumes its receiver: the body owns `this`, and after the call returns the variable that held the receiver is consumed and subsequent uses are rejected.
 A modifier-position annotation on the method, parallel to `@mutating` (MUT-08); the two compose.
 See `OWN-15`.
 
@@ -136,7 +136,7 @@ See `MUT-01b`.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method.
-For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow—the override is less strict, so any caller satisfying the base contract satisfies the override.
+For example, if the base declares `@mut T`, the override may drop `@mut` and declare a bare (immutable) borrow: the override is less strict, so any caller satisfying the base contract satisfies the override.
 See `HIER-05`.
 
 ### copy constructor
@@ -202,7 +202,7 @@ Ownership, borrow state, and null narrowing are tracked flow-sensitively, so a v
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`.
 The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04); fields and declared local types use a nominal functional interface instead.
 `.lat`-only per LAT-05; `.java` sources use a nominal functional interface at the same position.
-The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode — its call mode (CLO-03).
+The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode, its call mode (CLO-03).
 Laterita treats nominal and anonymous forms uniformly.
 Used for callbacks, functional operations, and closure types.
 See `FN-01`.
@@ -263,7 +263,7 @@ See `LIFE-01`.
 
 ### @local (annotation on types)
 Declared on a class to express its relationship to threads.
-`@local` (or `@local(true)`) pins instances to a single thread — they cannot be moved across threads or captured by closures that might run on other threads.
+`@local` (or `@local(true)`) pins instances to a single thread: they cannot be moved across threads or captured by closures that might run on other threads.
 `@local(false)` asserts the inverse: the class encapsulates any transitively `@local` fields and is safe to use across threads.
 A class with `@local` fields must carry one form or the other explicitly.
 Examples: `Rc<T>`, `Cell<T>` are `@local`; `Arc<T>`, `Mutex<T>`, `Thread` are `@local(false)`.
@@ -325,7 +325,7 @@ See `GEN-01`.
 
 ### @Operator (annotation on methods)
 Marks an instance method as the desugaring target for an arithmetic operator in `.lat` sources.
-The annotation names the operator — `@Operator(PLUS)`, `MINUS`, `TIMES`, `DIVIDE`, `NEGATE` — and the method name is unconstrained, so `BigDecimal.add`, `Instant.plus`/`minus`, and `Duration.negated` qualify under their existing names.
+The annotation names the operator (`@Operator(PLUS)`, `MINUS`, `TIMES`, `DIVIDE`, `NEGATE`) and the method name is unconstrained, so `BigDecimal.add`, `Instant.plus`/`minus`, and `Duration.negated` qualify under their existing names.
 Arity must match the operator (one parameter for the binary kinds, zero for `NEGATE`).
 `a + b` then means the annotated `PLUS` method call on `a`.
 The operator set is bounded (no `%`, `[]`, or compound assignment) with no user-defined or trait-based overloading; the comparison operators `< <= > >=` desugar separately through `Comparable.compareTo`, needing no annotation.
@@ -357,7 +357,7 @@ See `OWN-01`.
 The rules governing whether an overriding method's signature may differ from the base method's.
 One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse.
 `@take` on a parameter is invariant; `@mut` on a parameter, `@bound` on a parameter or return, `@mutating`, `@consuming`, and class `@mut` may all be dropped, never added.
-The FI-slot call-mode axis inverts surface direction — override may *strengthen* the slot (bare → `@mutating` → `@consuming`) — because the annotation governs closure acceptance, not parameter variable.
+The FI-slot call-mode axis inverts surface direction (override may *strengthen* the slot (bare → `@mutating` → `@consuming`)) because the annotation governs closure acceptance, not parameter variable.
 See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
@@ -378,7 +378,7 @@ Single-threaded only; use `Arc<T>` for cross-thread sharing.
 See `STD-01`.
 
 ### ReentrantLock
-A reentrant mutual-exclusion primitive in `laterita.lang` that owns no data — the lock alone.
+A reentrant mutual-exclusion primitive in `laterita.lang` that owns no data, the lock alone.
 Modelled on `java.util.concurrent.locks.ReentrantLock` but with safer surface: `lock()` returns a `LockGuard` whose `onDrop` releases the lock, so "forgot to unlock" is impossible.
 Use when the data being guarded does not fit `Mutex<T>` (state spread across several fields of `this`, or genuinely data-less coordination).
 Pair with `Condition` for `wait`/`signal` patterns.
@@ -396,7 +396,7 @@ A condition variable bound to a `ReentrantLock`, created by `lock.newCondition()
 `await` atomically releases the bound lock and blocks; on signal, re-acquires.
 `signal` / `signalAll` wake waiters.
 Names and shapes match `java.util.concurrent.locks.Condition`.
-The "caller must hold the bound lock" precondition is a runtime check — laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime.
+The "caller must hold the bound lock" precondition is a runtime check: laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime.
 See `STD-12`.
 
 ### receiver mode (of a method)
@@ -429,7 +429,7 @@ The borrow is bounded by the original's lifetime.
 See `STR-03`, `OWN-05`.
 
 ### static borrow
-A borrow with a static lifetime — one that is guaranteed to live for the entire program execution.
+A borrow with a static lifetime: one that is guaranteed to live for the entire program execution.
 String literals in Laterita are static borrows: they reside in read-only program memory and can be safely borrowed by any variable without lifetime restrictions.
 See `STR-06`.
 
@@ -455,7 +455,7 @@ Compile-time reasoning about program behavior without running the code.
 Laterita's compiler performs static analysis of ownership, borrows, lifetime, mutability, and reachability to catch errors before runtime.
 
 ### static field
-A field declared `static` — class- or module-level storage with one instance per program.
+A field declared `static`, class- or module-level storage with one instance per program.
 Immutable per `STAT-01` and initialized from a const expression; `@mut static` is rejected.
 The declared type must be non-`@local` (`STAT-03`).
 Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
@@ -472,7 +472,7 @@ See `CLO-04`.
 ### @take (annotation)
 Declares that a parameter receives ownership of its argument (consumed upon call).
 At the call site, a bare variable passed to a `@take` parameter is implicitly consumed (equivalent to `give(variable)`); or explicitly written as `give(variable)`.
-See `OWN-13`. (Receiver consumption is the separate `@consuming` annotation on the method — OWN-15.)
+See `OWN-13`. (Receiver consumption is the separate `@consuming` annotation on the method, OWN-15.)
 
 ### thread-affine (also "thread-local")
 A type or resource bound to a specific thread and cannot safely be moved to another thread.

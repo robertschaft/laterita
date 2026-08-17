@@ -8,13 +8,13 @@ Section headers reference the corresponding spec codes.
 
 ## On the Name (Laterita)
 
-The language is named after **laterite** — the iron-rich, rust-red tropical soil that forms on volcanic islands and is the ideal medium for growing coffee.
+The language is named after **laterite**: the iron-rich, rust-red tropical soil that forms on volcanic islands and is the ideal medium for growing coffee.
 The name carries all three of the threads that motivated the search:
 
-- **Rust** — laterite is rust, literally.
+- **Rust**: laterite is rust, literally.
 It is iron oxide weathered out of volcanic rock.
-- **Island** — laterite forms on the same volcanic islands that gave us Java.
-- **Coffee** — coffee grows best in laterite soils, including the famous Toraja, Kalosi, and Mandheling regions.
+- **Island**: laterite forms on the same volcanic islands that gave us Java.
+- **Coffee**: coffee grows best in laterite soils, including the famous Toraja, Kalosi, and Mandheling regions.
 
 It also shares phonemes with *café latte*, which is a happy accident: a language that grew out of Java, made richer.
 The name is feminine where most language names are masculine or neutral, has no namespace conflicts, and is pronounceable in every major language without coaching.
@@ -36,7 +36,7 @@ As long as the source stays within the Java-compatible surface (COMP-06), nothin
 The cost is visual heft: `Buf f(@bound @mut Buf b)` reads more loudly than `Buf f(mut bound Buf b)` would have.
 Annotations are the only modifier slot Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
-Expression-position concepts can't be annotations — `@give x` would not parse — so they live as static methods on `laterita.lang.Intrinsics`.
+Expression-position concepts can't be annotations (`@give x` would not parse) so they live as static methods on `laterita.lang.Intrinsics`.
 With static import, call sites read `give(x)` and `broken()` unqualified; to `javac` they are ordinary static method calls.
 
 Type inference reuses Java's `var`: a `var x = expr` is reassignable exactly as a Java `var`, and its referent mutability is inherited from `expr` the way ownership is, with `@fix var x = expr` opting out (MUT-02).
@@ -44,7 +44,7 @@ No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
 
-Five forms — `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R` — can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend.
+Five forms (`T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`) can't ride on annotations or static calls; their natural slots are type expressions and operators that Java's grammar doesn't extend.
 Each has a strong ergonomic case (Kotlin's null operators, LAT-01 through LAT-04; inline FI types as the only escape from the interface-name explosion, LAT-05), but each breaks the "still a `.java` file" promise.
 
 The source surface is therefore split in two rather than dropping either group.
@@ -72,7 +72,7 @@ Java requires the diamond `<>` on a parameterized constructor call because the d
 The diamond is the syntactic marker that distinguishes "infer the type arguments" from "construct the raw type."
 
 Laterita has no raw types: AOT compilation (COMP-01), monomorphization (COMP-02), and the absence of reflection (COMP-05) leave the escape hatch with no purpose.
-The diamond therefore carries no information in `.lat` — its absence cannot mean "raw type" because raw types are not a surface form.
+The diamond therefore carries no information in `.lat`: its absence cannot mean "raw type" because raw types are not a surface form.
 Requiring it would pay Java's backward-compatibility tax for a constraint Laterita does not share.
 LAT-06 makes it optional; the `.java` mirror inserts it back, because `.java` must remain `javac`-parseable (COMP-06) and the diamond-less form there is the raw-type constructor.
 
@@ -105,7 +105,7 @@ The two compose (`@mutating @consuming` for a method that does both), and either
 ### Why static fields are immutable (STAT-01, STAT-03)
 
 A static slot is reachable from every thread for the program's lifetime; no variable-level borrow check can hand out exclusive access to it.
-Allowing `@mut static` would either bake in undefined behavior — Rust's `static mut` posture, which the language now actively discourages — or demand a runtime synchronization mechanism the safe surface does not have.
+Allowing `@mut static` would either bake in undefined behavior (Rust's `static mut` posture, which the language now actively discourages) or demand a runtime synchronization mechanism the safe surface does not have.
 Forbidding it outright costs nothing: the cases that genuinely need shared mutable program-wide state already have a clean expression as a `Mutex<T>`, `Arc<T>`, or atomic primitive held in an immutable static, where the synchronization sits inside the wrapper and the static slot itself never changes.
 
 Const-only initialization keeps the AOT story honest.
@@ -286,7 +286,7 @@ Either default is overridable, so the rule only removes the marker from the comm
 
 Looking at real Java code, the overwhelming common case is "I want to read this, I don't want to take it away from where it lives." Defaulting to a borrow matches that intuition.
 The user writes ordinary Java-looking code; the compiler infers a borrow; both variables remain usable.
-Making move the default would have been the Rust approach, but it would have meant `give(x)` (or some move marker) on essentially every assignment — friction with no payoff.
+Making move the default would have been the Rust approach, but it would have meant `give(x)` (or some move marker) on essentially every assignment, friction with no payoff.
 
 ### Why `@take` on parameters and `give` as the move-expression (OWN-13, OWN-07)
 
@@ -302,7 +302,7 @@ public static <T> T give(@take T t) { return t; }   // laterita.lang.Intrinsics
 ```
 
 normally statically imported.
-The expression form of ownership transfer needs *some* surface syntax, and Java syntax admits only method calls — there is no place to write a "consume this expression" operator.
+The expression form of ownership transfer needs *some* surface syntax, and Java syntax admits only method calls: there is no place to write a "consume this expression" operator.
 Wrapping `@take` in a generic identity method produces exactly the move expression: `give(a)` consumes `a` via `@take` and returns its owned value.
 `var b = give(a)` rebinds the value into a new local.
 `give(x);` as a statement leaves the result unbound, dropping it per OWN-07.
@@ -324,7 +324,7 @@ It rules out data races at compile time, iterator invalidation at compile time, 
 ### Why disjoint field borrows (OWN-04)
 
 A red-black tree node needs to access `left` and `right` independently while the tree is mutably borrowed.
-The naïve borrow check rejects this even though it's trivially sound — the two fields don't alias.
+The naïve borrow check rejects this even though it's trivially sound, the two fields don't alias.
 Without disjoint field borrows, large parts of the standard library become unwriteable in safe code (TreeMap, doubly-linked structures, swap-based algorithms).
 Rust solved this; Laterita inherits the solution.
 
@@ -332,7 +332,7 @@ Rust solved this; Laterita inherits the solution.
 
 Same principle as OWN-04, applied to arrays.
 The compiler can prove disjointness for trivial cases (`data.slice(0, 50)` and `data.slice(50, 100)`); for arbitrary index arithmetic, the splitting and chunked-iteration methods on `T[]` and `laterita.lang.Arrays` (ARR-01) supply the disjointness witness.
-Each reduces to two ordinary slice expressions whose disjointness OWN-05 already covers — no `@unsafe` context is required.
+Each reduces to two ordinary slice expressions whose disjointness OWN-05 already covers: no `@unsafe` context is required.
 This is the foundation for parallel divide-and-conquer, in-place sort, and any partition-based algorithm.
 
 ### Why destruction is restricted to direct field access (DES)
@@ -385,24 +385,24 @@ Three reasons reinforce one answer.
 *The Java surface forbids it.* COMP-06 requires the Java-compatible surface to parse as annotated `.java` under `javac`, and `javac` ignores annotations when computing the overload signature.
 A rule that admitted "differs only in `@take`" overloads would be unimplementable in the surface it lives in: `javac` would reject the pair as duplicate methods before any laterita pass saw them.
 
-*There is no caller-side disambiguator.* For `@mut` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates — the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate.
-`give(...)` exists for `@take` on parameters, but lifting it into overload resolution makes resolution depend on a call-site marker whose primary job (OWN-07) is to mark a move — overloading the marker overloads the rule.
+*There is no caller-side disambiguator.* For `@mut` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates: the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate.
+`give(...)` exists for `@take` on parameters, but lifting it into overload resolution makes resolution depend on a call-site marker whose primary job (OWN-07) is to mark a move, overloading the marker overloads the rule.
 
-*Same-name multi-shape is not the load-bearing case.* The shapes that genuinely need to coexist — borrow vs. consume on the same operation, shared-receiver vs. consuming-receiver — are better served by distinct names, because the names then read at the call site.
+*Same-name multi-shape is not the load-bearing case.* The shapes that genuinely need to coexist (borrow vs. consume on the same operation, shared-receiver vs. consuming-receiver) are better served by distinct names, because the names then read at the call site.
 `splitAt` (borrow) and `splitOff` (consume) on arrays (ARR-01) is the canonical pattern; `BytesMut::split_off` in Rust is the same idiom.
 Rust's `HashMap::insert(k: K, v: V)` consumes both arguments and lets callers `.clone()` if they want to keep them; that is the idiom Laterita inherits, just without Rust's "type signature is the only signature" constraint, since a Java surface that admitted ownership overloads would still need distinct names where the consuming and borrowing variants are both wanted in the same class.
 
 #### Recommendation: `@mut` and `@take` are caller-side work
 
-When a method's body needs `@mut` access to a parameter or needs to consume it, the signature should declare `@mut` or `@take` and the caller does the work of providing it — by holding `@mut`, by surrendering ownership with `give(...)`, or by cloning before the call.
+When a method's body needs `@mut` access to a parameter or needs to consume it, the signature should declare `@mut` or `@take` and the caller does the work of providing it, by holding `@mut`, by surrendering ownership with `give(...)`, or by cloning before the call.
 A method whose signature is `f(K)` should not internally clone or take a temporary `@mut` lock to do something the signature didn't ask for; if the body needs mut or ownership, the signature should say so.
 
-This is non-normative — methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`.
+This is non-normative, methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`.
 The default mental model is the goal: *the cost the caller can read from the signature is the cost the caller bears*.
 
 ### Why override variance follows one principle across every annotation (HIER-05)
 
-One principle drives every row of HIER-05's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse — the same shape as Java's `throws` relaxation applied uniformly across every Laterita annotation.
+One principle drives every row of HIER-05's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse, the same shape as Java's `throws` relaxation applied uniformly across every Laterita annotation.
 
 On the demand side (parameters, receiver), an override may drop `@mut` on a parameter (override needs only shared access, and callers holding `@mut` still qualify), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), drop `@mutating` (override no longer needs a `@mut` receiver), or weaken `@consuming` to `@mutating` or bare (override no longer needs ownership of the receiver).
 Adding any of these tightens the call-site demand, so callers with the weaker form the base contract promised to accept would be rejected.
@@ -410,10 +410,10 @@ Adding any of these tightens the call-site demand, so callers with the weaker fo
 Class `@mut` (HIER-01) is the same shape at the class level, where an immutable subclass of a `@mut` parent drops the receiver demand for inherited `@mutating` methods.
 
 On the guarantee side, `@bound` on the return is covariant in strength: an override may return owned where the base promised a value bound to `this` (the per-OWN-18 meaning of `@bound` on a return).
-Owned is a stronger guarantee — a value the caller may freely move or hold past the receiver's lifetime.
+Owned is a stronger guarantee: a value the caller may freely move or hold past the receiver's lifetime.
 Callers using the inherited type continue treating the result as receiver-bound and remain sound.
-The reverse — returning a receiver-bound value where the base promised owned — would silently constrain a value the caller intended to move or store.
-The FI-slot call-mode row inverts the surface direction for the same underlying principle: strengthening the slot (bare → `@mutating` → `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted — the annotation governs closure acceptance, not parameter variable.
+The reverse (returning a receiver-bound value where the base promised owned) would silently constrain a value the caller intended to move or store.
+The FI-slot call-mode row inverts the surface direction for the same underlying principle: strengthening the slot (bare → `@mutating` → `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted, the annotation governs closure acceptance, not parameter variable.
 
 ---
 
@@ -422,7 +422,7 @@ The FI-slot call-mode row inverts the surface direction for the same underlying 
 ### Why mark-borrow on returns (OWN-16, OWN-17, OWN-18)
 
 A bare return type means owned; borrowed returns are explicitly declared with `@bound`.
-The inverse — owned-marked, borrowed-default — would mark the common case: constructors, factories, computed values, query results all return owned values, so marking owned adds visual noise to most signatures.
+The inverse (owned-marked, borrowed-default) would mark the common case: constructors, factories, computed values, query results all return owned values, so marking owned adds visual noise to most signatures.
 `@bound` carves out the case where production is actually a view into an input.
 
 Body-driven inference (keep the signature silent, let the compiler look through to the implementation) was rejected: it collapses under separate compilation, and it hides the contract from the caller, who would have to read the body to know what the return is good for.
@@ -430,8 +430,8 @@ The signature is the API.
 
 ### Why `@bound` instead of `'a` or `from`
 
-Rust's `'a` notation looks like a syntax error to newcomers and introduces an entirely new sigil class — rejected.
-The strongest alternative was `from`, but `@bound` describes the relationship the compiler enforces (a lifetime constraint) rather than the data-flow source, and it collapses the receiver case into one token (`@bound T method(...)` — no second word, no awkward `from this` compound).
+Rust's `'a` notation looks like a syntax error to newcomers and introduces an entirely new sigil class, rejected.
+The strongest alternative was `from`, but `@bound` describes the relationship the compiler enforces (a lifetime constraint) rather than the data-flow source, and it collapses the receiver case into one token (`@bound T method(...)`, no second word, no awkward `from this` compound).
 
 The known cost is overlap with Java's "upper bound / lower bound" generics terminology; the syntactic positions don't overlap and a reader is unlikely to confuse them after the first encounter.
 
@@ -451,7 +451,7 @@ The compiler enforces this; the user doesn't reason about it explicitly unless t
 
 ### Why unmarked sources are an error (OWN-19)
 
-Treating the receiver as a default contributor — an instance method returning a borrow implicitly tied to `this` — would make signatures silent in a way that hides information from the caller.
+Treating the receiver as a default contributor (an instance method returning a borrow implicitly tied to `this`) would make signatures silent in a way that hides information from the caller.
 The rule is therefore stricter: a borrow tied to an input the caller can't see in the signature is a compile error, with the diagnostic naming the input the body actually borrows from.
 The fix is always local to the signature, and the caller-visible contract is always complete.
 
@@ -480,7 +480,7 @@ A subclass may add `@borrowCapped` to a non-capped base, since the value is mark
 
 ### Why universal `onDrop()`, not opt-in (DROP-01)
 
-Try-with-resources in real Java is the right *mechanism* but the wrong *default* — needing `try ()` around every stateful variable is friction that an ownership-typed language doesn't have to pay.
+Try-with-resources in real Java is the right *mechanism* but the wrong *default*: needing `try ()` around every stateful variable is friction that an ownership-typed language doesn't have to pay.
 Laterita makes cleanup the default.
 Every variable gets deterministic cleanup; no syntactic marker required.
 
@@ -490,7 +490,7 @@ Java code that ports to Laterita already has `close()` methods on streams, socke
 A language-orchestrated `close()` mixed with the user-defined ones would create ambiguity at every call site: is this a normal method call, a manual scope-exit invocation, or a leftover from try-with-resources thinking?
 A different name keeps the language hook visually separate from any user `close()` that survives migration.
 
-`onDrop()` reads as event-handler convention — *what runs when this is dropped* — aligning with Rust's `Drop` trait without inheriting Rust's bare-`drop` naming.
+`onDrop()` reads as event-handler convention (*what runs when this is dropped*) aligning with Rust's `Drop` trait without inheriting Rust's bare-`drop` naming.
 The `on` prefix matches Java/Kotlin/Android event-handler convention the audience already knows.
 
 ### Why not `finalize()`
@@ -504,11 +504,11 @@ Forbidden-by-convention versus forbidden-by-type-system is a real distinction.
 A leading-underscore convention (`_dispose()`) is forbidden only by habit; `@internal` replaces convention with an annotation the compiler enforces, and lets `onDrop()` read like a normal method name.
 
 Reusing the word `internal` accepts a known clash: C# already uses `internal` to mean "assembly-scoped public," which is broader than Laterita's meaning.
-No other candidate was as natural at first reading — `lifecycle` is narrow, `intrinsic` suggests a compiler-provided body, `hidden` reads informally — and the C# reader recovers the meaning after the first encounter.
+No other candidate was as natural at first reading (`lifecycle` is narrow, `intrinsic` suggests a compiler-provided body, `hidden` reads informally) and the C# reader recovers the meaning after the first encounter.
 
 `@internal` is reserved for future compiler-orchestrated hooks.
 It is deliberately *not* a general-purpose access level; ordinary visibility continues to use `public`/`protected`/`private`/package-default.
-Promoting it would invite misuse — wrapping arbitrary methods to hide them from callers — which is not what the annotation is for.
+Promoting it would invite misuse (wrapping arbitrary methods to hide them from callers) which is not what the annotation is for.
 
 ### Why reverse declaration order (DROP-02)
 
@@ -525,7 +525,7 @@ Rust uses them, the optimization story is well understood (most flags are static
 ### Why teardown is compiler-orchestrated (DROP-05)
 
 For ordinary methods the user writes `super.foo()` when an override needs the parent's behavior.
-`onDrop()` is the exception: the user never invokes it (DROP-06), so the super-chain cannot be user-written; and the *order* — own body, then own fields in reverse, then the superclass subobject, recursively — is the only order that keeps every field live while the body that might read it runs.
+`onDrop()` is the exception: the user never invokes it (DROP-06), so the super-chain cannot be user-written; and the *order* (own body, then own fields in reverse, then the superclass subobject, recursively) is the only order that keeps every field live while the body that might read it runs.
 A "remember to chain" rule would be a pure footgun.
 This puts `onDrop()` on the same footing as the synthesized copy constructor (OBJ-01), which auto-inserts `super(source)`: language-internal recursive backbones the user should not have to participate in.
 
@@ -534,7 +534,7 @@ The full chain is still specified so the ordering is unambiguous and composes un
 
 ### Why explicit `onDrop()` calls are forbidden (DROP-06)
 
-Once the compiler emits all drop calls — at scope exits (DROP-01), on destruction paths (DROP-04), on exception unwind (EXC-02), and through the drop sequence (DROP-05) — there is no remaining use case for user-invoked drop.
+Once the compiler emits all drop calls (at scope exits (DROP-01), on destruction paths (DROP-04), on exception unwind (EXC-02), and through the drop sequence (DROP-05)) there is no remaining use case for user-invoked drop.
 Allowing it would create a category of bugs (double-drop, mismatched lifetimes, drop-then-use) for no expressive gain.
 
 Forbidding it has two payoffs:
@@ -548,7 +548,7 @@ There is no "did the author mean to call this here?" question.
 
 The cost is no early-cleanup mechanism: a variable lives until its scope ends, period.
 An opt-in early-cleanup keyword (a `drop x;` form, sugar for "consume `x` and run its `onDrop`") is deliberately not specified.
-Real cases for early cleanup are rare; structuring scopes — extracting an inner block or a helper function — covers the cases that matter; and any such escape hatch reintroduces the double-drop surface DROP-06 closes.
+Real cases for early cleanup are rare; structuring scopes (extracting an inner block or a helper function) covers the cases that matter; and any such escape hatch reintroduces the double-drop surface DROP-06 closes.
 If a future need proves convincing, the keyword can be added later without breaking existing code.
 
 ### Why `onDrop()` exceptions terminate the body but continue the drop sequence (DROP-07)
@@ -557,19 +557,19 @@ One option is to make any exception from `onDrop()` abort the program.
 Aborting prevents leaks, and three concrete concerns motivate it:
 
 - Sibling variables in the same scope: DROP-02 drops in reverse order, so a throw from the inner variable's `onDrop` would skip the outer's.
-- Drop sequence teardown (DROP-05): a throw from the body would skip the rest of the sequence — the class's remaining fields and every superclass subobject — leaking them.
+- Drop sequence teardown (DROP-05): a throw from the body would skip the rest of the sequence (the class's remaining fields and every superclass subobject) leaking them.
 - Enclosing scope unwind (EXC-02): a throwing drop during exception unwind would interrupt the unwind itself.
 
 DROP-07 resolves all three differently.
 An exception terminates only the `onDrop()` *body* it escapes; field teardown of the same value, superclass teardown, sibling `onDrop()` invocations, and any in-progress exception unwind all continue.
-The drop-time exception then propagates at the variable's scope exit, joining the normal exception flow — the same shape Java's `finally` block gives a throw, with multi-throw accumulation following try-with-resources' `addSuppressed` convention.
+The drop-time exception then propagates at the variable's scope exit, joining the normal exception flow: the same shape Java's `finally` block gives a throw, with multi-throw accumulation following try-with-resources' `addSuppressed` convention.
 
 Two things make the looser rule sound.
-DROP-10 guarantees `this` does not escape the body, so no external reference to the value can survive into the rest of the drop sequence — the value remains unreachable regardless of whether the body threw.
+DROP-10 guarantees `this` does not escape the body, so no external reference to the value can survive into the rest of the drop sequence: the value remains unreachable regardless of whether the body threw.
 And the compiler-emitted drop sequence is the one paying attention to multi-throw accumulation, not user code: the first thrown exception is the propagating one; later throws attach via `addSuppressed` automatically.
 User code does not have to reason about suppressed exceptions to write a correct `onDrop()`.
 
-The trade against abort-on-throw is that drop-time exceptions are a control-flow shape callers can observe — the same shape Java callers already see from `close()` inside try-with-resources.
+The trade against abort-on-throw is that drop-time exceptions are a control-flow shape callers can observe, the same shape Java callers already see from `close()` inside try-with-resources.
 The benefit is that `onDrop()` bodies performing legitimately fallible operations (flush, fsync) can let exceptions reach a handler instead of being silently swallowed or fatally aborted, and the failure paths are testable in ordinary unit tests rather than crashing the test process.
 Rust chose abort because it had no exception machinery to integrate with; Laterita does, so it can use it.
 
@@ -599,18 +599,18 @@ Give `StringBuilder` an `onDrop()` and that move becomes an error, which is the 
 ### Why `onDrop()` is confined to `final` classes (DROP-09)
 
 The question is what discipline keeps an `onDrop()` body safe once inheritance is in play.
-The hazard is specific: a base class's `onDrop()` runs *after* the subclass's (reverse-construction order, DROP-05), by which point the subclass's fields are gone — so if the base body virtual-dispatches into a method the subclass overrode to touch those fields, it reads freed storage.
+The hazard is specific: a base class's `onDrop()` runs *after* the subclass's (reverse-construction order, DROP-05), by which point the subclass's fields are gone, so if the base body virtual-dispatches into a method the subclass overrode to touch those fields, it reads freed storage.
 C++ hit exactly this and grew a language rule for it: inside `~Base`, `this` "is" a `Base`, so virtual calls resolve to `Base`'s versions, never a derived override (Effective C++ Item 9; SEI CERT OOP50-CPP).
-That rule is alien to Java, where dispatch is always virtual — importing a static-dispatch mode into the one place a Java reader least expects one is a poor trade.
+That rule is alien to Java, where dispatch is always virtual: importing a static-dispatch mode into the one place a Java reader least expects one is a poor trade.
 
 So instead of changing dispatch, we removed the precondition.
-Surveying where a destructor or `Drop` is actually *needed* in mature code — C++ `lock_guard`/`unique_lock`/`unique_ptr`/`shared_ptr`/`fstream`, `std::jthread`, Qt's lockers, Boost.ScopeExit; Rust `MutexGuard`/`RwLock*Guard`/`Ref`/`RefMut`, `Box`/`Vec`/`String`/`Rc`/`Arc`, `File`/`TcpStream`, `tempfile::TempDir`, `rusqlite::Connection`, `memmap2::Mmap`, channel endpoints, `tracing` span guards, `scopeguard` — turns up exactly one pattern: a *leaf* type that owns a lock, a refcount, a buffer, an OS/FFI handle, a channel end, or a scope-bound ambient state, and releases it.
-Not one of them is an extensible base class whose `onDrop()` calls a hook a subclass customizes; that shape essentially does not occur, and C++'s own guidance is to avoid it — "call a nonvirtual private function instead; each class releases its own resources." The cases that *look* like base-class cleanup hooks — buffered-IO flush, `fsync`, the error-returning `TempDir::close()` — are the *fallible* operations both languages deliberately keep out of the destructor, which is THR-05's `close()`/`onDrop()` split already.
+Surveying where a destructor or `Drop` is actually *needed* in mature code (C++ `lock_guard`/`unique_lock`/`unique_ptr`/`shared_ptr`/`fstream`, `std::jthread`, Qt's lockers, Boost.ScopeExit; Rust `MutexGuard`/`RwLock*Guard`/`Ref`/`RefMut`, `Box`/`Vec`/`String`/`Rc`/`Arc`, `File`/`TcpStream`, `tempfile::TempDir`, `rusqlite::Connection`, `memmap2::Mmap`, channel endpoints, `tracing` span guards, `scopeguard`) turns up exactly one pattern: a *leaf* type that owns a lock, a refcount, a buffer, an OS/FFI handle, a channel end, or a scope-bound ambient state, and releases it.
+Not one of them is an extensible base class whose `onDrop()` calls a hook a subclass customizes; that shape essentially does not occur, and C++'s own guidance is to avoid it: "call a nonvirtual private function instead, each class releases its own resources." The cases that *look* like base-class cleanup hooks (buffered-IO flush, `fsync`, the error-returning `TempDir::close()`) are the *fallible* operations both languages deliberately keep out of the destructor, which is THR-05's `close()`/`onDrop()` split already.
 
 DROP-09 encodes that empirical shape: an `onDrop()` body may live only on a `final` class.
-A `final` class has no subclass, so no override of anything it calls on `this` can exist below it; combined with DROP-06 (no user-invoked `onDrop()`), the down-dispatch hazard is structurally impossible — no static-dispatch mode needed, because there is nothing to dispatch into.
+A `final` class has no subclass, so no override of anything it calls on `this` can exist below it; combined with DROP-06 (no user-invoked `onDrop()`), the down-dispatch hazard is structurally impossible: no static-dispatch mode needed, because there is nothing to dispatch into.
 The Java idiom of overriding a cleanup hook in an open base class is replaced by composition: an extensible class holds its resources through `final` handle fields (`Rc<T>`, `Arc<T>`, `Thread`, …) whose own `onDrop()`s do the release during field teardown (DROP-05, step 2).
-Rust's ecosystem is structured the same way — `Drop` lives on leaf newtypes, not on trait-object hierarchies — so the discipline is proven.
+Rust's ecosystem is structured the same way (`Drop` lives on leaf newtypes, not on trait-object hierarchies) so the discipline is proven.
 
 With at most one user `onDrop()` body per instance, several candidate rules collapse: a static-dispatch mode inside `onDrop()`, a "may call only `private`/`final` methods on `this`" rule, and a separate "no `onDrop()` on interfaces" rule are all unnecessary once the leaf is `final`.
 DROP-05's full chain stays specified, but every step-1 above the leaf is empty in practice.
@@ -620,13 +620,13 @@ The one ripple beyond the cleanup section: `Thread` implements `onDrop()`, so it
 
 ### Why `this` does not escape `onDrop()` (DROP-10)
 
-The once-per-instance guarantee on `onDrop()` (DROP-09) breaks if the body can smuggle `this` out — to a global, a returned value, a captured collection — because then the value would continue to be reachable after the drop sequence has torn down its fields and freed its storage.
+The once-per-instance guarantee on `onDrop()` (DROP-09) breaks if the body can smuggle `this` out (to a global, a returned value, a captured collection) because then the value would continue to be reachable after the drop sequence has torn down its fields and freed its storage.
 Either the smuggled variable points at dropped memory (use-after-free) or a later drop runs over the same instance (double drop).
 Rust prevents both at once: `Drop::drop` takes `&mut self` (no move out of the receiver possible) and E0509 blocks moves out of fields of a `Drop` type.
 Laterita's analog is DROP-10.
 
 Most of the work is already done by ordinary borrow-checking: if `this` in `onDrop()` is treated as a borrow bounded by the call, then storing it in a longer-lived location is a lifetime error, just as it would be in any other method.
-DROP-10 spells out the receiver case explicitly so the question doesn't depend on whether `onDrop()`'s receiver is owned or borrowed in the formal model — `give(this)` is rejected outright, and so is any path that smuggles the receiver into something that outlives the call.
+DROP-10 spells out the receiver case explicitly so the question doesn't depend on whether `onDrop()`'s receiver is owned or borrowed in the formal model: `give(this)` is rejected outright, and so is any path that smuggles the receiver into something that outlives the call.
 
 The rule also enables DROP-07's "throw doesn't abort the drop sequence" semantics.
 Without DROP-10, a thrown exception from the body could leave a smuggled reference to a partially-cleaned-up instance, with no safe way for the runtime to continue.
@@ -684,12 +684,12 @@ Fails late, surfaces at the wrong place, and bypasses any compile-time guarantee
 Failure is at the actual problem site (the instantiation that triggers it).
 
 The third option lets the dominant case (copyable) stay implicit while making the rare case (non-copyable) surface as a compile error rather than a runtime throw.
-Generic signatures stay clean — no `extends Cloneable<T>` bounds — and per-monomorphization checking (COMP-02) localizes the diagnostic.
+Generic signatures stay clean (no `extends Cloneable<T>` bounds) and per-monomorphization checking (COMP-02) localizes the diagnostic.
 
 ### Precedent
 
 `broken()` is essentially C++'s `= delete` generalized to a statement position.
-C++ uses `= delete` for exactly this purpose — declaring a copy constructor (or any function) intentionally unavailable, with calls rejected at compile time.
+C++ uses `= delete` for exactly this purpose, declaring a copy constructor (or any function) intentionally unavailable, with calls rejected at compile time.
 The C++ pattern has worked well for over a decade for the special-member-deletion use case (Rule of Zero/Three/Five).
 
 Adjacent ideas exist in other languages: Rust's `!` (never type) and `unreachable!()` macro for divergence; refinement types in Liquid Haskell, F\*, and Idris for conditional unreachability with static checking.
@@ -698,14 +698,14 @@ The unconditional form specified here is closest to `= delete` in spirit.
 ### Why not just throw
 
 A throw is a runtime contract; `broken()` is a compile-time contract.
-The difference matters because generic code over a type parameter can't tell at definition time whether a particular instantiation will be valid — but with `broken()` and per-monomorphization checking, the *user* of the generic with a non-copyable type sees the error at their call site, not in production.
+The difference matters because generic code over a type parameter can't tell at definition time whether a particular instantiation will be valid, but with `broken()` and per-monomorphization checking, the *user* of the generic with a non-copyable type sees the error at their call site, not in production.
 This is the same trade Rust makes with trait bounds, achieved here without the bound boilerplate.
 
 ### Why a statement, not a method modifier
 
 C++ uses `= delete` as a definition syntax (`Foo() = delete;`).
 An equivalent at the method-signature level is the obvious alternative.
-A statement-form `broken()` call composes better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends — not just the deleted-method case.
+A statement-form `broken()` call composes better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends, not just the deleted-method case.
 
 ---
 
@@ -714,7 +714,7 @@ A statement-form `broken()` call composes better: it works for partial bodies (a
 ### Why a copy constructor and a `clone()` method
 
 Ownership rules force the question: when a function needs an owned value but the caller has a borrow, *something* has to produce a duplicate.
-Without a defined story, every type author would invent their own — `User.copy()`, `Cart.duplicate()`, `Order.snapshot()` — with subtly different contracts.
+Without a defined story, every type author would invent their own (`User.copy()`, `Cart.duplicate()`, `Order.snapshot()`) with subtly different contracts.
 The clean answer is two layered mechanisms:
 
 - **Copy constructor (OBJ-01).**
@@ -729,7 +729,7 @@ This is the API generic and polymorphic code uses.
 
 The recursive step in OBJ-01 is `source.field.clone()`, not `new FieldType(source.field)`.
 Both would produce the same value when reachable, but the latter is not generally reachable: copy constructors are `protected`, and a class can only invoke another class's protected constructor from within a subclass relationship.
-A `User` class with an `Rc<Address>` field cannot call `new Rc<Address>(source.address)` — `Rc`'s copy constructor is not accessible from `User`.
+A `User` class with an `Rc<Address>` field cannot call `new Rc<Address>(source.address)`: `Rc`'s copy constructor is not accessible from `User`.
 
 `clone()` sidesteps the visibility problem entirely.
 It's `public` (OBJ-02), uniformly callable from any context, and dispatches virtually so subtype duplication works correctly when a field is held at a supertype.
@@ -742,7 +742,7 @@ The two-layer design is what remains after ruling out three alternatives.
 
 **Universal `Object.clone()`.** Java's model.
 The clone method lives on Object; classes opt in via `Cloneable`.
-The API is famously broken — bit-copy semantics, post-construction mutation, `CloneNotSupportedException`.
+The API is famously broken, bit-copy semantics, post-construction mutation, `CloneNotSupportedException`.
 Reimplementing it in Laterita reproduced most of the same complications, since `super.clone()` chaining doesn't fit OWN-11.
 Rejected.
 
@@ -751,20 +751,20 @@ Generic functions constrain `T extends Cloneable<T>` and types implement the int
 Type-safe but noisy: the bound has to appear on every generic that touches potentially-cloneable values, and makes the dominant case (yes, this is copyable) explicit when it should be implicit.
 Rejected.
 
-**Copy constructor only, no `clone()`.** Generic code would then have to write `new T(element)`, which has two problems: the syntax is unfamiliar (Java forbids it because of erasure; even with monomorphization it's an unusual construct), and it constructs the *static* type — slicing any subtype data when `T` is held at a supertype.
+**Copy constructor only, no `clone()`.** Generic code would then have to write `new T(element)`, which has two problems: the syntax is unfamiliar (Java forbids it because of erasure; even with monomorphization it's an unusual construct), and it constructs the *static* type, slicing any subtype data when `T` is held at a supertype.
 Rejected for ergonomics and for the polymorphism loss.
 
 The chosen design avoids all three pitfalls.
 The copy constructor does the real work and stays `protected` so external code can't bypass class-level invariants.
 `clone()` provides the public, virtually-dispatched API generic code wants.
-The synthesized `clone()` body is one line — `return new Self(this);` — so there is essentially no implementation surface to get wrong.
+The synthesized `clone()` body is one line (`return new Self(this);`) so there is essentially no implementation surface to get wrong.
 
 ### Why no special-casing for `Rc` or `Arc`
 
-Naming `Rc` and `Arc` explicitly in OBJ-01 — "primitives bitwise, `Rc`/`Arc` via their refcount-bumping copy constructors, other objects recursively" — would be redundant.
+Naming `Rc` and `Arc` explicitly in OBJ-01 ("primitives bitwise, `Rc`/`Arc` via their refcount-bumping copy constructors, other objects recursively") would be redundant.
 `Rc` and `Arc` are just classes whose `clone()` happens to bump a refcount (using `@unsafe` internals per UNS-01).
 The recursive rule "copy each field via its type's `clone()`" picks them up uniformly.
-Future ownership wrappers — `Cow<T>`, weak handles, anything else — slot in the same way without amending OBJ-01.
+Future ownership wrappers (`Cow<T>`, weak handles, anything else) slot in the same way without amending OBJ-01.
 
 If a field type's `clone()` is `broken()` (as `Heap<T>.clone()` is, per STD-06), the enclosing class's auto-generated copy constructor inherits the brokenness through the call chain.
 The compile error appears at the actual call site, with a path through the field.
@@ -786,13 +786,13 @@ The rule turns NPE from "any variable might fault at any time" into "only `T?` v
 
 `Optional<T>` is verbose, doesn't compose with collections (`List<Optional<String>>`), and doesn't help fields whose underlying type is still nullable.
 Rust's `Option<T>` is sound but presupposes a pattern-matching story Java doesn't have.
-Kotlin's type-level nullability — `T` and `T?` as distinct types, with flow-sensitive smart casts — preserves Java's surface (`String name`, not `Option<String> name`), needs no pattern matching to be useful, and the `?.`/`?:`/`!!` operators visually localize null-handling decisions.
+Kotlin's type-level nullability (`T` and `T?` as distinct types, with flow-sensitive smart casts) preserves Java's surface (`String name`, not `Option<String> name`), needs no pattern matching to be useful, and the `?.`/`?:`/`!!` operators visually localize null-handling decisions.
 NULL-06 smart-cast narrowing makes "null-check then use" read like ordinary Java.
 
 ### Why `onDrop()` is null-aware
 
 NULL-09 specifies that scope-exit `onDrop()` on a `T?` skips `null` and dispatches on the contained value otherwise.
-This composes with DROP-04's drop-flag machinery — the compiler already had to track per-variable "still owned?" state; "is this `T?` non-null?" is the same shape of conditional cleanup.
+This composes with DROP-04's drop-flag machinery: the compiler already had to track per-variable "still owned?" state; "is this `T?` non-null?" is the same shape of conditional cleanup.
 No new runtime mechanism is introduced.
 
 ### Why no separate Optional<T>
@@ -807,7 +807,7 @@ STD-03's `WeakReference<T>::get()` returns `Rc<T>?` rather than `Optional<Rc<T>>
 ### Why preserve Java's exception syntax (EXC-01)
 
 A Swift-style `try`-at-call-site model with sealed error types and exhaustive pattern matching was considered and dropped.
-None of it is *forced* by ownership — they're orthogonal improvements with their own costs.
+None of it is *forced* by ownership: they're orthogonal improvements with their own costs.
 Sealed error types need a pattern-matching story Java doesn't have; mandatory call-site `try` is a substantial syntactic change for marginal gain; exhaustive catch makes wide-net handlers more awkward, not less.
 
 The ownership-forced changes to exceptions are minimal: cleanup during unwind (EXC-02), drop-flag participation (EXC-03), and a runtime-implementation question about stack traces (EXC-04).
@@ -819,7 +819,7 @@ The one Java-ergonomics fix that does make it into the spec is dropping the chec
 Java's checked-exception model has been a three-decade experiment that the field has rejected, and Laterita stops enforcing it.
 The evidence is unusually one-sided:
 
-- **No mainstream language designed after Java adopted the model.** Hejlsberg's 2003 C# critique — versioning brittleness, the `throws Exception` escape valve, scaling failures across deep stacks — has held up; Kotlin, Scala, and Swift each declined.
+- **No mainstream language designed after Java adopted the model.** Hejlsberg's 2003 C# critique (versioning brittleness, the `throws Exception` escape valve, scaling failures across deep stacks) has held up; Kotlin, Scala, and Swift each declined.
 - **The Java ecosystem routes around the feature.** Spring wraps `SQLException` into unchecked `DataAccessException` on principle.
 Hibernate, Jackson, and modern Jakarta EE are unchecked-by-default.
 Lombok's `@SneakyThrows` exists almost entirely to bypass the mechanism.
@@ -837,7 +837,7 @@ Drop the checking, keep the syntax.
 This is the same problem C++ destructors solve and Rust's drop-on-unwind solves.
 Without it, exceptions through ownership transfers would leak.
 The user writes ordinary code; the compiler emits the cleanup along the unwind path.
-EXC-03 generalizes DROP-04 to the unwind path — same drop flags, consulted on the same condition.
+EXC-03 generalizes DROP-04 to the unwind path, same drop flags, consulted on the same condition.
 
 ### Why lazy stack-trace resolution (EXC-04)
 
@@ -856,7 +856,7 @@ Rust's `Backtrace` does this; Laterita adopts the same model.
 
 Calling this construct a "function type," following Scala / Kotlin / TypeScript usage, is the obvious alternative.
 But the Java audience reads "functional interface" more directly: it is the term for "interface with one abstract method" they have used since Java 8, and the construct here is exactly that with the *interface declaration* elided.
-Calling it a functional interface — anonymous and structural — costs nothing and lands faster than introducing a parallel vocabulary.
+Calling it a functional interface (anonymous and structural) costs nothing and lands faster than introducing a parallel vocabulary.
 
 The "anonymous" qualifier matters when distinguishing from Java's nominal functional interfaces.
 Both forms coexist: a `Function<T, R>` declaration is still a functional interface; `(T) -> R` is an anonymous functional interface that has the same shape without the published name.
@@ -864,8 +864,8 @@ FN-02 keeps them as distinct types; the user picks which one to use based on whe
 
 ### Why structural rather than nominal (FN-01)
 
-A small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc., is the obvious starting point — leaving only their names to settle.
-But once parameter modes (`@take`, `@mut`, `@bound`) enter the type system, the count explodes: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01 — order of 100 nominal interfaces per arity, before counting primitive specializations.
+A small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc., is the obvious starting point: leaving only their names to settle.
+But once parameter modes (`@take`, `@mut`, `@bound`) enter the type system, the count explodes: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01, order of 100 nominal interfaces per arity, before counting primitive specializations.
 No naming convention survives that.
 
 The anonymous structural form resolves the explosion at the source.
@@ -876,7 +876,7 @@ No stdlib zoo, no naming committee, no question of which canonical interface a v
 The cost is one new kind of type expression in the grammar.
 Laterita's type system is already growing modifier-bearing positions (`@take`, `@mut`, `@bound`), so adding a type form that aggregates those positions is a smaller step than it would be in plain Java.
 
-The trade-off is that source-level `import` of an anonymous functional interface isn't possible — there is no name to import.
+The trade-off is that source-level `import` of an anonymous functional interface isn't possible: there is no name to import.
 We accept this.
 Reusable function-shaped contracts in real code almost always have richer obligations than a SAM expresses (a name, documentation, related methods), and those still want a nominal interface.
 What the anonymous form fixes is the ergonomic wart of "I just need a callback parameter" requiring a published interface to land in.
@@ -886,47 +886,47 @@ This dissolves the question: there are no closure-interface names to fix because
 ### Why anonymous functional interfaces are restricted to positions read at a call site (FN-04)
 
 A type with no name is ergonomic where it is read in the same place it is written.
-The allowed positions — parameter, return, generic bound, generic type argument — all sit inside a signature or call expression the reader is already looking at: a `(P) -> R` parameter against the signature the caller has open; a return against the producing function (OWN-17 / OWN-18 partial application); a generic bound like `<F extends @mutating (T) -> R>` against the method declaration that requires it; a generic type argument like `Stream<(T) -> R>` against the construction or signature instantiating it.
+The allowed positions (parameter, return, generic bound, generic type argument) all sit inside a signature or call expression the reader is already looking at: a `(P) -> R` parameter against the signature the caller has open; a return against the producing function (OWN-17 / OWN-18 partial application); a generic bound like `<F extends @mutating (T) -> R>` against the method declaration that requires it; a generic type argument like `Stream<(T) -> R>` against the construction or signature instantiating it.
 Forbidding the generic-bound case would force every `map` / `filter` / `reduce`-shaped method to declare a nominal `Mapper` / `Predicate` / `Reducer` interface purely for the bound, defeating the purpose of the structural form in the API surface where it matters most; TARG-01 already carries lifetime information through generic type arguments, and the FI case is the same mechanism applied to a function-shaped type.
 
 Field and declared-local positions are excluded for the inverse reason.
 A field of anonymous-FI type puts an unnameable type on a class's published surface, with no name to anchor documentation or IDE navigation.
-A declared-local annotation duplicates work `var` inference already does — the RHS produced the FI value, and the local needs only to hold it.
-The "function-shaped contract that outlives a single call" cases carry richer obligations — a name, documentation, related methods — that a nominal FI exists to hold (FN-03).
+A declared-local annotation duplicates work `var` inference already does: the RHS produced the FI value, and the local needs only to hold it.
+The "function-shaped contract that outlives a single call" cases carry richer obligations (a name, documentation, related methods) that a nominal FI exists to hold (FN-03).
 The restriction governs the written type expression, not value flow: a `var` local may hold an anonymous-FI value by inference where no type is spelled.
 
 ### Why the anonymous form spells call mode with `@mutating` / `@consuming` prefix (FN-01)
 
-The SAM of an anonymous FI must carry the same three receiver modes that nominal SAMs do (CLO-03: shared-call / mut-call / once-call), or the anonymous form is restricted to shared-call and every mut-call or once-call callback forces the caller back to a nominal interface — reintroducing the interface-name pressure FN-01 exists to remove.
+The SAM of an anonymous FI must carry the same three receiver modes that nominal SAMs do (CLO-03: shared-call / mut-call / once-call), or the anonymous form is restricted to shared-call and every mut-call or once-call callback forces the caller back to a nominal interface, reintroducing the interface-name pressure FN-01 exists to remove.
 The question is only *how* to spell the mode on a nameless type.
 
-A prefix on the type expression — `@mutating (P) -> R`, `@consuming (P) -> R` — wins over the alternatives.
+A prefix on the type expression (`@mutating (P) -> R`, `@consuming (P) -> R`) wins over the alternatives.
 The annotations are not new vocabulary: `@mutating` (MUT-08) and `@consuming` (OWN-15) already declare exactly these receiver modes on regular methods.
 The anonymous form simply attaches them to the SAM that the type expression denotes, and the desugaring (LAT-05) places them on the synthesized SAM declaration unchanged.
-No new annotation, no new keyword, and the `.java` mirror — a nominal interface with the same annotation on its SAM — reads identically.
+No new annotation, no new keyword, and the `.java` mirror (a nominal interface with the same annotation on its SAM) reads identically.
 
 The Rust correspondence is direct: bare `(P) -> R` is `Fn`, `@mutating (P) -> R` is `FnMut`, `@consuming (P) -> R` is `FnOnce`, and CLO-04's containment carries the `Fn ⊆ FnMut ⊆ FnOnce` ordering across both surfaces.
-Java developers reading the form learn one rule — "the prefix is the SAM's receiver mode" — and the rest follows from receiver-mode rules they already know.
+Java developers reading the form learn one rule ("the prefix is the SAM's receiver mode") and the rest follows from receiver-mode rules they already know.
 
 Alternatives evaluated and rejected:
 
 - **A trailing marker on the arrow** (`(P) -mut> R`, `(P) -once> R`).
 Introduces new arrow forms with no precedent in either Java or Rust; obscures the connection to `@mutating` / `@consuming` on regular methods; doubles the grammar surface for the FI arrow.
 - **Encoding mode in the variable annotations** (treat `@mut (P) -> R` as mut-call).
-Conflates the variable's mutability with the SAM's receiver mode — two genuinely separate axes (CLO-03).
-The conflation makes owned, multi-call FI variables inexpressible, and forces an inversion of HIER-05's contravariance for the FI slot's `@mut` — an inversion that is an artifact of treating one annotation as two.
+Conflates the variable's mutability with the SAM's receiver mode, two genuinely separate axes (CLO-03).
+The conflation makes owned, multi-call FI variables inexpressible, and forces an inversion of HIER-05's contravariance for the FI slot's `@mut`: an inversion that is an artifact of treating one annotation as two.
 - **Inverting the default to once-call** so that `(P) -> R` accepts any closure and stricter modes are opt-in.
-The inversion sounds appealing for the "I forgot to annotate" worst case, but it pessimizes the dominant case (read callbacks invocable many times), forces an annotation on every `forEach`-shaped API in the language, and breaks the example shape `<A, B, R> @bound (B) -> R partial(...)` in CLO-03 — which borrows a captured closure and calls it repeatedly, only sound when the closure is shared-call.
+The inversion sounds appealing for the "I forgot to annotate" worst case, but it pessimizes the dominant case (read callbacks invocable many times), forces an annotation on every `forEach`-shaped API in the language, and breaks the example shape `<A, B, R> @bound (B) -> R partial(...)` in CLO-03: which borrows a captured closure and calls it repeatedly, only sound when the closure is shared-call.
 Defaulting to shared-call matches Java's prior expectation and Rust's `Fn` semantics.
 - **Restricting the anonymous form to shared-call permanently**, leaving mut-call and once-call to nominal interfaces.
-This leaves ARR-01's chunk callback (mutate-mode by design) and `Mutex.with`'s critical-section closure (typically mutate-mode) requiring nominal interfaces purely because they cannot be shared-call — reintroducing the interface-name pressure FN-01 exists to remove, just for the call-mode axis.
+This leaves ARR-01's chunk callback (mutate-mode by design) and `Mutex.with`'s critical-section closure (typically mutate-mode) requiring nominal interfaces purely because they cannot be shared-call: reintroducing the interface-name pressure FN-01 exists to remove, just for the call-mode axis.
 
-The prefix is mutually exclusive between `@mutating` and `@consuming` on a single anonymous form: a SAM that is both is rare (a one-shot mutator with no further calls) and stays expressible through a nominal interface — there is no inline spelling for `@mutating @consuming`.
+The prefix is mutually exclusive between `@mutating` and `@consuming` on a single anonymous form: a SAM that is both is rare (a one-shot mutator with no further calls) and stays expressible through a nominal interface, there is no inline spelling for `@mutating @consuming`.
 The two together do not appear in the surveyed Rust ecosystem either: `FnOnce` already covers "called at most once" without a separate "mutating once" variant.
 
 ### Why anonymous synthesis lives in FN (FN-03)
 
-Java's existing lambda implementation strategy is dynamic — `LambdaMetafactory` synthesizes the class at runtime.
+Java's existing lambda implementation strategy is dynamic, `LambdaMetafactory` synthesizes the class at runtime.
 Laterita removes reflection (COMP-05) and targets AOT compilation, so synthesis is moved fully to the compiler.
 The class still exists at runtime, just produced statically and not addressable from source code.
 The user's mental model is "the lambda is the value"; the synthesized class is implementation detail.
@@ -940,7 +940,7 @@ A `fn(args)` form that calls a variable directly would be a sixth non-Java synta
 The cost of omitting it is one `.apply` per call site, which Java programmers already expect.
 
 The SAM of an anonymous functional interface is named `apply`, giving the nameless type one fixed, predictable method name, matching `java.util.function.Function`.
-A fixed name is not optional: LAT-05 desugars the anonymous spelling to a nominal interface, and the `.java` mirror must call a method that exists — without a canonical name there is nothing for either surface to invoke.
+A fixed name is not optional: LAT-05 desugars the anonymous spelling to a nominal interface, and the `.java` mirror must call a method that exists, without a canonical name there is nothing for either surface to invoke.
 
 ---
 
@@ -959,10 +959,10 @@ Adopting Java's capture rule keeps every closure form expressible on both surfac
 ### Why call mode and variable mode are separate (CLO-03)
 
 A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held?
-The first is the *call mode* — and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (MUT-08) and `@consuming` (OWN-15) with no new vocabulary.
-The second is the *variable mode* — ordinary ownership and `@mut`, identical to every other variable.
+The first is the *call mode*, and it is nothing more than the SAM's receiver mode, so it reuses `@mutating` (MUT-08) and `@consuming` (OWN-15) with no new vocabulary.
+The second is the *variable mode*, ordinary ownership and `@mut`, identical to every other variable.
 
-Fusing the two into a single three-valued slot mode on the variable was rejected: it made one everyday shape inexpressible — an object that *owns* a callback and invokes it many times.
+Fusing the two into a single three-valued slot mode on the variable was rejected: it made one everyday shape inexpressible, an object that *owns* a callback and invokes it many times.
 Ownership and the bound on a repeatedly-invocable closure were forced onto the same `@take` / `@mut` token, so "owned, multi-call" had no spelling.
 Separating the axes dissolves the problem: the call-mode bound lives on the interface type, the way a Rust `where F: FnMut` bound does, while ownership stays the field's ordinary default.
 Invocation then falls straight out of MUT-10 / OWN-15 receiver transitivity with the functional-interface value as the receiver, and no new mechanism is introduced.
@@ -983,7 +983,7 @@ Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the t
 
 HIER-05 makes `@mut` contravariant for ordinary parameters: an override may *drop* `@mut` because the override demands less of the caller.
 CLO-05 carries the same principle to the call-mode axis of an FI slot, but in the *opposite syntactic direction*: an override may *strengthen* the call mode (bare → `@mutating` → `@consuming`), never weaken it.
-Both rules are the same principle — *an override must continue to accept every value the inherited declaration accepted* — applied to two different axes.
+Both rules are the same principle (*an override must continue to accept every value the inherited declaration accepted*) applied to two different axes.
 
 For an ordinary parameter `@mut Buf b`, `@mut` names a capability the function reserves over the caller's value.
 Dropping it reduces what the function will do; callers continue to work because a mutable borrow degrades to immutable on demand.
@@ -994,7 +994,7 @@ A shared-call slot accepts read closures only; a mut-call slot adds mutate; a on
 *Strengthening* the slot's call mode broadens the admissible-closure set; weakening it would reject closures the inherited contract said it would accept.
 So overrides may strengthen the call mode, never weaken it.
 
-The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries acceptance-set semantics, and the variable-mode annotations on the parameter (`@mut`, `@take`, `@bound`) carry HIER-05 semantics — `@mut` contravariant, `@take` invariant.
+The two axes split cleanly: the call-mode prefix on the FI type (FN-01) carries acceptance-set semantics, and the variable-mode annotations on the parameter (`@mut`, `@take`, `@bound`) carry HIER-05 semantics, `@mut` contravariant, `@take` invariant.
 Acceptance-set widening lives where it belongs (on the type expression that determines acceptance), HIER-05's direction lives where it belongs (on the parameter annotation), and each axis follows the rule appropriate to its meaning with no inversion to memorize.
 
 ### Why closures carry capture lifetimes (CLO-06)
@@ -1069,37 +1069,37 @@ The composition is the design.
 ### Why owned vs. borrowed strings tracked per-variable (STR-02 through STR-04)
 
 Real Java pretends `String` is one thing.
-It isn't — sometimes it's an independent allocation (`toUpperCase` result), sometimes it's a view (`substring` result, where reallocating the source is illegal while the view exists).
+It isn't: sometimes it's an independent allocation (`toUpperCase` result), sometimes it's a view (`substring` result, where reallocating the source is illegal while the view exists).
 Rust splits these into `String` and `&str`, two visibly different types.
 
 They are kept as one type at the source level, with the compiler tracking per-variable whether the string is owned or borrowed.
-This preserves Java's "everything is just a variable" feel — the user writes `String name` either way.
+This preserves Java's "everything is just a variable" feel: the user writes `String name` either way.
 The complexity moves into the compiler.
 The cost is internal complexity; the gain is that Java's surface syntax is preserved.
 
 The signature-level markers introduced for lifetimes (`@bound` per OWN-17 / OWN-18) and parameters (`@take` per OWN-13) make the public contract explicit: a method's owned-vs-borrowed return is visible to callers, and a `@take` parameter is visible at the call site.
-What the compiler tracks silently is *intra-method* flow — within a function body the per-variable owned/borrowed state is internal bookkeeping, not part of any public surface.
+What the compiler tracks silently is *intra-method* flow: within a function body the per-variable owned/borrowed state is internal bookkeeping, not part of any public surface.
 
 The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`).
 In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body reaches `broken()`, and it always returns an owned value.
-The diagnostic for any owned/borrowed mismatch is therefore uniform — *"this position needs an owned String; variable is borrowed — try `.clone()`"* — and the fix is one method call.
+The diagnostic for any owned/borrowed mismatch is therefore uniform, *"this position needs an owned String, variable is borrowed, try `.clone()`"*, and the fix is one method call.
 With `clone()` as the universal escape valve, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
 
 ### Why string literals are borrowed, not owned (STR-06)
 
 A literal lives in the program's read-only static segment, not on the heap.
-Treating it as owned would either lie about ownership (no allocation took place) or force every literal expression to allocate a heap copy — both unacceptable.
+Treating it as owned would either lie about ownership (no allocation took place) or force every literal expression to allocate a heap copy, both unacceptable.
 Borrowing is the honest description: the literal owns itself, every variable onto it is a view.
 The static lifetime is universal, so a literal flows freely into any borrow context, and the few sites that need owned storage call `.clone()` (STR-02).
 
 This makes the spec's earlier example `String greeting = "hello"` a borrowed variable, which propagates predictably: passing `greeting` to `void inspect(String s)` is fine; passing it to `void store(take String s)` is rejected with the standard "try `.clone()`" diagnostic.
-There is no special rule for literals beyond "their lifetime is static" — they participate in OWN-02 and STR-02 like any other borrow.
+There is no special rule for literals beyond "their lifetime is static", they participate in OWN-02 and STR-02 like any other borrow.
 
 ### Why `String` is immutable (STR-07)
 
 `mut String` with in-place operations (overwrite, truncate, clear) was considered and rejected.
 Bulk construction is `StringBuilder`'s job.
-Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere — a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`.
+Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere: a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`.
 The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
 A variable or field may still be *declared* `@mut String`, since `@mut` is general (MUT-01) and rejecting it on one type would be a special case, but it grants nothing.
@@ -1114,11 +1114,11 @@ Mut receivers don't appear at all per STR-07.
 
 ### Why `String` needs no splitting machinery
 
-A `bound String` is read-only — STR-07 leaves `String` with no `@mutating` methods — so multiple non-overlapping views of the same source are just multiple shared borrows under OWN-03.
+A `bound String` is read-only (STR-07 leaves `String` with no `@mutating` methods) so multiple non-overlapping views of the same source are just multiple shared borrows under OWN-03.
 No disjointness obligation, no `splitAt`, no `@unsafe`: `String.split`, `Pattern.split`, `String.lines`, `URI` component getters, and `StringTokenizer.nextToken` all implement as repeated `substring` calls (STR-03) into a result array.
 
 Rust's `str::split_at_mut` exists because `&mut str` is a thing the language tracks; Laterita's one-type `String` admits no mutable view, so that primitive has no analog to need.
-The genuinely different case — two simultaneous `mut T[]` slices for parallel in-place algorithms — is settled by ARR-01.
+The genuinely different case (two simultaneous `mut T[]` slices for parallel in-place algorithms) is settled by ARR-01.
 
 ---
 
@@ -1128,8 +1128,8 @@ The genuinely different case — two simultaneous `mut T[]` slices for parallel 
 
 Parallel to `String` (STR): the type is built in, the operations are load-bearing, and the rules belong together rather than scattered across OWN-05 and stdlib commentary.
 
-A survey of the Rust ecosystem confirmed the primitive is load-bearing — `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving.
-Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering — exactly the `@unsafe` propagation Laterita is avoiding.
+A survey of the Rust ecosystem confirmed the primitive is load-bearing: `rayon`'s parallel iterators are built on `split_at_mut`-style producers, `core::slice::sort` uses it for quicksort partitioning, `image` and the FFT crates use `chunks_mut` pervasively, and `bytes`/`tokio-util` reimplement the concept for protocol buffer carving.
+Without a stdlib primitive, every serious library falls back on `from_raw_parts_mut` plus borrow laundering: exactly the `@unsafe` propagation Laterita is avoiding.
 
 ### Why two surfaces and a record return (ARR-01, ARR-02)
 
@@ -1137,7 +1137,7 @@ The `.java` and `.lat` surfaces differ on two features the array API depends on:
 The `.lat` surface uses both (ARR-01); the `.java` mirror substitutes static methods on `laterita.lang.Arrays` and named FIs (ARR-02, ARR-03).
 Migration tooling translates between them.
 
-For the two-way split, three shapes were considered — continuation-passing, record return, multi-return language feature.
+For the two-way split, three shapes were considered, continuation-passing, record return, multi-return language feature.
 The record form reads as ordinary Java:
 
 ```java
@@ -1151,7 +1151,7 @@ The multi-return feature would add the most surface for the narrowest benefit.
 Record wins; `@bound` propagating through record fields is a small generalization of LIFE-02 already implicit in the lifetime rules.
 
 For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is* "this callback," so `forEachChunk` / `forEachChunkExact` take a lambda.
-Successive chunks are disjoint by construction because each chunk's bound expires at its call's return — no explicit tracking needed.
+Successive chunks are disjoint by construction because each chunk's bound expires at its call's return, no explicit tracking needed.
 
 A dedicated `reduceChunks` was considered and rejected.
 Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `@mut R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, mutating through the `@mut` capture) and the `@mut` body slot accepts mutating closures (FN-01).
@@ -1161,7 +1161,7 @@ Callers needing a read-only fold over chunks would want a different API shape (`
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 
-`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter — a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for `@mut`-narrowing overrides.
+`MutableConsumer<T>::accept(@bound @mut T)` narrows `Consumer<T>::accept(T)`'s parameter: a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for `@mut`-narrowing overrides.
 The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable.
 So the two stand as siblings; lambda literals target whichever the surrounding signature names.
 
@@ -1169,7 +1169,7 @@ So the two stand as siblings; lambda literals target whichever the surrounding s
 
 A type argument may carry `@borrow` and `@mut`, but not `@take`.
 
-`@take` is a parameter mode — it describes a transfer of ownership *into a slot* at a call site — not a property a value carries.
+`@take` is a parameter mode (it describes a transfer of ownership *into a slot* at a call site) not a property a value carries.
 As a type argument it would have no referent: `Pair<@take K, @take V>` cannot say anything, because there is no call and no slot.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`), so `@take` in argument position is rejected (TARG-02).
 
@@ -1246,14 +1246,14 @@ The half must *own* its segment.
 `splitOff` consumes the receiver and returns two owning `T[]` values whose representations share the underlying allocation through an internal refcount, freed when the last half drops.
 The result is wrapped in `Pair<T[], T[]>` (ARR-04) so partial-move (OWN-06) lets the caller extract each half via the accessor and `give` it to a thread independently.
 
-**Data-parallel iteration.** Rather than carry a bespoke `parallelForEachChunk` on `T[]`, the parallel path goes through `Arrays.stream(@bound T[])` returning a bare `Stream<T>` — the JDK type, bound to the source by the parameter-source form of OWN-17 (static methods have no receiver, so `@bound` belongs on the parameter, not the return).
+**Data-parallel iteration.** Rather than carry a bespoke `parallelForEachChunk` on `T[]`, the parallel path goes through `Arrays.stream(@bound T[])` returning a bare `Stream<T>`: the JDK type, bound to the source by the parameter-source form of OWN-17 (static methods have no receiver, so `@bound` belongs on the parameter, not the return).
 `.parallel().forEach(...)` already exists on every Java developer's mental model, and the underlying `Spliterator` splits work the same way a hand-rolled chunk fan-out would.
 Callers who need a specific executor drive the stream with `ForkJoinPool.submit(...)` per standard JDK practice.
-The cost is one extra abstraction layer (the stream) and a real limitation — the stream produces transformed/aggregated values but does not write back into the source — so the in-place parallel mutation case stays on the `splitOff` path.
+The cost is one extra abstraction layer (the stream) and a real limitation (the stream produces transformed/aggregated values but does not write back into the source) so the in-place parallel mutation case stays on the `splitOff` path.
 The win is no new language-level executor concept (no rayon-style `pool.install(...)` shim) and one fewer load-bearing primitive on `T[]`; for read-only parallel reductions (map / filter / reduce / sum / collect), the standard `Consumer<T>` / `Function<T,R>` / `Predicate<T>` interfaces from `java.util.function` accept `@bound T` parameters by default, so no parallel SAM hierarchy is required.
 
-Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mutating` borrow vs `@consuming`), and those annotations are not part of the overload signature (OWN-13) — two same-name methods that differed only in receiver mode would be a duplicate declaration.
-Using distinct names — `splitAt` for the borrowed return, `splitOff` for the consuming return — is both a Rust precedent (`BytesMut::split_off`) and the only spelling that reads unambiguously at every call site.
+Why not overload `splitAt` to cover both halves of the split case: the two forms differ only in receiver mode (`@mutating` borrow vs `@consuming`), and those annotations are not part of the overload signature (OWN-13), two same-name methods that differed only in receiver mode would be a duplicate declaration.
+Using distinct names (`splitAt` for the borrowed return, `splitOff` for the consuming return) is both a Rust precedent (`BytesMut::split_off`) and the only spelling that reads unambiguously at every call site.
 
 The candidate options for cross-thread split alone were all single-segment primitives that didn't fit the data-parallel shape and forced a second API anyway: (a) per-element `Mutex<T>` over `Arc<T[]>`, (b) dedicated `SharedSlice<T>` stdlib type, (c) extend `Arc<T[]>` with range metadata.
 Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice, because `T[]` *is* the owning slice.
@@ -1299,11 +1299,11 @@ Laterita's list is one entry shorter than Rust's: unchecked indexing is not on i
 
 A class that holds a `Heap<T>` field has invariants the compiler can't check (the pointer must be non-null, well-aligned, point to live memory of the right type).
 Maintaining those invariants requires unsafe context at every method that touches the field.
-Forcing this propagation prevents the easy mistake of "I'll just hold a Heap<T> and use it from safe methods" — which would be unsound.
+Forcing this propagation prevents the easy mistake of "I'll just hold a Heap<T> and use it from safe methods": which would be unsound.
 
 ### Why standard checks still apply inside `@unsafe` (UNS-04)
 
-`@unsafe` is a small, targeted unlock — not a blanket "anything goes" mode.
+`@unsafe` is a small, targeted unlock: not a blanket "anything goes" mode.
 Inside an unsafe method, the type system still types, the borrow checker still borrow-checks, lifetimes still infer.
 You only unlock the specific operations in UNS-02.
 This is what keeps unsafe code reviewable: even unsafe code is mostly checked by the compiler, and the unchecked parts are localized to known constructs.
@@ -1339,14 +1339,14 @@ The compiler doesn't need to know anything about it.
 ### Why cycles leak (STD-01)
 
 `Rc<T>` is reference-counted: when the last handle's `onDrop()` runs, the count reaches zero and the value is dropped.
-A cycle of strong handles never reaches zero — every handle is held up by another handle in the cycle, and none can decrement past one.
+A cycle of strong handles never reaches zero: every handle is held up by another handle in the cycle, and none can decrement past one.
 The cycle leaks.
 
 This is the same limitation Rust's `Rc<T>` and `Arc<T>` carry, with the same answer: `WeakReference<T>` (STD-03) for the back-edge in any structure that may form a cycle.
-Adding a cycle collector (a partial tracing GC) is rejected on Rust's grounds — the runtime cost and complexity exceed the value, given that `WeakReference<T>` solves the common cases and acyclic ownership is the dominant pattern.
+Adding a cycle collector (a partial tracing GC) is rejected on Rust's grounds: the runtime cost and complexity exceed the value, given that `WeakReference<T>` solves the common cases and acyclic ownership is the dominant pattern.
 Laterita does not aim to be better than Rust at memory management; it aims to give Java developers the same safety properties Rust gives systems programmers, in syntax they already know.
 
-The implication for COMP-01 is that "memory management determined statically" is not literally true for refcounted types — refcount reclamation is dynamic, and cycles are an unrecoverable leak.
+The implication for COMP-01 is that "memory management determined statically" is not literally true for refcounted types: refcount reclamation is dynamic, and cycles are an unrecoverable leak.
 The spec acknowledges this explicitly rather than masking it.
 
 Doubly-linked structures and graph-shaped data port using exactly these primitives: `Rc<T>` / `Arc<T>` on forward edges, `WeakReference<T>` on back edges.
@@ -1357,7 +1357,7 @@ Migration of doubly-linked lists, parent-pointer trees, and adjacency-list graph
 ### Why race-safe upgrade (STD-04)
 
 A naïve `WeakReference::get` that reads the strong count and then increments has a TOCTOU race: the strong count could drop to zero between the read and the bump, and the upgraded handle would point at destroyed memory.
-Compare-and-swap fixes this — the increment only happens if the count hasn't changed since we read it.
+Compare-and-swap fixes this, the increment only happens if the count hasn't changed since we read it.
 Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen memory ordering.
 
 ### Why `Cell<T>` and `Heap<T>` are unsafe primitives (STD-05, STD-06)
@@ -1365,17 +1365,17 @@ Rust's `Arc::Weak::upgrade` does this for the same reason, with carefully chosen
 These are the irreducible escape hatches.
 `Cell<T>` is the documented hole in MUT-09.
 `Heap<T>` is the only way to allocate without compiler-tracked ownership.
-Everything else in the standard library — `Rc`, `Arc`, `Mutex`, lazy initializers, growable collections — is built on top of them in `private unsafe` methods.
+Everything else in the standard library (`Rc`, `Arc`, `Mutex`, lazy initializers, growable collections) is built on top of them in `private unsafe` methods.
 The unsafe surface is small, concentrated, and auditable.
 
 ### Why `@local`, not `Send` (STD-07)
 
 Rust uses two positive auto-traits (`Send` + `Sync`); Laterita inverts to one negative marker (`@local`).
-The inversion makes the common case — ordinary user classes are safe to cross threads — the unannotated default, which is what Java programmers expect.
+The inversion makes the common case (ordinary user classes are safe to cross threads) the unannotated default, which is what Java programmers expect.
 The `Send`/`Sync` split is collapsed because `Send`-but-not-`Sync` requires fine-grained borrow reasoning Java programmers don't expect.
 
 A class with `@local` fields must explicitly choose `@local` (inherit thread-affinity) or `@local(false)` (encapsulate).
-The compiler does not infer the choice — making it explicit forces the author to name what they're claiming, and prevents accidentally promoting an `@local`-bearing class into the thread-safe pool by composition.
+The compiler does not infer the choice: making it explicit forces the author to name what they're claiming, and prevents accidentally promoting an `@local`-bearing class into the thread-safe pool by composition.
 The parameter form keeps both sides of the decision under one name: every class touching `@local` types declares a `@local(...)` annotation, the boolean selects affinity vs encapsulation.
 `@unsafe` remains independent and METHOD-only (UNS-01): per-operation trust on the unverifiable steps inside the encapsulating implementation.
 
@@ -1383,7 +1383,7 @@ The parameter form keeps both sides of the decision under one name: every class 
 
 The cursor-that-mutates-its-container is one of the canonical patterns where ownership type systems reach for internal `@unsafe`.
 Generative lifetimes, region typing, and similar academic devices can defeat the issue but at a cost (proliferating type parameters, separate inference machinery) out of proportion for the use case.
-Rust shipped `Vec::retain`, `Vec::drain`, `extract_if`, and `LinkedList::cursor_mut` — all backed by `@unsafe`.
+Rust shipped `Vec::retain`, `Vec::drain`, `extract_if`, and `LinkedList::cursor_mut`, all backed by `@unsafe`.
 Laterita follows the same shape: a small stdlib API implemented with `private unsafe`, with the audit boundary the four or five method bodies that compose it.
 
 A central design choice is whether to introduce a new `Cursor<T>` type or reuse Java's existing `Iterator<T>` and `ListIterator<T>`.
@@ -1391,19 +1391,19 @@ The case for a new type is that the borrow-checked semantics are a real change f
 The case for reuse wins: every method on `ListIterator` already has the right meaning, the loop shapes are identical, and inventing new vocabulary would force every Java reader to learn which iterator class to reach for in which situation.
 The borrow rules replace `modCount` and `ConcurrentModificationException` underneath, but the API surface above is the one Java developers already use.
 
-The single signature deviation — `Iterator.remove()` and `ListIterator.remove()` returning an owned `T` rather than `void` — is forced by the ownership model.
+The single signature deviation (`Iterator.remove()` and `ListIterator.remove()` returning an owned `T` rather than `void`) is forced by the ownership model.
 Java's void return reflects an assumption Laterita can't carry: that the caller "still has" the element from the prior `next()` call as a variable into the collection.
 In Laterita, `next()` returns a `@bound T` borrow tied to the iterator's position, and any mutating call on the iterator invalidates that borrow at the type level.
 Returning the removed element by ownership transfer is what restores the user's access to the value after the borrow is gone, and it incidentally folds Rust's separate `drain`/`extract_if` API into a one-liner over `remove()`.
-Statement-form `it.remove();` (ignoring the return) still compiles — the result drops via `onDrop`, matching Java's observable behavior.
+Statement-form `it.remove();` (ignoring the return) still compiles: the result drops via `onDrop`, matching Java's observable behavior.
 
 `ConcurrentModificationException` doesn't carry over.
-Its job — detecting "you mutated the collection while iterating" — is exactly what OWN-03 enforces statically.
+Its job (detecting "you mutated the collection while iterating") is exactly what OWN-03 enforces statically.
 The runtime category exists in Java because the language can't express the constraint at compile time.
 Laterita can, so the runtime exception becomes a compile error, and the `modCount` field can leave the standard library entirely.
 
-Keeping a separate `Cursor<T>` type for the cursor case anyway — on the theory that "iterator" connotes read-only iteration in many readers' heads — is also rejected: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it.
-Two iterator types in Java's vocabulary, two iterator types in Laterita's — same names, sharper guarantees.
+Keeping a separate `Cursor<T>` type for the cursor case anyway (on the theory that "iterator" connotes read-only iteration in many readers' heads) is also rejected: `ListIterator` already exists in Java with mutation methods (`remove`, `set`, `add`), so the semantic precedent is there even if many Java developers underuse it.
+Two iterator types in Java's vocabulary, two iterator types in Laterita's: same names, sharper guarantees.
 
 ### Why `Mutex<T>` exposes its protected value through a closure (STD-09)
 
@@ -1414,13 +1414,13 @@ Three shapes for removing it were considered.
 **A returned guard** (Rust `MutexGuard`, C++ `std::lock_guard`) whose `onDrop()` releases the lock.
 Acquisition returns `bound mut MutexGuard<T>`; scope exit and exception unwind both run `onDrop` (DROP-01, EXC-02), so forgetting to unlock is inexpressible.
 The trouble is THR-10 poisoning: the guard's `onDrop()` must mark the mutex poisoned only when the lock is being released *because an exception is propagating through the scope*, not on a normal exit.
-Because `onDrop()` is one method body called on both paths, distinguishing them requires a runtime in-flight-exception indicator — Rust pays for this with `std::thread::panicking()`, a thread-local bit consulted from inside `MutexGuard::drop`.
+Because `onDrop()` is one method body called on both paths, distinguishing them requires a runtime in-flight-exception indicator, Rust pays for this with `std::thread::panicking()`, a thread-local bit consulted from inside `MutexGuard::drop`.
 The mechanism works, but it is language-level special machinery (a runtime fact the spec must surface through some hook) in service of one feature on one type.
 
-**`AutoCloseable` plus a compiler must-use-as-resource rule.** Same one-method-two-paths problem inside `close()` (still needs the runtime bit, just relocated), and it puts a `try (...)` wrapper around every lock site — the same ceremony the first shape exists to remove.
+**`AutoCloseable` plus a compiler must-use-as-resource rule.** Same one-method-two-paths problem inside `close()` (still needs the runtime bit, just relocated), and it puts a `try (...)` wrapper around every lock site: the same ceremony the first shape exists to remove.
 Net negative.
 
-**A closure-scoped method on the mutex — the chosen shape.** `<R> R with(@mut @mutating (@mut T) -> R action)` and `<R> Optional<R> tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result.
+**A closure-scoped method on the mutex, the chosen shape.** `<R> R with(@mut @mutating (@mut T) -> R action)` and `<R> Optional<R> tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result.
 Poison detection is an ordinary `try`/`catch` around the closure invocation in stdlib code: the closure either returns or throws, and control flow itself is the signal.
 No runtime in-flight-exception indicator is required.
 The protected `T` is reachable only inside the closure, so there is no handle to smuggle, leak, or hold across uncertain control flow.
@@ -1428,10 +1428,10 @@ The protected `T` is reachable only inside the closure, so there is no handle to
 The trade against the guard shape is ergonomic.
 The locked region is a closure body, not a `{ }` block: two-mutex critical sections nest (`m1.with(t1 -> m2.with(t2 -> { ... }))`), and outer-function `return` / outer-loop `break` from inside the closure are unavailable.
 For the short critical sections that dominate real code these costs are invisible, and `with` returning `R` lets values flow out cleanly.
-In exchange, THR-10 reduces from "the unwind path sets a flag" — a property the language has to surface through some runtime mechanism — to "if the closure throws, `with` poisons before rethrowing," ordinary stdlib code using features every Laterita user already has (generic methods, anonymous functional interfaces per FN-01, `try`/`catch`).
+In exchange, THR-10 reduces from "the unwind path sets a flag" (a property the language has to surface through some runtime mechanism) to "if the closure throws, `with` poisons before rethrowing," ordinary stdlib code using features every Laterita user already has (generic methods, anonymous functional interfaces per FN-01, `try`/`catch`).
 The `@unsafe` surface of `Mutex<T>` shrinks accordingly: the lock primitive and `Cell<T>` access still need `@unsafe` methods, as in any safe-mutex implementation, but the poison-detection layer above no longer does.
 
-The closed-off patterns — passing a guard between methods, holding the lock across complex non-local control flow — were already weakened in Laterita by `@bound` lifetimes.
+The closed-off patterns (passing a guard between methods, holding the lock across complex non-local control flow) were already weakened in Laterita by `@bound` lifetimes.
 Closing them off completely in exchange for removing language-level poisoning machinery is a net simplification.
 
 ---
@@ -1444,25 +1444,25 @@ The goal is that Java programmers can read and write Laterita without learning n
 `new Thread(() -> body).start()` is the canonical Java spawn; reusing it directly means the surface looks identical.
 The two changes (`onDrop()` semantics, sticky interrupt flag) are behind the API, not on it.
 
-The deprecated methods (`stop`, `suspend`, `resume`, `destroy`) are dropped because they are unsafe under any memory model — Java itself deprecated them — and the unsafety is worse without a GC to paper over the resulting state corruption.
+The deprecated methods (`stop`, `suspend`, `resume`, `destroy`) are dropped because they are unsafe under any memory model (Java itself deprecated them) and the unsafety is worse without a GC to paper over the resulting state corruption.
 
 ### Why ownership-bound thread lifetime (THR-01, THR-06)
 
 Without a GC, a thread that outlives the data it borrows is a use-after-free.
-With a GC, Java handles this transparently — the thread keeps the borrowed objects alive.
+With a GC, Java handles this transparently: the thread keeps the borrowed objects alive.
 Laterita can't rely on that, so the lifetime relationship has to be explicit.
 
 The cleanest expression of "this thread cannot outlive its owner" is to bind the thread to a variable and have `onDrop()` interrupt-and-join.
 Variable scope already exists; reusing it for thread lifetime requires no new construct (no `scope { }` block, no structured-task helpers in the language).
-The borrow checker already enforces "borrows don't outlive their source" — applying that to spawn captures gives cross-thread borrow safety for free.
+The borrow checker already enforces "borrows don't outlive their source": applying that to spawn captures gives cross-thread borrow safety for free.
 
 ### Why no detach (THR-01, by omission)
 
 Detached threads are zombie processes by another name.
-Every real-world use case (long-running servers, background flushers, async loggers) is better expressed as "owned by a top-level variable or by an object the user keeps alive deliberately." Modern systems push genuine fire-and-forget work to queues, schedulers, or container infrastructure — not to in-process detached threads.
+Every real-world use case (long-running servers, background flushers, async loggers) is better expressed as "owned by a top-level variable or by an object the user keeps alive deliberately." Modern systems push genuine fire-and-forget work to queues, schedulers, or container infrastructure, not to in-process detached threads.
 Erlang's hierarchical supervisor model is the precedent: every process is owned, no zombies.
 
-The cost is that libraries can no longer quietly spawn background threads — they must expose a client object whose lifetime the user manages.
+The cost is that libraries can no longer quietly spawn background threads: they must expose a client object whose lifetime the user manages.
 This is a feature: it surfaces the resource.
 
 ### Why sticky interrupt flag (THR-03)
@@ -1470,7 +1470,7 @@ This is a feature: it surfaces the resource.
 Java's `Thread.interrupted()` clears the flag on read, and `InterruptedException` clears it on throw.
 This was modeled on signal-handler semantics in 1995 and made sense when threads were expensive enough to pool and re-run.
 It has produced thirty years of cancellation bugs: code catches `InterruptedException`, "handles" it, and silently escapes cancellation because the flag is now clear.
-The standard advice — "always re-set the flag in the catch block" — is the user manually patching around the language default, the tell that the design is wrong.
+The standard advice ("always re-set the flag in the catch block") is the user manually patching around the language default, the tell that the design is wrong.
 
 Modern Java (virtual threads, structured concurrency) has no remaining use case for clear-on-read.
 Threads are cheap, not pooled-and-re-run; cancellation is a final state, not a consumable signal.
@@ -1482,12 +1482,12 @@ Sticky flag is what every modern user actually wants.
 The flag is observable but not clearable; an external interrupt request cannot be "consumed" by code that catches the wrong exception.
 The bug class that would otherwise motivate hiding `interrupt()` is foreclosed by the flag semantics, not by API restrictions.
 
-`Thread.interrupted()` is kept (Java compatibility) but redefined as a synonym of `isInterrupted()` — the clear-on-read behavior is the bug, not a feature worth preserving.
+`Thread.interrupted()` is kept (Java compatibility) but redefined as a synonym of `isInterrupted()`: the clear-on-read behavior is the bug, not a feature worth preserving.
 
 ### Why `InterruptedException` is unchecked (THR-08)
 
 A special case of EXC-05: all exceptions are unchecked.
-The cancellation-specific argument — sticky-flag semantics make recoverable handling moot, and signature contagion is severe — applies with particular force to `InterruptedException`, and generalizes to every exception type.
+The cancellation-specific argument (sticky-flag semantics make recoverable handling moot, and signature contagion is severe) applies with particular force to `InterruptedException`, and generalizes to every exception type.
 
 ### Why `onDrop()` cannot block (THR-05)
 
@@ -1496,24 +1496,24 @@ If a blocking call inside `onDrop()` itself throws `InterruptedException`, clean
 The simplest rule that prevents this is "no blocking calls in `onDrop()`." It is checked statically at `onDrop()` definition.
 
 The rule survives a survey of stdlib types whose cleanup *appears* to need blocking.
-`Mutex<T>.onDrop()` drops the protected value and releases the raw OS lock primitive — neither blocks.
-A queue-like primitive (e.g. a Laterita `BlockingQueue<T>`) wakes blocked endpoints with an error in its `onDrop()` — a notification, not a wait.
+`Mutex<T>.onDrop()` drops the protected value and releases the raw OS lock primitive: neither blocks.
+A queue-like primitive (e.g. a Laterita `BlockingQueue<T>`) wakes blocked endpoints with an error in its `onDrop()`, a notification, not a wait.
 Buffered IO needs `flush()`, but `flush()` belongs in `close()`, which Laterita keeps distinct from `onDrop()` (the same Closeable model Java has): a user who skips `close()` and falls back on `onDrop()` gets an unflushed buffer, just as in Java today.
-`Thread.onDrop()` does block — but it runs in the *parent's* stack as the cancellation orchestrator (THR-06), not in a body subject to interruption, so THR-05 explicitly exempts it.
+`Thread.onDrop()` does block, but it runs in the *parent's* stack as the cancellation orchestrator (THR-06), not in a body subject to interruption, so THR-05 explicitly exempts it.
 
 So the rule is universal for user-facing `onDrop` bodies, with one privileged exemption (`Thread.onDrop`) that is named in the spec rather than gestured at.
-No `unsafe onDrop` escape hatch is needed; the integrity guarantee — cleanup completes atomically with respect to interruption — holds without erosion.
+No `unsafe onDrop` escape hatch is needed; the integrity guarantee (cleanup completes atomically with respect to interruption) holds without erosion.
 
 ### Why no `cancel()`, no `tryJoin()`, no `parallelFirst()` (THR-09, by omission)
 
 The model deliberately keeps the public surface to what Java already exposes plus `onDrop()`.
 Higher-level orchestration primitives (timeout-aware joining, fork-join helpers, structured task scopes) belong in libraries, not in the language spec.
-The minimal surface — `start()`, `interrupt()`, `join()`, `isInterrupted()`, plus `onDrop()` and `give(x);` — is sufficient to express every cancellation pattern.
+The minimal surface (`start()`, `interrupt()`, `join()`, `isInterrupted()`, plus `onDrop()` and `give(x);`) is sufficient to express every cancellation pattern.
 Library authors compose those into higher-level primitives as needed.
 
 ### Why `synchronized` is removed and replaced by `ReentrantLock` + `Condition` (STD-10–STD-12)
 
-Java's `synchronized` keyword is dropped — both the method modifier and the `synchronized(obj) { ... }` block — and so are `Object.wait` / `notify` / `notifyAll`.
+Java's `synchronized` keyword is dropped (both the method modifier and the `synchronized(obj) { ... }` block) and so are `Object.wait` / `notify` / `notifyAll`.
 They are replaced by three stdlib types: `Mutex<T>` (STD-09) for data-bound locking, and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less and multi-condition cases.
 Four reasons motivate the removal.
 
@@ -1522,44 +1522,44 @@ In an AOT-compiled language with no GC (COMP-01), giving every allocation an int
 Concentrating mutual exclusion in a stdlib type means only the objects that actually need a lock pay for one.
 
 **It doesn't compose with ownership.** `synchronized` locks *beside* data: holding a monitor doesn't restrict what fields the compiler lets you touch, and unsynchronized access to the same fields elsewhere is a normal compile success.
-`Mutex<T>` is shaped the opposite way — the lock *owns* the data, and the only path to the protected state is through the `with`/`tryWith` closure (STD-09).
+`Mutex<T>` is shaped the opposite way: the lock *owns* the data, and the only path to the protected state is through the `with`/`tryWith` closure (STD-09).
 In an ownership-typed language this is strictly the better primitive: the compiler proves that every access to the protected state happens under the lock, which `synchronized` cannot.
 
-**`synchronized` and `wait`/`notify` lower to runtime checks the surface hides.** Java's `synchronized(obj)` resolves the lock object dynamically, and `obj.wait()` requires holding `obj`'s monitor — a precondition checked at runtime via `IllegalMonitorStateException`.
+**`synchronized` and `wait`/`notify` lower to runtime checks the surface hides.** Java's `synchronized(obj)` resolves the lock object dynamically, and `obj.wait()` requires holding `obj`'s monitor, a precondition checked at runtime via `IllegalMonitorStateException`.
 Both rely on a per-`Object` monitor field that the source surface never names.
 Laterita's stance is that the cost of an operation should be visible at the call site, and that safety checks should be static where possible.
 Preserving the keyword would keep the runtime-only flavor of these constraints; replacing it with explicit stdlib types puts the lock object, the guard's lifetime, and the condition pairing in the source.
 
 **`wait`/`notify` aren't separable from intrinsic monitors.** They are defined on `Object` and only meaningful while holding that object's monitor.
 Without intrinsic monitors there is nothing for them to attach to.
-`Condition` (STD-12) is the dedicated stdlib home — bound explicitly to a `ReentrantLock`, with the same `await` / `signal` / `signalAll` surface and the same runtime "must hold the lock" precondition Java enforces, but with the lock object visible in the type.
+`Condition` (STD-12) is the dedicated stdlib home: bound explicitly to a `ReentrantLock`, with the same `await` / `signal` / `signalAll` surface and the same runtime "must hold the lock" precondition Java enforces, but with the lock object visible in the type.
 
 The migration cost is small.
 A `synchronized(obj) { body }` block becomes `try (var __ = lock.lock()) { body }` over a `ReentrantLock`, where `LockGuard.onDrop` (STD-11) guarantees release on every exit path (DROP-01); a `synchronized` method becomes a method whose body acquires a per-instance lock the same way.
 `obj.wait()` becomes `cond.await()` on a `Condition` paired with the same lock.
-The translation is mechanical, and `LockGuard`'s `onDrop` makes "forgot to unlock" structurally impossible — a real safety gain over Java's `try { lock.lock(); ... } finally { lock.unlock(); }` idiom.
+The translation is mechanical, and `LockGuard`'s `onDrop` makes "forgot to unlock" structurally impossible, a real safety gain over Java's `try { lock.lock(); ... } finally { lock.unlock(); }` idiom.
 Where the protected state fits cleanly inside one value, the further migration to `Mutex<T>` is the recommended end state: it adds the compile-time guarantee that every access goes through the lock, which neither `synchronized` nor `ReentrantLock` can provide.
 
 ### Why mutex poisoning, no bypass (THR-10)
 
-A thread that unwinds while holding a mutex leaves the protected data in an unknown state — possibly mid-write, possibly with broken invariants.
-Silently releasing the lock and letting the next acquirer proceed (Java's `synchronized` default, `parking_lot::Mutex`'s choice) means the bug in the unwound critical section produces silent wrong behavior in every subsequent acquirer — exactly the bug class hardest to track down.
+A thread that unwinds while holding a mutex leaves the protected data in an unknown state, possibly mid-write, possibly with broken invariants.
+Silently releasing the lock and letting the next acquirer proceed (Java's `synchronized` default, `parking_lot::Mutex`'s choice) means the bug in the unwound critical section produces silent wrong behavior in every subsequent acquirer, exactly the bug class hardest to track down.
 Poisoning makes the integrity hazard observable.
 
 The remaining design choice was whether to provide a bypass for callers who want access regardless of poison state.
 Rust's `std::sync::Mutex` does (`unwrap_or_else(|p| p.into_inner())`); Laterita does not.
-The cases that motivated bypasses in Rust mostly turned out not to need poisoning at all — counters, best-effort caches, emergency logging are "I don't care if it's poisoned" cases, where the cleaner answer is no poisoning, not poisoning-with-escape.
+The cases that motivated bypasses in Rust mostly turned out not to need poisoning at all: counters, best-effort caches, emergency logging are "I don't care if it's poisoned" cases, where the cleaner answer is no poisoning, not poisoning-with-escape.
 The cases where the bypass would correctly enable repair (recompute a cached aggregate, rebuild a derived index) typically collapse under reordering: defensive code that mutates locals first and the struct last leaves invariants intact even when intermediate steps panic.
-The cases where reordering doesn't help — a panicking user callback inside a generic-container's critical section — usually shouldn't be repaired anyway, because the structure itself may be broken.
+The cases where reordering doesn't help (a panicking user callback inside a generic-container's critical section) usually shouldn't be repaired anyway, because the structure itself may be broken.
 
 Removing the bypass also closes a cargo-cult risk.
 Once `lockPoisoned()` exists, the path of least resistance for "this throws sometimes" is to call the bypass and ignore the issue, which negates the safety signal poisoning was introduced to provide.
 The pattern aligns with Laterita's broader stance: take Rust's safety guarantees, give them Java's surface, remove escape hatches that don't carry their weight.
 
-If a future need proves real, a more targeted API — a destructive `Mutex<T>.take()` that consumes the mutex, or `Mutex<T>.replace(@take T)` that swaps the protected value on a poisoned mutex — is a smaller and less abusable addition than `lockPoisoned()`.
+If a future need proves real, a more targeted API (a destructive `Mutex<T>.take()` that consumes the mutex, or `Mutex<T>.replace(@take T)` that swaps the protected value on a poisoned mutex) is a smaller and less abusable addition than `lockPoisoned()`.
 The current spec leaves both unaddressed; either can be added later without breaking existing code.
 
-The result is a fourth point in the design space — poisoning yes, bypass no — stricter than Rust's `std::sync::Mutex`, more signaling than `parking_lot::Mutex` or Java's intrinsic locks.
+The result is a fourth point in the design space (poisoning yes, bypass no) stricter than Rust's `std::sync::Mutex`, more signaling than `parking_lot::Mutex` or Java's intrinsic locks.
 The unique combination is consistent with the rest of the language.
 
 | | Poisoning | Bypass |
@@ -1577,12 +1577,12 @@ The unique combination is consistent with the rest of the language.
 The whole point of the exercise.
 Java's GC papers over ownership.
 Removing it forces every ownership question to be answered statically, which is what gives Laterita its safety properties.
-AOT compilation is the natural target — the language has no runtime that benefits from a JIT, no dynamic class loading that benefits from interpretation, and no reflection (COMP-05) that benefits from full runtime type info.
+AOT compilation is the natural target: the language has no runtime that benefits from a JIT, no dynamic class loading that benefits from interpretation, and no reflection (COMP-05) that benefits from full runtime type info.
 
 ### Why monomorphization (COMP-02)
 
 Without GC, generic dispatch through type erasure (Java's current model) has nowhere to put the type information at runtime.
-Monomorphization — emitting one specialized version of a generic per concrete type — is the proven solution from C++ templates and Rust.
+Monomorphization (emitting one specialized version of a generic per concrete type) is the proven solution from C++ templates and Rust.
 The cost is binary size; the gain is that generic code runs at the same speed as hand-specialized code.
 
 ### Why no reflection (COMP-05)
@@ -1597,10 +1597,10 @@ Both are bad outcomes; neither is worth the compatibility win.
 The exposure reason: unrestricted reflection has been a recurring source of vulnerabilities in the Java ecosystem (deserialization gadget chains, sandbox escapes, library tampering).
 Removing it forecloses an entire class of attacks.
 The cost is paid by libraries that previously did at runtime what they can now do at compile time.
-That cost is real but bounded — the techniques are proven (Dagger, Micronaut, Quarkus, kotlinx.serialization, Quarkus/AspectJ compile-time weaving).
+That cost is real but bounded: the techniques are proven (Dagger, Micronaut, Quarkus, kotlinx.serialization, Quarkus/AspectJ compile-time weaving).
 The benefit accrues to every Laterita program for free.
 
-What is genuinely lost: loading arbitrary user-supplied bytecode at runtime (intentional — that's the security hazard), JRebel-style hot reload (mitigated by fast incremental rebuilds), and `Proxy.newProxyInstance` over interfaces unknown at compile time.
+What is genuinely lost: loading arbitrary user-supplied bytecode at runtime (intentional, that's the security hazard), JRebel-style hot reload (mitigated by fast incremental rebuilds), and `Proxy.newProxyInstance` over interfaces unknown at compile time.
 The first is a feature, not a regression.
 The second is a developer-experience cost worth investing in fast compilation to offset.
 The third is rare in real codebases outside mocking and dynamic RPC stubs, both of which are codegen-able when the interface is known.
@@ -1615,19 +1615,19 @@ It's worth being explicit about a few things this design deliberately doesn't do
 
 **Not a JVM language.** Laterita compiles to native code.
 It doesn't run on the JVM.
-The Java compatibility is at the source level — the syntax looks like Java, the standard library looks like Java's, but under the hood there's no GC, no class loader, and no reflection (COMP-05).
+The Java compatibility is at the source level, the syntax looks like Java, the standard library looks like Java's, but under the hood there's no GC, no class loader, and no reflection (COMP-05).
 Existing Java bytecode does not run in Laterita.
 
 **Not a Rust replacement.** Rust is more permissive in some ways (raw `unsafe { }` blocks, multiple smart-pointer styles, no inheritance) and more disciplined in others (no exceptions, lifetimes always visible, no implicit conversions).
 Laterita makes different tradeoffs because its target audience is Java developers, not systems programmers coming from C++.
 
 **Not a fork of Java's standard library.** Most of Java's `java.util` would need to be reimplemented for Laterita's ownership rules.
-`ArrayList`, `HashMap`, `TreeMap`, `String`, `StringBuilder` — all have different semantics under ownership.
+`ArrayList`, `HashMap`, `TreeMap`, `String`, `StringBuilder`: all have different semantics under ownership.
 The names are preserved; the implementations are new.
 
 ---
 
 **Not finished.** This document and the spec describe the current design.
 `laterita-open-questions.md` records the language-design questions the spec deliberately leaves open; `resolved-questions.md` is the registry of closed decisions and rejected alternatives.
-Several open questions are load-bearing — particularly around exceptions.
+Several open questions are load-bearing, particularly around exceptions.
 Real implementations will need to make those choices.

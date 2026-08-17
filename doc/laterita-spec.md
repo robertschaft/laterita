@@ -72,10 +72,10 @@ Referent mutability is re-derived from each new RHS the same way (MUT-02).
 
 A value's borrow state at any point is one of:
 
-- **no borrows** — the owner has unobstructed access (subject to MUT-01).
-- **shared borrows** — any number of readers may coexist (including the owner).
+- **no borrows**: the owner has unobstructed access (subject to MUT-01).
+- **shared borrows**: any number of readers may coexist (including the owner).
 No mutation is allowed, not even by the owner.
-- **one mutable borrow** — that borrow has exclusive access.
+- **one mutable borrow**: that borrow has exclusive access.
 The owner is frozen until the borrow ends.
 
 A mutable borrow writes through the value: it requires the source to be `@mut` (MUT-01) or the borrow to sit inside a `@mutating` method of the same object.
@@ -120,7 +120,7 @@ A `@borrow` field transfers as a `@bound` value still bound to its original sour
 ### OWN-07 - An unowned value drops at end of statement
 
 An owned value lives only as long as some owner holds it: a local, a field, a return, or a `@take` parameter (OWN-13).
-A value with no owner — a function result the caller doesn't store, for example — drops at the end of the enclosing statement (DROP-01).
+A value with no owner (a function result the caller doesn't store, for example) drops at the end of the enclosing statement (DROP-01).
 
 `give` is the ordinary stdlib helper
 
@@ -130,8 +130,8 @@ public static <T> T give(@take T t) { return t; }   // laterita.lang.Intrinsics
 
 normally statically imported.
 `give(x)` consumes `x` via `@take` and returns its owned value (OWN-16).
-A stored result — `var b = give(a);` — lives on in the new owner.
-A statement-form result — `give(x);` — drops at the semicolon, running its `onDrop()` immediately.
+A stored result (`var b = give(a);`) lives on in the new owner.
+A statement-form result (`give(x);`) drops at the semicolon, running its `onDrop()` immediately.
 
 ```java
 var worker = Thread.ofVirtual().start(() -> task());
@@ -956,7 +956,7 @@ Dropping a value runs cleanup in the reverse of construction order.
 For an instance of dynamic class `C` with superclass chain `C → B → … → Object`, the compiler emits, in order:
 
 1.
-`C.onDrop()` body, if implemented — only `final` classes may, per DROP-09.
+`C.onDrop()` body, if implemented: only `final` classes may, per DROP-09.
 2.
 `C`'s fields, in reverse declaration order; array elements in reverse index order.
 3.
@@ -995,10 +995,10 @@ It is not a general-purpose access-control level.
 
 ### DROP-07 — Exceptions from `onDrop()` terminate the body, not the drop sequence
 
-An exception propagating out of an `onDrop()` body terminates that body, but the rest of the value's drop sequence — its remaining fields and superclass fields (DROP-05 steps 2–3) and the storage release (step 4) — still runs.
+An exception propagating out of an `onDrop()` body terminates that body, but the rest of the value's drop sequence (its remaining fields and superclass fields (DROP-05 steps 2–3) and the storage release (step 4)) still runs.
 The exception then leaves the compiler-emitted call site through the same path a Java `finally`-block exception leaves, joining the normal exception flow at the variable's scope exit.
 
-If multiple invocations along a drop path throw — sibling variables (DROP-02), nested field drops, the body and a field of the same value, or any of these during an exception unwind (EXC-02) — the first thrown exception is the propagating one; later throws are attached to it via `Throwable.addSuppressed`.
+If multiple invocations along a drop path throw (sibling variables (DROP-02), nested field drops, the body and a field of the same value, or any of these during an exception unwind (EXC-02)) the first thrown exception is the propagating one; later throws are attached to it via `Throwable.addSuppressed`.
 
 An `onDrop()` implementation may either catch internally or allow exceptions to propagate.
 
@@ -1248,7 +1248,7 @@ print(maybeName.length());        // ERROR: requires null check
 The literal `null` has type `Nothing?` and is assignable to any `T?`.
 `null` is not assignable to a non-nullable type.
 
-*NULL-04, NULL-05, NULL-07 — Relocated.* The safe-call (`?.`), elvis (`?:`), and null-assertion (`!!`) operators are `.lat` surface forms.
+*NULL-04, NULL-05, NULL-07: Relocated.* The safe-call (`?.`), elvis (`?:`), and null-assertion (`!!`) operators are `.lat` surface forms.
 Their definitions and `.java`-surface desugarings are LAT-02, LAT-03, and LAT-04 in the `LAT` topic.
 
 ### NULL-06 — Smart narrowing on null check
@@ -1338,7 +1338,7 @@ where each `Pi` follows OWN-13 / MUT-04 parameter form (bare `T`, `@mut T`, `@ta
 The two prefixes are mutually exclusive: a SAM that is both `@mutating` and `@consuming` (a one-shot mutator) must use a nominal interface.
 The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)`, and there is no call-on-variable syntax.
 
-Examples — each comment describes what a lambda assigned to that parameter type may do:
+Examples: each comment describes what a lambda assigned to that parameter type may do:
 
 ```java
 void fold(int seed, (int, int) -> int reducer) { … }
@@ -1358,13 +1358,13 @@ void submit(@take @consuming (@take Result) -> void onComplete) { … }
 ```
 
 Mapping to Rust: bare = `Fn`, `@mutating` = `FnMut`, `@consuming` = `FnOnce`; CLO-04 carries the containment ordering.
-A nominal functional interface — a regular interface declared with one abstract method — remains available unchanged from Java; the anonymous form is an addition, accepted only in `.lat` sources (LAT-05).
+A nominal functional interface (a regular interface declared with one abstract method) remains available unchanged from Java; the anonymous form is an addition, accepted only in `.lat` sources (LAT-05).
 
 ### FN-02 — Assignability
 
-Two anonymous FI types are *identical* — the same compile-time type — only when their call mode, arity, parameter modes, underlying types, return type, and `@bound` relationships all match exactly.
+Two anonymous FI types are *identical* (the same compile-time type) only when their call mode, arity, parameter modes, underlying types, return type, and `@bound` relationships all match exactly.
 Distinct expressions denote distinct types.
-A nominal FI and an anonymous one are never identical, even when their SAMs match — the nominal one carries an interface identity the anonymous one lacks.
+A nominal FI and an anonymous one are never identical, even when their SAMs match: the nominal one carries an interface identity the anonymous one lacks.
 
 *Assignability* governs when a value of FI type `A` may flow into a slot of FI type `B`.
 It is HIER-05's override variance applied to the SAM, reading the slot `B` as the base declaration and the value `A` as the override.
@@ -1388,13 +1388,13 @@ Each value-construction of an anonymous functional interface yields a synthesize
 The interface and its implementing class are not addressable from source code.
 Function-shaped contracts that need a name, documentation, or related methods use a nominal functional interface instead.
 
-Minimal — `(int) -> int` synthesizes:
+Minimal, `(int) -> int` synthesizes:
 
 ```java
 interface $Anon { int apply(int p0); }
 ```
 
-Maximal — `@consuming (@take String, @mut List<T>) -> @bound String` synthesizes:
+Maximal, `@consuming (@take String, @mut List<T>) -> @bound String` synthesizes:
 
 ```java
 @mut interface $Anon<T> {
@@ -1402,7 +1402,7 @@ Maximal — `@consuming (@take String, @mut List<T>) -> @bound String` synthesiz
 }
 ```
 
-The synthesized interface is declared `@mut` whenever the SAM carries `@mutating` or `@consuming` — required by MUT-05 / MUT-08.
+The synthesized interface is declared `@mut` whenever the SAM carries `@mutating` or `@consuming`, required by MUT-05 / MUT-08.
 
 ### FN-04 — Allowed positions
 
@@ -1410,13 +1410,13 @@ An anonymous functional-interface type expression (FN-01) may be written as:
 
 - a parameter type
 - a return type
-- a generic bound — e.g. `<F extends @mutating (T) -> R>`
-- a generic type argument — e.g. `Stream<(T) -> R>`
+- a generic bound: e.g. `<F extends @mutating (T) -> R>`
+- a generic type argument: e.g. `Stream<(T) -> R>`
 
 It may not be written as:
 
 - the declared type of a field (FN-03)
-- the declared type of a local variable — `var` inference still holds an anonymous FI value when the RHS produces one
+- the declared type of a local variable: `var` inference still holds an anonymous FI value when the RHS produces one
 
 The restrictions govern the written type expression, not value flow: a `var` local may hold an anonymous-FI value whose type is inferred, such as the result of a closure-returning call.
 
@@ -1424,17 +1424,17 @@ The restrictions govern the written type expression, not value flow: a `var` loc
 
 ## CLO — Closures
 
-A closure value is a lambda together with the variables it captures from the enclosing scope — a synthesized object whose fields are the captured variables and whose single method is the lambda body, passed to (or returned from) a function and invoked through that method.
-The mode in which each variable is captured — shared borrow, mutable borrow, or moved owned — determines what the closure may do and how often it may be invoked.
+A closure value is a lambda together with the variables it captures from the enclosing scope: a synthesized object whose fields are the captured variables and whose single method is the lambda body, passed to (or returned from) a function and invoked through that method.
+The mode in which each variable is captured (shared borrow, mutable borrow, or moved owned) determines what the closure may do and how often it may be invoked.
 CLO-01 classifies these modes; CLO-03 connects them to the FI type that holds the closure.
 
 ### CLO-01 — Three capture modes
 
 Closures are classified by how they use captured variables:
 
-- **Read** — captured variables are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `@local` rules of STD-07).
-- **Mutate** — captured variables include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
-- **Consume** — captured variables include a moved value; closure may be invoked exactly once.
+- **Read**: captured variables are immutably borrowed; closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `@local` rules of STD-07).
+- **Mutate**: captured variables include a mutable borrow; closure may be invoked any number of times sequentially but not concurrently.
+- **Consume**: captured variables include a moved value; closure may be invoked exactly once.
 
 A captured local must be effectively final (MUT-02): neither the closure body nor the enclosing method may reassign it.
 This is Java's own lambda-capture rule (JLS 15.27.2).
@@ -1470,7 +1470,7 @@ interface Finalizer         { @consuming void run(); }              // once-call
 A functional-interface variable follows the ordinary variable rules with no special case: a field owns its value by default (OWN-08); a parameter receives ownership with `@take` or a borrow otherwise (OWN-13); `@mut` grants referent mutability (MUT-02); `@borrow` marks a borrowed field (OWN-09); `@bound` marks a borrowed return (OWN-17, OWN-18); a local follows its RHS (OWN-02).
 
 Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-10, OWN-15): invoking a mut-call SAM requires the variable to be `@mut`; invoking a once-call SAM requires the variable to own the value, and the call consumes it (a destruction per OWN-06 when the variable is a field).
-Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, independently of the call mode — a value may be held in a variable from which its SAM cannot be invoked.
+Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, independently of the call mode: a value may be held in a variable from which its SAM cannot be invoked.
 
 ```java
 class C {
@@ -1494,7 +1494,7 @@ void process(@mut F<Job, Done> fn) { /* … */ }      // @mut: variable mode of 
 ```
 
 FI return-type variable annotations follow MUT-01 / OWN-18 unchanged.
-A once-call FI value cannot be a `@bound` source — the call that would produce the return consumes it.
+A once-call FI value cannot be a `@bound` source: the call that would produce the return consumes it.
 
 ```java
 // The returned closure borrows `fn` and `first`,
@@ -1514,13 +1514,13 @@ void fireOnce(@take @consuming (Event) -> void handler) {  // once-call slot, ow
 
 ### CLO-04 — Lambdas are values of functional interfaces
 
-A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional interface — anonymous (FN-01) or nominal — selected by:
+A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional interface (anonymous (FN-01) or nominal) selected by:
 
 - the expected type at the position where the lambda appears (target typing); or
 - inference from the body together with any explicit parameter annotations otherwise.
 
 The lambda's capture mode (CLO-01) fixes the receiver mode of its synthesized SAM (FN-03), and therefore its call mode (CLO-03): read → shared-call, mutate → mut-call, consume → once-call.
-A lambda is a value of an FI type of call mode `M` iff its own call mode is `≤ M` under `shared-call < mut-call < once-call` — the `Fn ⊆ FnMut ⊆ FnOnce` containment expressed through the SAM's receiver mode.
+A lambda is a value of an FI type of call mode `M` iff its own call mode is `≤ M` under `shared-call < mut-call < once-call`, the `Fn ⊆ FnMut ⊆ FnOnce` containment expressed through the SAM's receiver mode.
 
 | Lambda capture mode | Lambda call mode | shared-call type | mut-call type | once-call type |
 |---|---|:---:|:---:|:---:|
@@ -1528,7 +1528,7 @@ A lambda is a value of an FI type of call mode `M` iff its own call mode is `≤
 | Mutate  | mut-call    | reject | accept | accept |
 | Consume | once-call   | reject | reject | accept |
 
-Inverted — what each slot guarantees to the function holding the closure:
+Inverted: what each slot guarantees to the function holding the closure:
 
 | Slot call mode | Lambda author must ensure | Slot holder is guaranteed |
 |---|---|---|
@@ -1552,12 +1552,12 @@ Doubler pure     = (x) -> x * 2;                           // read lambda → sh
 
 ### CLO-05 — Override variance for FI parameters
 
-A functional-interface parameter has two annotation axes — the *call-mode prefix* on the FI type (FN-01: bare / `@mutating` / `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@mut`, `@bound`).
+A functional-interface parameter has two annotation axes, the *call-mode prefix* on the FI type (FN-01: bare / `@mutating` / `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@mut`, `@bound`).
 Both follow HIER-05's unified override-variance table.
 
 On the call-mode axis an override may *strengthen* the slot's call mode (bare → `@mutating` → `@consuming`), so it continues to accept every closure the inherited declaration accepted (CLO-04).
 
-The variable-mode annotations on the FI parameter — `@take`, `@mut`, `@bound` — follow HIER-05 directly: they govern how the override's variable holds the FI value, not which closures fit the slot.
+The variable-mode annotations on the FI parameter (`@take`, `@mut`, `@bound`) follow HIER-05 directly: they govern how the override's variable holds the FI value, not which closures fit the slot.
 
 ```java
 interface Source<T> {
@@ -1668,7 +1668,7 @@ Fold-style reductions express by capturing a `@mut` accumulator in the body lamb
 `splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal refcount (freed when the last half drops).
 Each half is a regular `T[]` supporting the full ARR-01 surface.
 
-**Example — long-lived workers.** Each half is pre-extracted by destruction (OWN-06) before spawning, so each thread captures and consumes its own owning variable.
+**Example: long-lived workers.** Each half is pre-extracted by destruction (OWN-06) before spawning, so each thread captures and consumes its own owning variable.
 
 ```java
 var arr   = readInput();
@@ -1732,7 +1732,7 @@ public interface MutableConsumer<T> {
 ### ARR-04 — `Pair<L, R>`
 
 General-purpose record carrying two values.
-A single declaration covers owned, borrow, and mixed cases — the mode is driven by what is substituted for `L` and `R` (TARG-01).
+A single declaration covers owned, borrow, and mixed cases: the mode is driven by what is substituted for `L` and `R` (TARG-01).
 
 ```java
 package laterita.lang;
@@ -1816,12 +1816,12 @@ Type checking, ownership tracking, lifetime inference, and mutability rules cont
 
 A reference-counted shared-ownership smart pointer for single-threaded use.
 Provides:
-- `new Rc<T>(@take T value)` — takes ownership of `value`, refcount 1.
-- `new Rc<T>(Rc<T> other)` — copy constructor; the new handle points to the same allocation, bumping the refcount.
+- `new Rc<T>(@take T value)`: takes ownership of `value`, refcount 1.
+- `new Rc<T>(Rc<T> other)`: copy constructor; the new handle points to the same allocation, bumping the refcount.
 The contained value is not duplicated.
-- `@bound T read()` — returns a shared borrow of the contained value, bound to this handle.
-- `Rc<T> share()` — alias for the copy constructor; explicit refcount bump.
-- `onDrop()` — decrements the refcount; drops the value at zero.
+- `@bound T read()`: returns a shared borrow of the contained value, bound to this handle.
+- `Rc<T> share()`: alias for the copy constructor; explicit refcount bump.
+- `onDrop()`: decrements the refcount; drops the value at zero.
 Annotated `@internal` like every `onDrop()` (DROP-06); compiler-emitted at scope exit, never called by user code.
 
 A bare assignment of `Rc<T>` is a borrow per OWN-02; a `give(...)` move transfers the handle without bumping; `share()` is the only operation that bumps.
@@ -1842,7 +1842,7 @@ A non-owning back-reference.
 The class name and method names follow `java.lang.ref.WeakReference`.
 Provides:
 - `new WeakReference<T>(Rc<T> source)` / `new WeakReference<T>(Arc<T> source)`: constructs a weak handle from the strong one.
-- `Rc<T>? get()` (or `Arc<T>? get()`, matching the source flavor) — returns a strong handle if the value is still alive, otherwise `null`.
+- `Rc<T>? get()` (or `Arc<T>? get()`, matching the source flavor): returns a strong handle if the value is still alive, otherwise `null`.
 Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap per STD-04).
 
 `get()` returns a fresh strong handle rather than the bare referent `java.lang.ref.WeakReference.get()` returns.
@@ -1880,7 +1880,7 @@ The standard library declares `@local`:
 - `Heap<T>` (STD-06)
 - `LockGuard` (STD-11)
 
-A class with any transitively `@local` field must carry an explicit `@local` annotation — either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation).
+A class with any transitively `@local` field must carry an explicit `@local` annotation, either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation).
 Failure to declare one is a compile error; the choice is the author's, not the compiler's.
 A class with no `@local` fields is non-`@local` by default; it may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
 
@@ -1920,17 +1920,17 @@ A mutual-exclusion primitive wrapping an owned value.
 Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
 The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value, so a borrowed type argument is rejected.
 
-**Constructor.** `new Mutex<T>(@take T value)` — wraps `value`, initially unlocked and unpoisoned.
+**Constructor.** `new Mutex<T>(@take T value)`: wraps `value`, initially unlocked and unpoisoned.
 
 **Scoped acquisition.** `<R> R with(@mut @mutating (@mut T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result.
 `<R> Optional<R> tryWith(@mut @mutating (@mut T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped.
-The action slot is mut-call (FN-01 `@mutating` prefix) so the closure may capture state by mutable borrow — the typical critical-section shape; CLO-04's containment also admits read-only closures.
+The action slot is mut-call (FN-01 `@mutating` prefix) so the closure may capture state by mutable borrow, the typical critical-section shape; CLO-04's containment also admits read-only closures.
 The protected `T` is reachable only as the parameter of `action`; there is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
 **Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock.
 `tryWith` throws `PoisonedException` only.
 
-**Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally — by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
+**Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally: by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
@@ -1941,20 +1941,20 @@ The closure-scoped surface above is safe.
 
 A reentrant mutual-exclusion primitive without a protected value: the lock alone.
 Unlike `Mutex<T>` (STD-09), `ReentrantLock` owns no data, hands out no borrow of protected state, and may be re-entered by the same thread; the data it guards lives in fields of the surrounding object and is reached through ordinary `@mut` access (MUT-10).
-Acquisition returns a `LockGuard` (STD-11) whose `onDrop` releases the lock — forgetting to unlock is structurally impossible (DROP-01).
+Acquisition returns a `LockGuard` (STD-11) whose `onDrop` releases the lock: forgetting to unlock is structurally impossible (DROP-01).
 Method names and shapes mirror `java.util.concurrent.locks.ReentrantLock`.
 
-**Constructor.** `new ReentrantLock()` — creates an unlocked, unfair lock.
+**Constructor.** `new ReentrantLock()`, creates an unlocked, unfair lock.
 Fairness is not configurable on this surface.
 
 **Acquisition.** Names and signatures match `java.util.concurrent.locks.ReentrantLock`; each method returns a `@bound LockGuard` that the Java caller may ignore.
-- `@bound LockGuard lock()` — blocks until the lock is held; ignores interrupt.
+- `@bound LockGuard lock()`: blocks until the lock is held; ignores interrupt.
 Reentrant: the same thread acquiring twice receives two guards; the lock is released only after both are dropped.
-- `@bound LockGuard lockInterruptibly() throws InterruptedException` — as `lock()` but is an interruption point (THR-04).
-- `@bound LockGuard? tryLock()` — non-blocking; returns the guard or `null` if another thread holds the lock.
-- `@bound LockGuard? tryLock(long timeout, TimeUnit unit) throws InterruptedException` — timed variant; interruption point.
+- `@bound LockGuard lockInterruptibly() throws InterruptedException`: as `lock()` but is an interruption point (THR-04).
+- `@bound LockGuard? tryLock()`: non-blocking; returns the guard or `null` if another thread holds the lock.
+- `@bound LockGuard? tryLock(long timeout, TimeUnit unit) throws InterruptedException`: timed variant; interruption point.
 
-**Condition variables.** `@bound Condition newCondition()` — returns a fresh `Condition` (STD-12) bound to this lock.
+**Condition variables.** `@bound Condition newCondition()`: returns a fresh `Condition` (STD-12) bound to this lock.
 May be called any number of times; one lock can pair with multiple conditions (the classic bounded-buffer "not full" / "not empty" pattern).
 
 
@@ -1965,7 +1965,7 @@ Returned by `ReentrantLock.lock` / `lockInterruptibly` / `tryLock`, and not user
 `@bound` to its source `ReentrantLock`.
 A `LockGuard` cannot be borrowed across threads (STD-07).
 
-`LockGuard.onDrop()` releases one acquisition of the bound lock — at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
+`LockGuard.onDrop()` releases one acquisition of the bound lock: at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
 
 `LockGuard` exposes nothing beyond its existence and its `@internal` `onDrop` (DROP-06).
 Its only role is to make scope exit equivalent to lock release.
@@ -2018,7 +2018,7 @@ Any interruption point reached after the flag is set throws `InterruptedExceptio
 An **interruption point** is a program location at which the running thread reacts to its own interrupt flag.
 The standard reaction is to throw `InterruptedException` from a stdlib blocking operation (`Thread.join`, `Thread.sleep`, `Object.wait`, `BlockingQueue.take`, IO read/write, and others marked as such in their stdlib definitions).
 
-User code may also create an interruption point by polling `Thread.currentThread().isInterrupted()` or the static `Thread.interrupted()` (THR-03) and using the result to alter control flow — for example, exiting an otherwise non-terminating loop.
+User code may also create an interruption point by polling `Thread.currentThread().isInterrupted()` or the static `Thread.interrupted()` (THR-03) and using the result to alter control flow, for example, exiting an otherwise non-terminating loop.
 
 Reading another thread's flag via `otherThread.isInterrupted()` is **not** an interruption point: neither thread is reacting to its own state.
 Reading the running thread's flag without using the result for control flow (e.g. logging it) is likewise not an interruption point.
@@ -2080,7 +2080,7 @@ To cancel and observe, call `worker.interrupt()` and then `worker.join()`.
 
 ### THR-10 — `Mutex<T>` poisoning
 
-A `Mutex<T>` is **poisoned** when the closure passed to its `with` / `tryWith` call (STD-09) propagates an exception — `InterruptedException` or any other — out of the critical section.
+A `Mutex<T>` is **poisoned** when the closure passed to its `with` / `tryWith` call (STD-09) propagates an exception (`InterruptedException` or any other) out of the critical section.
 `with` / `tryWith` set the poison flag inside the `catch` clause that wraps the closure invocation, before releasing the lock and rethrowing.
 A normal closure return releases the lock without poisoning.
 
@@ -2130,9 +2130,9 @@ Stack traces (EXC-04) and exception types remain available; this rule constrains
 
 A laterita source file uses one of two extensions:
 
-- **`.lat`** — full surface.
+- **`.lat`**: full surface.
 Additionally admits the `.lat` surface forms specified in the `LAT` topic.
-- **`.java`** — Java-compatible subset, parseable by `javac` and Java-aware IDEs.
+- **`.java`**: Java-compatible subset, parseable by `javac` and Java-aware IDEs.
 The `.lat` forms are rejected; equivalent meaning is expressed through their `.java`-surface desugarings.
 
 Both extensions denote the same language: the type system, annotation/intrinsic surface (RESV), and emitted artifacts are identical, and cross-unit variables work uniformly.
@@ -2214,7 +2214,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@Log` (and `@Slf4j`, `@Log4j2`, …) | `TYPE` | - | Generate a static logger field | GEN-13 |
 | `@StandardException` | `TYPE` | `Throwable` subclass | Generate the four standard exception constructors | GEN-15 |
 
-An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations — `@mutating` / `@consuming`, applied to the synthesized `apply` — and type-use-target annotations — `@mut` / `@take` / `@bound`, on the SAM's parameter and return slots.
+An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations (`@mutating` / `@consuming`, applied to the synthesized `apply`) and type-use-target annotations (`@mut` / `@take` / `@bound`, on the SAM's parameter and return slots).
 These are the same annotations the table lists; the spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05).
 It needs no separate `TYPE_USE` registration.
 
@@ -2296,8 +2296,8 @@ Desugars to `java.util.Objects.requireNonNull(expr)`; the laterita compiler atta
 ### LAT-05 — Inline functional-interface type `(P1, …, Pn) -> R`
 
 The anonymous structural FI expression of FN-01 is a `.lat`-only spelling; FN-01 through FN-04 specify the type semantics and allowed positions.
-A `.java` source expresses the same SAM by declaring a nominal functional interface in the corresponding position — the synthesized shape is given by FN-03.
-For the generic-bound and generic-type-argument positions admitted by FN-04, the desugaring substitutes that nominal interface in the corresponding generic slot — e.g. `<F extends @mutating (T) -> R>` becomes `<F extends $Anon<T, R>>`, and `Stream<(T) -> R>` becomes `Stream<$Anon<T, R>>`.
+A `.java` source expresses the same SAM by declaring a nominal functional interface in the corresponding position: the synthesized shape is given by FN-03.
+For the generic-bound and generic-type-argument positions admitted by FN-04, the desugaring substitutes that nominal interface in the corresponding generic slot: e.g. `<F extends @mutating (T) -> R>` becomes `<F extends $Anon<T, R>>`, and `Stream<(T) -> R>` becomes `Stream<$Anon<T, R>>`.
 
 ### LAT-06 — Diamond `<>` is optional on constructor calls
 
@@ -2494,11 +2494,11 @@ Owned fields are taken `@take` through the builder.
 ### GEN-08 — `@With`
 
 `@With` generates, for each field, a `public [@bound] X withFieldName([@take|@bound] [@mut] T value)` returning a new instance with that field set to `value`.
-The `@bound` return annotation is generated when any other field of `X` is `@borrow` — the result's lifetime is bound to `this`.
+The `@bound` return annotation is generated when any other field of `X` is `@borrow`: the result's lifetime is bound to `this`.
 The parameter annotations are generated conditionally:
 
 - `@take` when the field is owned;
-- bare (no annotation) when the field is `@borrow` — the result's lifetime is also bound to `value`;
+- bare (no annotation) when the field is `@borrow`: the result's lifetime is also bound to `value`;
 - `@mut` when the field is `@mut`.
 
 Internally, other owned fields are `clone()`d from `this` (OBJ-02).
