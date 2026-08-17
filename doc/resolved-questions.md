@@ -1,11 +1,16 @@
 # Laterita — Resolved Questions & Settled Decisions
 
-This document is the registry of closed decisions. It has two parts:
+This document is the registry of closed decisions.
+It has two parts:
 
-1. **Rejected alternatives** — design options that were evaluated and discarded, indexed by the name a contributor is likely to reach for. **If a mechanism is listed here, the decision is closed: do not reopen it, re-propose it, or raise it as an open question without new evidence that directly contradicts the recorded reasoning.**
-2. **Resolved open questions** — tombstones for `OQ-NN` entries that have been answered.
+1.
+**Rejected alternatives** — design options that were evaluated and discarded, indexed by the name a contributor is likely to reach for.
+**If a mechanism is listed here, the decision is closed: do not reopen it, re-propose it, or raise it as an open question without new evidence that directly contradicts the recorded reasoning.**
+2.
+**Resolved open questions** — tombstones for `OQ-NN` entries that have been answered.
 
-The full reasoning lives in `laterita-reasoning.md`. Active (unresolved) questions live in `laterita-open-questions.md`.
+The full reasoning lives in `laterita-reasoning.md`.
+Active (unresolved) questions live in `laterita-open-questions.md`.
 
 ## Rejected alternatives
 
@@ -69,28 +74,76 @@ A generic type argument names no source, so it is structural and takes `@borrow`
 
 ## Resolved open questions
 
-Tombstones for `OQ-NN` entries that have been answered. Each names the OQ, summarizes its resolution, and points at the spec codes and reasoning that record the decision. The original open-question wording can be found in this file's git history.
+Tombstones for `OQ-NN` entries that have been answered.
+Each names the OQ, summarizes its resolution, and points at the spec codes and reasoning that record the decision.
+The original open-question wording can be found in this file's git history.
 
-* **OQ-01** — Panic safety and lock poisoning. Resolved by `Mutex<T>`'s closure-scoped API (STD-09) and THR-10: a mutex whose critical-section closure throws is poisoned, and later acquirers get `PoisonedException` — with no bypass.
-* **OQ-02** — Exception ergonomics beyond what ownership forces. Resolved by EXC-01 (Java's `try`/`catch`/`finally` and the `Throwable` hierarchy are preserved unchanged) and EXC-05 (the checked/unchecked distinction is dropped; `throws` becomes documentary). The narrower question of restoring checked exceptions is reopened as OQ-22.
-* **OQ-03** — Reflection model. Resolved as "none": no runtime reflection in the language or stdlib.
-* **OQ-04** — Cross-thread safety marker. Resolved as `@local` (STD-07).
-* **OQ-05** — Closure interface names. Dissolved by anonymous functional interfaces (FN-01): there are no closure-interface names to fix because there are no closure interfaces.
-* **OQ-07** — Method-level `mut` syntax. Resolved by MUT-01 and MUT-08: receiver mutation is marked with the dedicated `@mutating` method annotation. Laterita introduces no new keyword for it (RESV).
-* **OQ-08** — Owned-vs-borrowed strings: one type or two. Resolved as one type: the compiler tracks per-variable whether a `String` is owned or borrowed (STR-02), and `clone()` (OBJ-02) is the universal escape valve for any owned/borrowed mismatch. The two-type (`String` / `&str`) model is rejected — see the rejected-alternatives table.
-* **OQ-09** — `Iterator.remove` and `ConcurrentModificationException`. Resolved by STD-08: borrow-checked iteration reuses Java's `Iterator` / `ListIterator` API. OWN-03 makes concurrent modification a compile error, so `ConcurrentModificationException` and `modCount` leave the language.
-* **OQ-12** — Doubly-linked structures and graph data. Resolved by `Rc<T>` / `Arc<T>` on forward edges plus `WeakReference<T>` (STD-03) on back edges; no dedicated graph type is added.
-* **OQ-13** — User-invoked `close()` and early cleanup. Resolved by DROP-06: `onDrop()` is `@internal` and never user-invoked; a user-defined `close()` survives migration as an ordinary method, kept distinct from `onDrop()`. No early-cleanup statement is specified — see the deferred-constructs table above. (The number OQ-13 earlier tracked the `onDrop()` no-blocking rule, resolved by THR-05 and THR-06, before being reused for this question.)
-* **OQ-14** — Ownership of Strings. Resolved by STR-06 (literal-borrow rule), STR-07 (no stdlib `String` mut methods), and STR-08 (borrow-by-default receiver); the buffer-splitting remainder was tracked under OQ-17.
-* **OQ-16** — Mutable `String`: which methods belong where. Resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`.
-* **OQ-17** — Public expression of buffer splitting for `String`. Resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under OWN-03; mut-array splitting resolved by OQ-19 → ARR-01.
-* **OQ-18** — `onDrop()` reaching already-dropped subclass state via virtual dispatch. Resolved by DROP-09: `onDrop()` bodies only on `final` classes, so no down-dispatch into freed subclass storage can occur.
-* **OQ-19** — Ownership splitting of mut arrays. Resolved by ARR-01/03/04: methods on `T[]` and `laterita.lang.Arrays`, `MutableConsumer` for the `.java` surface, with the result wrapped in the general-purpose `Pair<L, R>` record (instantiated as `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` — TARG-01's generic-substitution rule makes a separate bound-pair type unnecessary). The cross-thread independent-ownership case is resolved separately under OQ-21.
-* **OQ-21** — Cross-thread ownership of split mut-slices. Resolved by ARR-01/02/04: consuming `T[].splitOff(int)` returns two owning halves backed by a shared refcounted allocation, wrapped in the general-purpose `Pair<L, R>` record (instantiated as `Pair<T[], T[]>`) for partial-move extraction; `Arrays.stream(@bound T[])` produces a JDK `Stream<T>` bound to the source array by the parameter-source form of OWN-17, whose `.parallel()` form covers read-only data-parallel processing via the standard `Spliterator` mechanism. In-place parallel mutation stays on the `splitOff` path.
-* **OQ-24** — Operator overloading for arithmetic value types. Resolved by LAT-07 as **bounded operator sugar**: in `.lat`, `+ - * /` and unary `-` desugar to an instance method annotated `@Operator(op)` — the method name is free, so `BigDecimal.add`, `Instant.plus`/`minus`, and `Duration.negated` are eligible unchanged — and `< <= > >=` desugar through `Comparable.compareTo` when the left operand implements `Comparable` accepting the right. The set is fixed (no `%`, `[]`, `==`/`!=`, or compound assignment); eligibility is opt-in (`@Operator` for arithmetic, implementing `Comparable` for comparison); arithmetic resolution is left-operand-directed with a built-in numeric fallback and no implicit conversion or reflected form. The unbounded (C++) and trait-based (Rust) forms are rejected — see the rejected-alternatives table.
-* **OQ-26** — Newtype wrappers as zero-cost value classes. Resolved by composition: GEN-01 (`@Delegate` on the sole record component generates the forwarding surface), NABI-01 (single-field aggregate has the same size, alignment, and calling convention as its component, with no Valhalla dependency), and COMP-08 (inlining permission collapses forwarders to direct calls). No dedicated named construct is introduced. The *newtype idiom* emerges from these three orthogonal rules applied to an ordinary `record`. The field-less-subclass form is rejected because subtype widening silently loses the type brand, as recorded in the rejected-alternatives table.
-* **OQ-28** — Dedicated method annotation for receiver consumption. Resolved by `@consuming` (OWN-15): receiver consumption is declared by `@consuming` in modifier position, parallel to `@mutating` (MUT-08); the two compose. The explicit `this` parameter slot is no longer used by laterita for receiver consumption.
-* **OQ-29** — Spelling call mode in the anonymous functional-interface form. Resolved by FN-01's optional `@mutating` / `@consuming` prefix: bare `(P) -> R` is shared-call, `@mutating (P) -> R` is mut-call, `@consuming (P) -> R` is once-call. The prefix annotations are the same `@mutating` (MUT-08) and `@consuming` (OWN-15) tokens used on regular method declarations — attached to the SAM that the type expression denotes. Call mode is part of anonymous-FI identity (FN-02), with CLO-04's containment governing value flow between FI types of different call modes. Override variance lives in HIER-05's unified table — the call-mode axis is covariant in strength (override may strengthen, not weaken) and the variable-mode annotations on the FI parameter follow HIER-05 directly; CLO-05 cross-references that table without restating the rules. The mapping to Rust is direct: `Fn` / `FnMut` / `FnOnce`. ARR-01, ARR-03, and STD-09 are restated with the explicit spelling.
-* **OQ-31** — Optional `<>` on constructor calls in `.lat`. Resolved by LAT-06: the diamond may be omitted from a parameterized constructor call in `.lat`; raw types are not a `.lat` surface form, so the diamond carries no information there. The `.java` mirror inserts the diamond, since `.java` must remain `javac`-parseable (COMP-06) and the diamond-less form there is the raw-type constructor.
-* **OQ-32** — Status of `synchronized` and `Object.wait` / `notify` / `notifyAll`. Resolved as **not supported**: the constructs rely on per-`Object` runtime checks (`IllegalMonitorStateException`, dynamic lock resolution) that the laterita compiler cannot lift to static guarantees, and `.java` laterita sources are not required to compile every Java construct — supporting only the safer subset is acceptable. The same coordination patterns are expressible through three stdlib types: `Mutex<T>` (STD-09, data-bound), `ReentrantLock` + `LockGuard` (STD-10, STD-11, data-less with `onDrop`-released guard), and `Condition` (STD-12, paired with a `ReentrantLock`). `LockGuard.onDrop` removes the manual `lock` / `unlock` footgun that motivates the Java keyword in the first place.
-* **OQ-35** — Captures of reassigned locals vs. Java's effectively-final rule. Resolved by CLO-01: a captured local must be effectively final, exactly `javac`'s lambda rule (JLS 15.27.2), so a closure cannot write to a captured slot on either surface and Mutate-mode captures mutate through a `@mut` capture instead. The `.lat`-only generated-holder desugaring is rejected, see the rejected-alternatives table. With no other holder of a slot-write borrow, OWN-03 keeps a single mutable-borrow form, mutation through the value, plus the rule that any live borrow of `x` excludes reassigning `x`.
+* **OQ-01** — Panic safety and lock poisoning.
+Resolved by `Mutex<T>`'s closure-scoped API (STD-09) and THR-10: a mutex whose critical-section closure throws is poisoned, and later acquirers get `PoisonedException` — with no bypass.
+* **OQ-02** — Exception ergonomics beyond what ownership forces.
+Resolved by EXC-01 (Java's `try`/`catch`/`finally` and the `Throwable` hierarchy are preserved unchanged) and EXC-05 (the checked/unchecked distinction is dropped; `throws` becomes documentary).
+The narrower question of restoring checked exceptions is reopened as OQ-22.
+* **OQ-03** — Reflection model.
+Resolved as "none": no runtime reflection in the language or stdlib.
+* **OQ-04** — Cross-thread safety marker.
+Resolved as `@local` (STD-07).
+* **OQ-05** — Closure interface names.
+Dissolved by anonymous functional interfaces (FN-01): there are no closure-interface names to fix because there are no closure interfaces.
+* **OQ-07** — Method-level `mut` syntax.
+Resolved by MUT-01 and MUT-08: receiver mutation is marked with the dedicated `@mutating` method annotation.
+Laterita introduces no new keyword for it (RESV).
+* **OQ-08** — Owned-vs-borrowed strings: one type or two.
+Resolved as one type: the compiler tracks per-variable whether a `String` is owned or borrowed (STR-02), and `clone()` (OBJ-02) is the universal escape valve for any owned/borrowed mismatch.
+The two-type (`String` / `&str`) model is rejected — see the rejected-alternatives table.
+* **OQ-09** — `Iterator.remove` and `ConcurrentModificationException`.
+Resolved by STD-08: borrow-checked iteration reuses Java's `Iterator` / `ListIterator` API.
+OWN-03 makes concurrent modification a compile error, so `ConcurrentModificationException` and `modCount` leave the language.
+* **OQ-12** — Doubly-linked structures and graph data.
+Resolved by `Rc<T>` / `Arc<T>` on forward edges plus `WeakReference<T>` (STD-03) on back edges; no dedicated graph type is added.
+* **OQ-13** — User-invoked `close()` and early cleanup.
+Resolved by DROP-06: `onDrop()` is `@internal` and never user-invoked; a user-defined `close()` survives migration as an ordinary method, kept distinct from `onDrop()`.
+No early-cleanup statement is specified — see the deferred-constructs table above. (The number OQ-13 earlier tracked the `onDrop()` no-blocking rule, resolved by THR-05 and THR-06, before being reused for this question.)
+* **OQ-14** — Ownership of Strings.
+Resolved by STR-06 (literal-borrow rule), STR-07 (no stdlib `String` mut methods), and STR-08 (borrow-by-default receiver); the buffer-splitting remainder was tracked under OQ-17.
+* **OQ-16** — Mutable `String`: which methods belong where.
+Resolved by STR-07: stdlib `String` exposes no mut methods at all; bulk construction stays on `StringBuilder`.
+* **OQ-17** — Public expression of buffer splitting for `String`.
+Resolved by STR-07: `bound String` is read-only, so substring views are ordinary shared borrows under OWN-03; mut-array splitting resolved by OQ-19 → ARR-01.
+* **OQ-18** — `onDrop()` reaching already-dropped subclass state via virtual dispatch.
+Resolved by DROP-09: `onDrop()` bodies only on `final` classes, so no down-dispatch into freed subclass storage can occur.
+* **OQ-19** — Ownership splitting of mut arrays.
+Resolved by ARR-01/03/04: methods on `T[]` and `laterita.lang.Arrays`, `MutableConsumer` for the `.java` surface, with the result wrapped in the general-purpose `Pair<L, R>` record (instantiated as `@bound Pair<@borrow @mut T[], @borrow @mut T[]>` — TARG-01's generic-substitution rule makes a separate bound-pair type unnecessary).
+The cross-thread independent-ownership case is resolved separately under OQ-21.
+* **OQ-21** — Cross-thread ownership of split mut-slices.
+Resolved by ARR-01/02/04: consuming `T[].splitOff(int)` returns two owning halves backed by a shared refcounted allocation, wrapped in the general-purpose `Pair<L, R>` record (instantiated as `Pair<T[], T[]>`) for partial-move extraction; `Arrays.stream(@bound T[])` produces a JDK `Stream<T>` bound to the source array by the parameter-source form of OWN-17, whose `.parallel()` form covers read-only data-parallel processing via the standard `Spliterator` mechanism.
+In-place parallel mutation stays on the `splitOff` path.
+* **OQ-24** — Operator overloading for arithmetic value types.
+Resolved by LAT-07 as **bounded operator sugar**: in `.lat`, `+ - * /` and unary `-` desugar to an instance method annotated `@Operator(op)` — the method name is free, so `BigDecimal.add`, `Instant.plus`/`minus`, and `Duration.negated` are eligible unchanged — and `< <= > >=` desugar through `Comparable.compareTo` when the left operand implements `Comparable` accepting the right.
+The set is fixed (no `%`, `[]`, `==`/`!=`, or compound assignment); eligibility is opt-in (`@Operator` for arithmetic, implementing `Comparable` for comparison); arithmetic resolution is left-operand-directed with a built-in numeric fallback and no implicit conversion or reflected form.
+The unbounded (C++) and trait-based (Rust) forms are rejected — see the rejected-alternatives table.
+* **OQ-26** — Newtype wrappers as zero-cost value classes.
+Resolved by composition: GEN-01 (`@Delegate` on the sole record component generates the forwarding surface), NABI-01 (single-field aggregate has the same size, alignment, and calling convention as its component, with no Valhalla dependency), and COMP-08 (inlining permission collapses forwarders to direct calls).
+No dedicated named construct is introduced.
+The *newtype idiom* emerges from these three orthogonal rules applied to an ordinary `record`.
+The field-less-subclass form is rejected because subtype widening silently loses the type brand, as recorded in the rejected-alternatives table.
+* **OQ-28** — Dedicated method annotation for receiver consumption.
+Resolved by `@consuming` (OWN-15): receiver consumption is declared by `@consuming` in modifier position, parallel to `@mutating` (MUT-08); the two compose.
+The explicit `this` parameter slot is no longer used by laterita for receiver consumption.
+* **OQ-29** — Spelling call mode in the anonymous functional-interface form.
+Resolved by FN-01's optional `@mutating` / `@consuming` prefix: bare `(P) -> R` is shared-call, `@mutating (P) -> R` is mut-call, `@consuming (P) -> R` is once-call.
+The prefix annotations are the same `@mutating` (MUT-08) and `@consuming` (OWN-15) tokens used on regular method declarations — attached to the SAM that the type expression denotes.
+Call mode is part of anonymous-FI identity (FN-02), with CLO-04's containment governing value flow between FI types of different call modes.
+Override variance lives in HIER-05's unified table — the call-mode axis is covariant in strength (override may strengthen, not weaken) and the variable-mode annotations on the FI parameter follow HIER-05 directly; CLO-05 cross-references that table without restating the rules.
+The mapping to Rust is direct: `Fn` / `FnMut` / `FnOnce`.
+ARR-01, ARR-03, and STD-09 are restated with the explicit spelling.
+* **OQ-31** — Optional `<>` on constructor calls in `.lat`.
+Resolved by LAT-06: the diamond may be omitted from a parameterized constructor call in `.lat`; raw types are not a `.lat` surface form, so the diamond carries no information there.
+The `.java` mirror inserts the diamond, since `.java` must remain `javac`-parseable (COMP-06) and the diamond-less form there is the raw-type constructor.
+* **OQ-32** — Status of `synchronized` and `Object.wait` / `notify` / `notifyAll`.
+Resolved as **not supported**: the constructs rely on per-`Object` runtime checks (`IllegalMonitorStateException`, dynamic lock resolution) that the laterita compiler cannot lift to static guarantees, and `.java` laterita sources are not required to compile every Java construct — supporting only the safer subset is acceptable.
+The same coordination patterns are expressible through three stdlib types: `Mutex<T>` (STD-09, data-bound), `ReentrantLock` + `LockGuard` (STD-10, STD-11, data-less with `onDrop`-released guard), and `Condition` (STD-12, paired with a `ReentrantLock`).
+`LockGuard.onDrop` removes the manual `lock` / `unlock` footgun that motivates the Java keyword in the first place.
+* **OQ-35** — Captures of reassigned locals vs. Java's effectively-final rule.
+Resolved by CLO-01: a captured local must be effectively final, exactly `javac`'s lambda rule (JLS 15.27.2), so a closure cannot write to a captured slot on either surface and Mutate-mode captures mutate through a `@mut` capture instead.
+The `.lat`-only generated-holder desugaring is rejected, see the rejected-alternatives table.
+With no other holder of a slot-write borrow, OWN-03 keeps a single mutable-borrow form, mutation through the value, plus the rule that any live borrow of `x` excludes reassigning `x`.
