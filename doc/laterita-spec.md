@@ -1713,6 +1713,9 @@ public final class Arrays {
     public static <T> @bound Pair<@borrow T[], @borrow T[]> splitAt(
             @bound T[] arr, int mid);
 
+    public static <T> @mut @bound Pair<@borrow @mut T[], @borrow @mut T[]> splitMutableAt(
+            @bound @mut T[] arr, int mid);
+
     public static <T> void forEachChunk(
             @mut T[] arr, int chunkSize,
             @mut MutableConsumer<T[]> body);
@@ -1728,8 +1731,12 @@ public final class Arrays {
 }
 ```
 
-`splitAt` binds its return to the `@bound` parameter rather than to a receiver (OWN-17), and that return inherits the mutability of the argument the parameter receives, the parameter-side reading of MUT-13.
-A `@mut` argument yields a pair whose halves lend mutably, and a `@fix` or shared argument yields one whose halves lend read-only.
+The split appears under two names because a static method has no receiver to inherit from, so `@mutating(InheritFrom.RECEIVER)` cannot be spelled here (MUT-13).
+`splitAt` takes a shared borrow and lends read-only halves, `splitMutableAt` takes a mutable borrow and lends mutable ones.
+Both bind their return to the `@bound` parameter rather than to a receiver (OWN-17).
+Distinct names rather than an overloaded pair are required by OWN-13, which keeps the mutability annotations out of the overload signature.
+
+ARR-01's single `splitAt` is sugar over this pair (LAT-00): it desugars to `splitMutableAt` on a `@mut` receiver and to `splitAt` on a `@fix` or shared one, which are the two monomorphizations MUT-13 produces.
 
 `stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter rather than to a receiver (OWN-17, OWN-18).
 Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`, and callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)`.

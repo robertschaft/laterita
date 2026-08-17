@@ -81,7 +81,7 @@ Laterita does not auto-box at the type level, so a null-bearing integer is writt
 
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views.
-Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-13`), `forEachChunk` → borrowed slices via callback.
+Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-13`, spelled as the two static methods `splitAt` and `splitMutableAt` in the `.java` mirror), `forEachChunk` → borrowed slices via callback.
 Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves), `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`.
 See `ARR-01`, `ARR-02`, `ARR-04`.
 

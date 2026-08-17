@@ -1303,7 +1303,9 @@ A record is immutable by construction (MUT-06), so `@mut` on it is an error (MUT
 Keeping records uniformly `@fix` is worth more than reusing the record syntax for one stdlib type, so the pair is a `@mut` class whose bindings take the mutability their producer supplies.
 
 Which mutability that is comes from `@mutating(InheritFrom.RECEIVER)` on `splitAt` (MUT-13), the same mechanism that collapses read and update iteration onto one `iterator()` (STD-08).
-A `@mut` receiver yields a pair lending mutable halves and a `@fix` receiver one lending read-only halves, so the alternative of two split methods, or of a second pair type, buys nothing.
+A `@mut` receiver yields a pair lending mutable halves and a `@fix` receiver one lending read-only halves, so a second pair type buys nothing.
+The `.java` mirror still spells the two forms separately (`splitAt` and `splitMutableAt`, ARR-02), because a static method has no receiver whose mutability a return could inherit.
+Extending `InheritFrom` onto the `@bound` parameter would carry the instance form's single declaration into the mirror, but it would add an inheritance axis to the language for one signature, where two names cost nothing and follow the `splitAt` / `splitOff` precedent already set by OWN-13.
 Making the components `public final` fields rather than record components also lets `splitOff`'s owning halves be destructed on the `.java` surface (OWN-06), where the record form reached them only through the `.lat`-only component spelling of LAT-08.
 
 ### Why array indexing is never unchecked (ARR-05)
