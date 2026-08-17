@@ -54,9 +54,11 @@ import static laterita.lang.Intrinsics.broken;
 
     /**
      * Fixed-length backing store.
+     * {@code @mut} grants mutation through the field (MUT-07a), which the
+     * element writes in {@link ListItr} require.
      * TODO: {@code grow()} reallocates a larger array in {@code add}.
      */
-    T[] elementData;
+    @mut T[] elementData;
 
     /**
      * Logical element count.

@@ -416,13 +416,15 @@ A local bound to a `@mut` value is `@mut`.
 A local bound to an immutable value, or to a shared borrow (OWN-02), is not.
 `@fix` forces the referent immutable even when the initializer would grant mutation.
 
+`C` names a `@mut` class (MUT-05) in the forms below.
+
 | Form | Reassign slot | Mutate through |
 |---|---|---|
-| `final T x = e` | no | inherited from `e` |
-| `T x = e` | yes | inherited from `e` |
-| `@fix T x = e` | yes | no |
-| `final @fix T x = e` | no | no |
-| `@mut T x = e` | yes | mutable borrow when `e` names a source, otherwise inherited |
+| `final C x = e` | no | inherited from `e` |
+| `C x = e` | yes | inherited from `e` |
+| `@fix C x = e` | yes | no |
+| `final @fix C x = e` | no | no |
+| `@mut C x = e` | yes | mutable borrow when `e` names a source, otherwise inherited |
 
 `@mut` is redundant on an owned local and meaningful on a borrowing one, where it requests a mutable borrow instead of the shared borrow OWN-02 gives by default.
 
@@ -430,10 +432,6 @@ A local bound to an immutable value, or to a shared borrow (OWN-02), is not.
 var sb = new StringBuilder();   // mutate-through: StringBuilder is @mut (MUT-05)
 @mut Node l = t.left;           // mutable borrow of a disjoint field (OWN-04)
 ```
-
-A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
-Only an effectively final local may be captured by a closure (CLO-01).
-Reassigning a slot that owns its value drops the previous value first (DROP-01).
 
 `var` follows the same two axes: `var x = e` is reassignable with referent mutability inherited from `e`, `final var x = e` locks the slot, and `@fix var x = e` drops mutation through the referent.
 
@@ -448,6 +446,10 @@ config.setProperty("verbose", "true");   // OK: loadConfig() yields an owned @mu
 config = loadConfig();                   // ERROR: final locks the slot
 ```
 
+A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
+Only an effectively final local may be captured by a closure (CLO-01).
+Reassigning a slot that owns its value drops the previous value first (DROP-01).
+
 `final` is never redundant on a local.
 
 ### MUT-04 - Parameter mutability modes
@@ -456,10 +458,12 @@ Extending OWN-13, a parameter slot is always `final`: the parameter name cannot 
 A `@take` parameter may still be moved onward with `give` (OWN-07), which consumes the value rather than rebinding the slot.
 `@mut` grants referent mutability: a mutable borrow, or, with `@take`, ownership with mutate-through.
 
+`C` names a `@mut` class (MUT-05) in the forms below.
+
 | Form | Meaning |
 |---|---|
-| `@mut T name` | parameter receives a mutable borrow |
-| `@take @mut T name` | parameter receives ownership and may mutate through it |
+| `@mut C name` | parameter receives a mutable borrow |
+| `@take @mut C name` | parameter receives ownership and may mutate through it |
 
 A bare argument passed to a `@mut` parameter produces a mutable borrow.
 The source variable must be `@mut` (owned or mutably borrowed).
@@ -509,13 +513,14 @@ Through any other `@mut` variable the write follows ordinary Java member access.
 An immutable class has no `@mut` receiver after construction (MUT-05, MUT-10), so its fields are treated like `final`: set once in a constructor and never reassigned.
 
 The two axes are independent, giving four field forms.
+`C` names a `@mut` class (MUT-05) in the forms below.
 
 | Field form | Reassign (receiver `@mut`) | Mutate through |
 |---|---|---|
-| `final T f` | no | no |
-| `final @mut T f` | no | yes |
-| `T f` | yes | no |
-| `@mut T f` | yes | yes |
+| `final C f` | no | no |
+| `final @mut C f` | no | yes |
+| `C f` | yes | no |
+| `@mut C f` | yes | yes |
 
 ```java
 @mut class User {
