@@ -31,10 +31,14 @@ import laterita.lang.annotation.*;
     /**
      * Returns a cursor over the elements.
      *
-     * <p>{@code @mutating(InheritFrom.RECEIVER)}: the cursor inherits this collection's mutability (MUT-13).
-     * Over a {@code @mut} collection it is a mutable cursor holding an exclusive borrow, and {@code next()} lends {@code @mut @bound T}.
-     * Over a {@code @fix} collection it is a read cursor holding a shared borrow, and {@code next()} lends {@code @fix @bound T}, so several coexist (OWN-03).
-     * There is no separate mutable factory: the two forms are the monomorphizations of this one method.
+     * <p>{@code @mutating(InheritFrom.RECEIVER)}: the cursor inherits this collection's mutability
+     * (MUT-13).
+     * Over a {@code @mut} collection it is a mutable cursor holding an exclusive borrow, and
+     * {@code next()} lends {@code @mut @bound T}.
+     * Over a {@code @fix} collection it is a read cursor holding a shared borrow, and
+     * {@code next()} lends {@code @fix @bound T}, so several coexist (OWN-03).
+     * There is no separate mutable factory: the two forms are the monomorphizations of this one
+     * method.
      */
     @mutating(InheritFrom.RECEIVER) @bound Iterator<T> iterator();
 }

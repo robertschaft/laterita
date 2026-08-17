@@ -39,3 +39,12 @@ Non-language-design items (tooling, migration, roadmap) are tracked as GitHub is
 Use one line per sentence.
 Do not use semicolons or em dashes in prose text (code blocks and section heading formats like `### RULE — Title` are exempt).
 Apply both rules to every line a PR modifies, even a single-character change, and leave untouched lines as they are.
+
+## Source style
+
+Applies to `.java` and `.lat` sources (COMP-06).
+
+Lines are at most 100 characters.
+Comment prose follows the documentation style above, so a sentence starts on its own line and is wrapped only where it exceeds the line limit.
+The semicolon and em-dash rule reaches comment prose only, since a semicolon in code is a statement terminator.
+Commented-out code and the OpenJDK file headers are code and headers rather than prose, and are left as they are.

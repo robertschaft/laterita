@@ -24,8 +24,12 @@ import laterita.lang.annotation.*;
 /**
  * A structural cursor: it can {@code remove}, {@code set}, and {@code add} as well as traverse.
  *
- * <p>Obtained from a {@code @mutating listIterator()} rather than the enhanced-for's {@link Iterable#iterator()}, so it always holds an exclusive {@code @mut} borrow of the collection, never an inherited one, because structural modification always mutates the collection (STD-08).
- * An enhanced-for never reaches this type, matching the fact that a for-each exposes no handle to remove.
+ * <p>Obtained from a {@code @mutating listIterator()} rather than the enhanced-for's
+ * {@link Iterable#iterator()}, so it always holds an exclusive {@code @mut} borrow of the
+ * collection, never an inherited one, because structural modification always mutates the collection
+ * (STD-08).
+ * An enhanced-for never reaches this type, matching the fact that a for-each exposes no handle to
+ * remove.
  *
  * @param <T> the element type
  */
@@ -44,8 +48,10 @@ import laterita.lang.annotation.*;
     int previousIndex();
 
     /**
-     * Removes the last element returned by {@link #next()} or {@link #previous()} and returns it as an owned value.
-     * Statement-form {@code it.remove();} drops the value via {@code onDrop} (DROP-01), matching Java's void-returning {@code remove}.
+     * Removes the last element returned by {@link #next()} or {@link #previous()} and returns it as
+     * an owned value.
+     * Statement-form {@code it.remove();} drops the value via {@code onDrop} (DROP-01), matching
+     * Java's void-returning {@code remove}.
      */
     @mutating T remove();
 
