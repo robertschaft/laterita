@@ -1468,9 +1468,9 @@ That receiver mode is the interface's call mode:
 
 | SAM receiver mode | Call mode | Invocation |
 |---|---|---|
-| bare | **shared-call** | through a shared borrow; repeatedly; concurrently (subject to STD-07) |
-| `@mutating` | **mut-call** | through a `@mut` variable; repeatedly but sequentially |
-| `@consuming` | **once-call** | once; the call consumes the value |
+| bare | **shared-call** | through a shared borrow, repeatedly, concurrently (subject to STD-07) |
+| `@mutating` | **mut-call** | through a `@mut` variable, repeatedly but sequentially |
+| `@consuming` | **once-call** | once, and the call consumes the value |
 
 ```java
 interface MissResolver<T> { T resolve(String key); }                // shared-call
@@ -1500,8 +1500,8 @@ A functional-interface type used as a parameter or return combines modifiers fro
 
 | Layer | Modifiers | Governed by |
 |---|---|---|
-| Inside the type — the SAM's parameters and return | `@take`, `@mut`, `@bound` | OWN-13, OWN-17, OWN-18 |
-| The SAM's receiver — the type's call mode | bare / `@mutating` / `@consuming` | this rule |
+| Inside the type: the SAM's parameters and return | `@take`, `@mut`, `@bound` | OWN-13, OWN-17, OWN-18 |
+| The SAM's receiver: the type's call mode | bare / `@mutating` / `@consuming` | this rule |
 | The variable holding the value | `@mut`, `@take`, `@bound`, ownership | MUT-02, MUT-04, MUT-07a, OWN-13, OWN-17, OWN-18 |
 
 ```java
@@ -1549,8 +1549,8 @@ Inverted: what each slot guarantees to the function holding the closure:
 
 | Slot call mode | Lambda author must ensure | Slot holder is guaranteed |
 |---|---|---|
-| shared-call | closure works read-only on captures | closure never mutates captures; may be invoked any number of times, concurrently (subject to STD-07) |
-| mut-call | mutate captures only if needed; closure remains re-callable | closure may mutate captures; must be invoked sequentially, never concurrently |
+| shared-call | closure works read-only on captures | closure never mutates captures, and may be invoked any number of times, concurrently (subject to STD-07) |
+| mut-call | mutate captures only if needed, and the closure remains re-callable | closure may mutate captures, and must be invoked sequentially, never concurrently |
 | once-call | closure may consume captures | closure may be invoked at most once |
 
 Assignability concerns the value only.
@@ -2209,13 +2209,13 @@ Combinations not listed are currently not supported and won't compile.
 | `@mutating(InheritFrom.RECEIVER)` | `METHOD` | - | Method inherits the receiver's mutability | MUT-08, MUT-13 |
 | `@mutating` | `TYPE` | only inside a `@mut` class | Non-static inner class holds a `@mut` borrow of its enclosing instance | MUT-12 |
 | `@mutating(InheritFrom.RECEIVER)` | `TYPE` | only inside a `@mut` class | Non-static inner class inherits the mutability of its enclosing instance | MUT-12, MUT-13 |
-| `@consuming` | `METHOD` | - | Method consumes its receiver; in an anonymous FI prefix, applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
+| `@consuming` | `METHOD` | - | Method consumes its receiver, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
-| `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned); enclosing instance must be `@bound` | OWN-09, LIFE-03 |
+| `@borrow` | `FIELD` | - | Field is a borrow slot (default: owned), and the enclosing instance must be `@bound` | OWN-09, LIFE-03 |
 | `@borrow` | `PARAMETER` | meaningful with `@take` | Retained-borrow parameter, capping `this` at the parameter's source (bare equals a plain borrow) | OWN-21 |
 | `@bound` | `PARAMETER` | - | Return is bound to this parameter | OWN-17 |
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
-| `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot; enclosing instance must be `@bound` | TARG-01 |
+| `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot, and the enclosing instance must be `@bound` | TARG-01 |
 | `@own` | `TYPE_PARAMETER` | - | Type parameter rejects a borrowed type argument (dual of `@borrow`) | TARG-06 |
 | `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `METHOD` (return) | - | Variable holds a borrowed value (instance-level marker on a `@borrow`-field or `@borrow`-substituted-generic instance, OWN-09, TARG-01) | OWN-09 |
 | `@borrowCapped` | `TYPE` | inherited by subclasses | Every `@borrow` source the instance holds must stay live until its scope exit | LIFE-04, DROP-11 |
@@ -2224,7 +2224,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@local` | `TYPE` | - | Class instances are thread-affine | STD-07 |
 | `@local(false)` | `TYPE` | class contains `@local` fields | Asserts the class encapsulates its `@local` fields | STD-07 |
 | `@Nullable` | `TYPE_USE` | - | Type admits `null` (`.lat` spelling: `T?`) | NULL-02 |
-| `@Operator(op)` | `METHOD` | instance method; arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method provides the arithmetic operator `op` (`.lat` sugar) | LAT-07 |
+| `@Operator(op)` | `METHOD` | instance method, arity matches `op` (1 param for `PLUS`/`MINUS`/`TIMES`/`DIVIDE`, 0 for `NEGATE`) | Method provides the arithmetic operator `op` (`.lat` sugar) | LAT-07 |
 | `@Delegate` | `FIELD` | non-`@Nullable` field or record component | Forwards the field type's public methods onto the owner | GEN-01 |
 | `@Getter` `@Setter` | `TYPE`, `FIELD` | field-level `@Setter` needs a `@mut` class | Generate bean accessors (class-level `@Setter` makes the class `@mut`) | GEN-02 |
 | `@NoArgsConstructor` `@RequiredArgsConstructor` `@AllArgsConstructor` | `TYPE` | - | Generate constructors | GEN-03 |

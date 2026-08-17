@@ -540,9 +540,9 @@ See `STD-03`.
 
 | Notation | Meaning |
 |----------|---------|
-| `T`, `U`, etc. | Type variable; represents any type |
-| `T?` | Nullable version of type `T` (`.lat` form; `.java` writes `@Nullable T` per LAT-01) |
-| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R`; shared-call by default. Prefix with `@mutating` or `@consuming` for mut-call / once-call. Legal as parameter, return, generic bound, or generic type argument per FN-04. (`.lat`-only per LAT-05) |
+| `T`, `U`, etc. | Type variable, representing any type |
+| `T?` | Nullable version of type `T` (`.lat` form, where `.java` writes `@Nullable T` per LAT-01) |
+| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R`, shared-call by default. Prefix with `@mutating` or `@consuming` for mut-call / once-call. Legal as parameter, return, generic bound, or generic type argument per FN-04. (`.lat`-only per LAT-05) |
 | `variable:` or `method:` or `parameter:` | Marks the following code snippet's scope (e.g., method signature, local variable) |
 
 ### Spec Code Prefixes
@@ -585,16 +585,16 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 
 | Rust / Laterita | Java Analog | Difference |
 |-----------------|------------|-----------|
-| `Rc<T>` (single-threaded) | Variable (with manual refcount) | Java uses GC; Laterita requires explicit `.share()` and tracks refcount |
-| `Arc<T>` (multi-threaded) | Variable (with atomic refcount) | Like `Rc<T>`, but thread-safe; less common in Java due to GC |
-| Ownership + `give(...)` | Explicit transfer | Java has no ownership concept; all variables are borrows |
-| Borrow (`&`) | Variable | Similar to Java; lifetime rules are stricter |
-| `@mut` (mutate-through) | Reference used to mutate the object | Java allows mutation through any reference; laterita gates it on `@mut`, with reassignment the separate `final` axis |
+| `Rc<T>` (single-threaded) | Variable (with manual refcount) | Java uses GC, while Laterita requires explicit `.share()` and tracks refcount |
+| `Arc<T>` (multi-threaded) | Variable (with atomic refcount) | Like `Rc<T>`, but thread-safe, and less common in Java due to GC |
+| Ownership + `give(...)` | Explicit transfer | Java has no ownership concept, so all variables are borrows |
+| Borrow (`&`) | Variable | Similar to Java, but lifetime rules are stricter |
+| `@mut` (mutate-through) | Reference used to mutate the object | Java allows mutation through any reference, while laterita gates it on `@mut`, with reassignment the separate `final` axis |
 | `@mut class` vs. immutable class | Valhalla `value class` (inverted) | Valhalla opts *in* to value classes, Laterita opts *in* to mutable classes, and a class extending only `Object` and implementing no `@mut` interface defaults to an immutable class (HIER-02) |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
-| `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability; no GC hazard |
+| `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability, with no GC hazard |
 | `Mutex<T>` | `synchronized` block on a protected field | Closure-scoped API ensures lock release and ties the lock to the protected value |
-| `ReentrantLock` + `LockGuard` | `java.util.concurrent.locks.ReentrantLock` | `LockGuard.onDrop` removes the manual unlock; reentrant; pair with `Condition` for wait/signal |
-| `Condition` | `java.util.concurrent.locks.Condition` or `Object.wait`/`notify` | Same API as `j.u.c.l.Condition`; runtime-checks the bound lock is held |
-| `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object; closer to C++ destructors than Java finalizers |
+| `ReentrantLock` + `LockGuard` | `java.util.concurrent.locks.ReentrantLock` | `LockGuard.onDrop` removes the manual unlock, the lock is reentrant, and it pairs with `Condition` for wait/signal |
+| `Condition` | `java.util.concurrent.locks.Condition` or `Object.wait`/`notify` | Same API as `j.u.c.l.Condition`, and runtime-checks the bound lock is held |
+| `onDrop()` | `close()` or finalizer | Guaranteed-called cleanup per object, closer to C++ destructors than Java finalizers |
 | `drop` flag | N/A | Java doesn't track per-field move state |
