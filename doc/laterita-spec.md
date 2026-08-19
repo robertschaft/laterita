@@ -1935,6 +1935,7 @@ Stdlib types declaring `@local(false)` include `Arc<T>` (STD-02), `Mutex<T>` (ST
 
 The compiler must reject:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
+- A move (OWN-07) of a `@local` value across a thread boundary outside `@unsafe` (UNS-02 already gates this).
 
 ### STD-08 — Borrow-checked iteration
 
