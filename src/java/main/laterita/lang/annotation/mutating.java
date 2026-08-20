@@ -12,7 +12,7 @@ import java.lang.annotation.Target;
 /**
  * Declares receiver mutation.
  *
- * <p>The annotation may be used only in a {@code @mut} class on
+ * <p>The annotation may be used only in a mutable class (MUT-05) on
  * <ul>
  *   <li>non-static methods or</li>
  *   <li>non-static, direct inner classes.</li>
@@ -21,7 +21,7 @@ import java.lang.annotation.Target;
  * <p>On a method (MUT-08), a {@code @mutating} method may:
  * <ul>
  *   <li>reassign the receiver's non-{@code final} fields,</li>
- *   <li>mutate through its {@code @mut} fields,</li>
+ *   <li>mutate through its fields that carry no {@code @fixed},</li>
  *   <li>return mutable borrows of its fields,</li>
  *   <li>call other {@code @mutating} methods on {@code this},</li>
  *   <li>call other non-{@code @mutating} methods on {@code this},</li>
@@ -31,13 +31,13 @@ import java.lang.annotation.Target;
  * </ul>
  * A method without {@code @mutating} can do none of these.
  *
- * <p>{@code @mutating} methods can only be called on a {@code @mut} receiver
+ * <p>{@code @mutating} methods can only be called on a mutable receiver
  * (MUT-10).
  *
  * <p>On a non-static inner class (MUT-12), {@code @mutating} instead declares
- * that the class holds a {@code @mut} borrow of its enclosing instance, so its
+ * that the class holds a mutable borrow of its enclosing instance, so its
  * methods may also mutate that enclosing instance.
- * Both, inner and enclosing class, must be {@code @mut}.
+ * Neither the inner nor the enclosing class may be {@code @fixed}.
  *
  * <p>The {@link InheritFrom} value chooses the form (MUT-13).
  * {@link InheritFrom#NONE}, the default, is the always-mutating form above.

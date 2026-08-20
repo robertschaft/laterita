@@ -10,8 +10,8 @@ package laterita.lang.annotation;
  *
  * <p>Used as the value of {@code @mutating} (MUT-13), and reserved for the same
  * role on other axes should they adopt it (for example
- * {@code @mut(InheritFrom.RECEIVER)} or {@code @own(InheritFrom.RECEIVER)}),
- * which is why it is a shared enum rather than a bare flag.
+ * {@code @own(InheritFrom.RECEIVER)}), which is why it is a shared enum rather
+ * than a bare flag.
  */
 public enum InheritFrom {
 

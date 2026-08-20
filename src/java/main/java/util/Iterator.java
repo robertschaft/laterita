@@ -34,7 +34,7 @@ import static laterita.lang.Intrinsics.broken;
  *
  * @param <T> the element type
  */
-@mut public interface Iterator<T> {
+public interface Iterator<T> {
 
     /** Returns {@code true} if the iteration has more elements. */
     boolean hasNext();
@@ -44,9 +44,9 @@ import static laterita.lang.Intrinsics.broken;
      * collection.
      *
      * <p>{@code @mutating} advances this cursor.
-     * The returned {@code @bound T}'s mutability was fixed when the cursor was
-     * created: {@code @mut @bound T} for a cursor built from a {@code @mut}
-     * collection, {@code @fix @bound T} for one built from a {@code @fix}
+     * The returned {@code @bound T}'s mutability was settled when the cursor
+     * was created: {@code @bound T} for a cursor built from a mutable
+     * collection, {@code @fixed @bound T} for one built from a {@code @fixed}
      * collection.
      */
     @mutating @bound T next();

@@ -165,8 +165,8 @@ The framing maps cleanly onto reference types (each slot points at a heap value,
 Primitives have no heap identity: there is nothing to point at, nothing to drop, and a "borrow" of an `int` has no observable difference from a copy.
 
 **The issue.**
-A `@mut int x` parameter in Laterita can be made to behave like Rust's `&mut i32`, the compiler passes a pointer to the caller's int slot and the callee mutates through it.
-This is implementable (Laterita compiles natively per COMP-01) but unusual.
+A bare `int x` parameter in Laterita is a mutable slot by MUT-04, so read literally it behaves like Rust's `&mut i32`: the compiler passes a pointer to the caller's int slot and the callee mutates through it.
+This is implementable (Laterita compiles natively per COMP-01) but unusual, and MUT-04's default makes it the reading every unannotated primitive parameter gets, which is why the question needs an answer rather than a convention.
 The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `AtomicI32` with interior mutability.
 `&mut <primitive>` is rare even in Rust stdlib (it shows up generically through `mem::swap` / `mem::replace`, not as a deliberate out-parameter).
 The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern, struct and array out-pointers dominate.
@@ -175,13 +175,15 @@ Java itself has no equivalent: primitives are pass-by-value.
 If primitives sit outside the borrow system entirely, follow-on rules need to be specified.
 
 **Partly settled.**
-MUT-02 makes a local's referent mutability inherited from its initializer, and a primitive has no mutating surface, so a primitive local is never mutate-through and a primitive-returning method needs no `@mut` for `var n = computeCount();` to compile.
-The local-and-return mutability concern is therefore closed, and what remains open is the ownership and borrow treatment of primitives.
+MUT-02 infers a local's referent mutability from its uses, and a primitive has no `@mutating` method to call, so no use of a primitive local is demanding and `var n = computeCount();` binds with no annotation on either side.
+The local-and-return mutability concern is therefore closed, and what remains open is the ownership and borrow treatment of primitives, which MUT-04's mutable parameter default now makes urgent rather than academic.
 
 **The question.**
 
-- *Are `@mut` parameters of primitive type rejected?*
-  The proposal: yes, since a primitive cannot be borrowed in a way distinguishable from a copy, and the few cases that genuinely want pass-by-pointer (shared counters, atomic flags) are served better by `AtomicInt` / `AtomicBoolean` (STD-04 territory) or by `Cell<int>` (STD-05).
+- *Is a primitive parameter always pass-by-value, so that MUT-04's mutable default has nothing to bite on?*
+  The proposal: yes, a primitive parameter is a copy, `@fixed` on it is redundant rather than meaningful, and a bare primitive parameter takes no exclusive borrow of the caller's slot.
+  A primitive cannot be borrowed in a way distinguishable from a copy, and the few cases that genuinely want pass-by-pointer (shared counters, atomic flags) are served better by `AtomicInt` / `AtomicBoolean` (STD-04 territory) or by `Cell<int>` (STD-05).
+  Leaving this unstated is what would make `void f(int x)` read as an out-parameter.
 - *What about `@bound` on primitive returns and `@borrow` on primitive fields?*
   The proposal: both rejected for the same reason, there is no storage to bind a lifetime to.
   A primitive field is always its own owner (the enclosing instance holds the bits inline).
@@ -191,10 +193,10 @@ The local-and-return mutability concern is therefore closed, and what remains op
 
 **Why it matters.**
 The `OWN` model of variables-as-ownership-disciplined-slots only holds for reference types.
-Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
-The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
+Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately what a bare `int x` parameter, a `@bound int foo()`, and a `@borrow int x;` field mean.
+The natural answer is "primitives are pass-by-value and carry no referent axis", but the spec should say so once rather than leave it implicit, and MUT-04's mutable parameter default means the implicit reading is now the wrong one.
 
-**Related codes:** OWN-01, OWN-13, OWN-16, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
+**Related codes:** OWN-01, OWN-13, OWN-16, MUT-01, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
 
 ## OQ-36 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
 

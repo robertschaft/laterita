@@ -16,9 +16,14 @@ Java has a mature ecosystem, a huge developer base, and a syntax those developer
 
 - **Ownership and borrowing instead of GC.** Every value has a single owner; references are tracked borrows; cleanup is deterministic. When a binding leaves scope the compiler runs its `onDrop()` — no tracing collector, no finalizer surprises, no pauses.
 
-- **No new keywords.** Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@mut`, `@take`, `@bound`, `@local`, …) and two intrinsics (`give(x)`, `broken()`). The core language is annotated Java that `javac` parses unchanged.
+- **No new keywords.**
+Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@fixed`, `@take`, `@bound`, `@local`, …) and the `laterita.lang.Intrinsics` static methods (`give(x)`, `fixed(x)`, `broken()`).
+The core language is annotated Java that `javac` parses unchanged.
 
-- **Mutability is explicit and transitive.** A single `@mut` marker covers bindings, fields, methods, and parameters, and it must be present at *every* level of an access path to mutate. Immutability is the default everywhere.
+- **Immutability is explicit and transitive.**
+A single `@fixed` marker covers classes, bindings, fields, parameters, and returns, and it withdraws mutation everywhere it appears.
+It aligns with `final`: mutable is the default, as in Java, and `@fixed` is written where the guarantee is wanted.
+Immutability propagates, so a `@fixed` binding reaches nothing mutable through it, and it is inherited, so a subclass of an immutable class is immutable too.
 
 - **Non-nullable by default.** A bare `T` excludes null and needs no null check; the nullable type admits it. The compiler proves the rest and narrows automatically after an `if (x != null)` check.
 
@@ -56,7 +61,7 @@ String  forced    = maybeName!!;   // NullPointerException if maybeName is null
 Write a single-abstract-method signature directly as a method-parameter type — with full ownership modes — instead of declaring a named interface for the callback.
 
 ```java
-<R> Stream<R> map(@mut (@take T) -> R fn);
+<R> Stream<R> map(@mutating (@take T) -> R fn);
 void          forEach((@bound Record) -> void action);
 ```
 

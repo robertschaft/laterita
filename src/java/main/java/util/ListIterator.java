@@ -27,14 +27,14 @@ import laterita.lang.annotation.*;
  *
  * <p>Obtained from a {@code @mutating listIterator()} rather than the
  * enhanced-for's {@link Iterable#iterator()}, so it always holds an exclusive
- * {@code @mut} borrow of the collection, never an inherited one, because
+ * mutable borrow of the collection, never an inherited one, because
  * structural modification always mutates the collection (STD-08).
  * An enhanced-for never reaches this type, matching the fact that a for-each
  * exposes no handle to remove.
  *
  * @param <T> the element type
  */
-@mut public interface ListIterator<T> extends Iterator<T> {
+public interface ListIterator<T> extends Iterator<T> {
 
     /** Returns {@code true} if there is an element in the reverse direction. */
     boolean hasPrevious();
