@@ -29,6 +29,9 @@ Sealed hierarchies (Rust-style ADTs) make this acute: the natural Rust idiom is 
 - For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once.
 Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
+- What mutability does a pattern variable carry?
+MUT-02 reads a local's mutability off its declared type, and for `var` off the RHS of the first assignment, but a pattern variable has neither a written type nor an assignment.
+The candidates are the component's declared type, the scrutinee's mutability, and an explicit `@fixed` on the pattern variable, with MUT-02a's borrow-mode classification following whichever is chosen.
 
 **Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
 A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
@@ -38,7 +41,7 @@ Keeping the two terms separate is why the move-based take-apart operation was re
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums.
 Without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
-**Related codes:** OWN-02, OWN-13, OWN-06, DES, DROP-04.
+**Related codes:** OWN-02, OWN-13, OWN-06, MUT-02, MUT-02a, DES, DROP-04.
 
 ## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
@@ -235,3 +238,45 @@ Candidates carry different trade-offs.
 The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
 
 **Related codes:** MUT-01, MUT-01b, MUT-05, TARG-03, HIER-03.
+
+---
+
+## OQ-39 — Per-field lifetime granularity for a `@bound` instance
+
+**Surfaced when:** comparing the `@bound` model against Rust's struct lifetime parameters, where a struct holding two borrows can return a value tied to one of them alone.
+
+**The issue.**
+A `@borrow` field is unconditionally a source of its instance (OWN-09), the sources intersect (LIFE-03), and a returned borrow binds to `this` (OWN-18) or to a marked parameter (OWN-17), never to a field.
+An instance holding two borrows therefore carries one lifetime, the intersection, and every borrow it lends is capped at that intersection even when it reaches only one of the fields.
+
+```java
+class Parser {
+    @borrow String input;
+    @borrow Config config;
+    @bound String token() { return input.substring(0, 3); }   // bound to this
+}
+
+var input  = readFile();
+var config = loadConfig();
+var p      = new Parser(input, config);
+var t      = p.token();
+give(config);      // p is now unusable, and so is t
+use(t);            // rejected, though t reaches only input
+```
+
+LIFE-02 lets an author tighten a return by removing a `@bound` marker from a parameter that does not contribute.
+No such control exists on the field side: OWN-09 admits no per-field opt-out, and OWN-21 states that a retained parameter's source becomes a source of `this` rather than of the field it lands in.
+
+**The question.**
+
+- Can a return name a `@borrow` field as its source, rather than `this`?
+- Does reading a `@borrow` field directly (OWN-04) yield a borrow of that field's original source or of the enclosing instance?
+The answer decides whether direct field access is already a partial escape.
+- Is the intersection the right default even with a per-field form available, so that `@bound` on a return keeps meaning "the whole instance"?
+- Does a per-field form reintroduce the naming problem that `@bound` exists to avoid, given that a field already has a name to refer to?
+
+**Why it matters.**
+Every long-lived structure that holds borrows of different lifetimes is capped at its shortest one, so a parser holding a long-lived buffer and a short-lived config cannot lend anything that survives the config.
+The workaround is to split the structure, which is the design pressure Rust's struct lifetime parameters exist to remove.
+
+**Related codes:** OWN-09, OWN-17, OWN-18, OWN-21, LIFE-02, LIFE-03, LIFE-04, OWN-04.
