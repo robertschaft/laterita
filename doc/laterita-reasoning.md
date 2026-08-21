@@ -120,7 +120,7 @@ The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread lea
 
 ---
 
-## Mutability (MUT-01 through MUT-16)
+## Mutability (MUT-01 through MUT-17)
 
 ### Why `@fixed` is the single mutability marker (MUT-01)
 
@@ -145,7 +145,9 @@ That cost lands on the API that publishes the guarantee, which is where a reader
 
 `@fixed C` offers a subset of `C`'s surface: the methods that need no mutability and the fields read as `final` and `@fixed`.
 A value of `C` therefore satisfies every obligation a `@fixed C` slot imposes, and a `@fixed C` value satisfies fewer than a `C` slot demands.
-Assignability has to follow that shape, so widening, argument passing, return covariance, and override variance can all be read off the subtyping the language already has, and `@fixed Object` falls out as the top type.
+Assignability has to follow that shape, so widening, argument passing, return covariance, and override variance can all be read off the subtyping the language already has.
+The views also have to be ordered like the types they view, or a frozen `ArrayList` would not fill a frozen `List` slot and every read-only API over an interface would be unreachable from a subclass.
+With that ordering `@fixed Object` falls out as the top type rather than being asserted.
 
 Calling `@fixed C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
 HIER-01 makes a class immutable when a type it names as a supertype is immutable, and `@fixed C` is immutable, so every class would inherit immutability from its own frozen view and the mutable kind would have no inhabitants.
@@ -296,6 +298,18 @@ A copy of a primitive carries no lifetime of its own, so `@bound` and `@borrow` 
 
 Without the rule, MUT-04's mutable parameter default reads `void f(int x)` as Rust's `&mut i32`, an out-parameter, which is neither what a Java developer writes nor what the rare shared-counter case wants.
 That case is served where it is served in Rust, by `AtomicInt` and `Cell<int>` (STD-04, STD-05), with the sharing visible at the declaration.
+
+### Why an over-demanding parameter is a warning, not an error (MUT-17)
+
+A bare parameter lends exclusively, so an author who writes `void render(Scene s)` for a body that only reads publishes a signature that works, compiles, and locks the caller's `Scene` for the call.
+The cost lands outside the file where the mistake was made, which is the worst place for it, and no inference can fix it: a parameter is published contract, and deriving it from the body would make a caller's obligations depend on a body it cannot see (OWN-00).
+
+What the compiler can do is say so.
+The body is already analysed for the demanding uses that classify a local (MUT-02a), so the same analysis answers whether a parameter's mutability was ever used, and the fix is one word the diagnostic can name.
+
+It stays a warning because the declaration may be deliberate.
+An interface method, a hook a subclass will override with a mutating body, or a signature held stable for source compatibility all demand mutability the current body does not use, and an error would force `@fixed` onto declarations whose author has a reason not to write it.
+A warning also keeps the outside view intact: a Java library ported unchanged still compiles, and the diagnostic points at each place where the port can be improved.
 
 ### Why immutability is the marked class kind (MUT-05 through HIER-04)
 
@@ -1294,6 +1308,7 @@ The mutability that reaches a *caller* is a different matter and travels the ord
 That is why an unconstrained `Box<T>` can lend a mutable `Counter` while its own body could not have mutated one.
 
 `@fixed` at the declaration is then a pure abbreviation, mirroring how `@own` (TARG-06) is a pure restriction: `class Foo<@fixed T extends B>` writes `@fixed T` at each usage and leaves `B` alone, so a value-only container states its intent once instead of at ten usages.
+Keeping the two orthogonal is what makes all six combinations of "what is admitted" and "what a usage may do" spellable, including the two a welded marker loses: a bound that admits both kinds with usages following the argument, and a mutable bound with every usage frozen.
 Folding a bound widening into the same marker would tie a body-side abbreviation to a caller-side admission rule, leaving "admits only mutable arguments, usages frozen" unspellable and making `class Foo<@fixed T>` admit arguments a reader deduced from the bound.
 Because `@fixed` only withdraws a capability, it requires nothing of its holder, the opposite of the bare form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-10).
 

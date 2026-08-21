@@ -383,7 +383,7 @@ A method declares mutation of its receiver with `@mutating` (MUT-08).
 
 For every class or interface `C`, `@fixed C` names an interface carrying the members of `C` that need no mutability (MUT-07b, MUT-10), and every mutable `C` implements it.
 A `C` value fills a `@fixed C` slot, and a `@fixed C` value does not fill a `C` slot.
-`@fixed Object` is the top type.
+The frozen views are ordered like the types they view: `@fixed D` is a subtype of `@fixed C` whenever `D` is a subtype of `C`, so `@fixed Object` is the top type.
 
 `@fixed C` is not a type a class declaration names: it may not appear in a class or interface declaration's `extends` or `implements` clause, and implementing it does not make a class immutable (HIER-01).
 It is admitted as a type-parameter bound (TARG-03).
@@ -697,6 +697,20 @@ A primitive parameter, return, or field is a value copy, and `@fixed`, `@bound`,
 A `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
 A nullable primitive (NULL-02) is immutable in the same way.
 
+### MUT-17 - A parameter demanding unused mutability is reported
+
+A mutable parameter (MUT-14) that its body never uses demandingly (MUT-02a) is reported, naming `@fixed` as the fix.
+The report is a warning: the declaration is the published contract and compiles as written.
+
+The rule reaches a parameter whose declared type is a type parameter through the bound, since the body is checked once against it (TARG-03).
+It does not reach a parameter whose declared type is an immutable class, which demands nothing to withdraw, nor an override, whose parameter modes are constrained by the method it implements (HIER-05).
+
+```java
+void render(Scene s) { s.draw(); }        // warning: s may be @fixed
+void update(Scene s) { s.setDpi(300); }   // no warning: a demanding use
+void label(String s) { }                  // no warning: String is immutable
+```
+
 ---
 
 ## HIER — Class Hierarchy and Override
@@ -833,6 +847,18 @@ The borrow checker needs nothing beyond the bound to check the body, and nothing
 `class Foo<@fixed T extends B>` writes `@fixed T` at each usage of `T` in the body, and leaves `B`, and with it the arguments the parameter admits, unchanged.
 Written on a single usage (`@fixed T field`, `List<@fixed T> xs`, a `@fixed T` parameter, return, or local) it freezes that occurrence and leaves the rest as the argument supplies.
 `@fixed` requires nothing of its holder, since it only withdraws a capability.
+
+The two decisions are independent, giving six declaration forms.
+`B` names a mutable class (MUT-05) in the forms below.
+
+| Declaration | Admits | Usage of `T` |
+|---|---|---|
+| `<T>` | any argument | as the argument |
+| `<@fixed T>` | any argument | `@fixed` |
+| `<T extends B>` | subtypes of `B` | as the argument |
+| `<@fixed T extends B>` | subtypes of `B` | `@fixed` |
+| `<T extends @fixed B>` | subtypes of `B` and of `@fixed B` | as the argument |
+| `<@fixed T extends @fixed B>` | subtypes of `B` and of `@fixed B` | `@fixed` |
 
 ```java
 class Counter { int n; @mutating void inc() { n = n + 1; } }
@@ -2277,7 +2303,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@fixed` | `TYPE` | redundant on enum, record, and any class with an immutable supertype | Class or interface is immutable | MUT-05, HIER-01 |
 | `@fixed` | `LOCAL_VARIABLE` | redundant when the declared type is an immutable class | Declares the local immutable (the slot axis is separate: reassignable by default, locked by `final`) | MUT-02 |
 | `@fixed` | `FIELD` | redundant in an immutable class and on a field of immutable type | Withdraws mutate-through on the field (the slot axis is MUT-07b) | MUT-07a |
-| `@fixed` | `PARAMETER` | redundant when the type is an immutable class | Parameter receives a shared borrow instead of a mutable one | MUT-04 |
+| `@fixed` | `PARAMETER` | redundant when the type is an immutable class | Parameter receives a shared borrow instead of a mutable one, and its absence is reported when the body never mutates through it | MUT-04, MUT-17 |
 | `@fixed` | `METHOD` | redundant when the type is an immutable class | Return is a `@fixed` variable | MUT-01 |
 | `@fixed` | `TYPE_USE` | - | Generic type-argument usage is `@fixed`, and requires nothing of the container | TARG-03 |
 | `@fixed` | `TYPE_PARAMETER` | - | `<@fixed T>` writes `@fixed` at every usage of `T`, leaving the bound unchanged | TARG-03 |

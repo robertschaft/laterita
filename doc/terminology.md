@@ -191,7 +191,8 @@ See `MUT-15`.
 
 ### frozen view
 `@fixed C`, the interface carrying only the members of `C` that need no mutability.
-Every mutable `C` implements it, so a `C` value fills a `@fixed C` slot and not the reverse, and `@fixed Object` is the top type (`MUT-01b`).
+Every mutable `C` implements it, so a `C` value fills a `@fixed C` slot and not the reverse.
+The views are ordered like the types they view, so `@fixed Object` is the top type (`MUT-01b`).
 It is not a type a class declaration names, so implementing it makes no class immutable (`HIER-01`).
 An immutable class declared under a mutable ancestor is the declaration-site form of the same thing (`HIER-03`, `HIER-04`).
 
