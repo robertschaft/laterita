@@ -319,6 +319,9 @@ What the compiler can do is say so.
 The body is already analysed for the demanding uses that classify a local (MUT-60), so the same analysis answers whether a parameter's mutability was ever used, and the fix is one word the diagnostic can name.
 It reaches a parameter typed by a type parameter for the same reason: TARG-03 checks the body once against the bound, so one pass answers the question for every argument rather than per monomorphization.
 
+The two exclusions fall out of the same reading.
+A parameter of immutable declared type demands nothing to withdraw (MUT-31), and an override does not choose its own parameter modes, which HIER-05 takes from the method it implements.
+
 It stays a warning because the declaration may be deliberate.
 An interface method, a hook a subclass will override with a mutating body, or a signature held stable for source compatibility all demand mutability the current body does not use, and an error would force `@fixed` onto declarations whose author has a reason not to write it.
 A warning also keeps the outside view intact: a Java library ported unchanged still compiles, and the diagnostic points at each place where the port can be improved.

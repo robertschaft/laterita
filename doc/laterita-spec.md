@@ -472,9 +472,11 @@ This is the initialization phase.
 The immutability freeze takes effect when the constructor returns.
 
 An `onDrop()` body (DROP-05) is exempt in the same way.
-Its receiver is mutable regardless of class kind, so on a mutable class it may reassign non-`final` fields, mutate through fields, and call `@mutating` methods on `this`.
+Its receiver is mutable regardless of class kind.
+On a mutable class it may reassign non-`final` fields, mutate through fields, and call `@mutating` methods on `this`.
 This is the teardown phase.
-The immutability freeze remains in effect, so an immutable class's fields stay immutable and the body is read-only.
+The immutability freeze remains in effect.
+An immutable class's fields stay immutable and the body is read-only.
 
 ```java
 @fixed var frozen = new Counter();
@@ -560,7 +562,8 @@ A value is immutable when its class is immutable or the binding it comes from is
 | immutable | downgrade, accepted | accepted |
 
 The downgrade is the frozen view of MUT-30 (HIER-04, TARG-03).
-`@fixed` on a slot whose declared type is already immutable withdraws nothing, so `String s` and `@fixed String s` declare the same slot.
+`@fixed` on a slot whose declared type is already immutable withdraws nothing.
+`String s` and `@fixed String s` declare the same slot.
 A redundant `@fixed` is accepted rather than rejected, in every position that admits it.
 
 ### MUT-40 - Local mutability follows the declaration
@@ -691,7 +694,7 @@ A mutable parameter (MUT-31) that its body never uses demandingly (MUT-60) is re
 The report is a warning: the declaration is the published contract and compiles as written.
 
 The rule reaches a parameter whose declared type is a type parameter through the bound (TARG-03).
-It does not reach a parameter whose declared type is an immutable class, which demands nothing to withdraw, nor an override, whose parameter modes are constrained by the method it implements (HIER-05).
+It does not reach a parameter whose declared type is an immutable class (MUT-31), nor an override (HIER-05).
 
 ```java
 void render(Scene s) { s.draw(); }        // warning: s may be @fixed
