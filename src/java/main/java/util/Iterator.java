@@ -15,7 +15,7 @@
  * accompanied this code).
  *
  * Laterita fork: ownership, borrow, and mutability annotations added on top of
- * the OpenJDK source. See doc/laterita-spec.md (STD-08, MUT-13).
+ * the OpenJDK source. See doc/laterita-spec.md (STD-08, MUT-51).
  */
 package java.util;
 
@@ -27,7 +27,7 @@ import static laterita.lang.Intrinsics.broken;
  * A read-or-update cursor over a collection.
  * The distinction between a read cursor and an in-place-update cursor is not
  * two types: it is which mutability this instance inherited from the
- * {@link Iterable#iterator()} receiver that produced it (MUT-13).
+ * {@link Iterable#iterator()} receiver that produced it (MUT-51).
  * Structural {@code set} and {@code add} live on {@link ListIterator}.
  * {@code remove()} is declared here for source compatibility with
  * {@code java.util.Iterator} but is {@code broken()} by default.

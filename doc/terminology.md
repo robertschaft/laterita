@@ -77,7 +77,7 @@ Laterita does not auto-box at the type level, so a null-bearing integer is writt
 
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views.
-Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-13`, spelled as the two static methods `splitAt` and `splitMutableAt` in the `.java` mirror), `forEachChunk` → borrowed slices via callback.
+Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-51`, spelled as the two static methods `splitAt` and `splitMutableAt` in the `.java` mirror), `forEachChunk` → borrowed slices via callback.
 Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves), `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`.
 See `ARR-01`, `ARR-02`, `ARR-04`.
 
@@ -121,19 +121,19 @@ In Rust, this is a "move", Laterita uses the verb `give` in Java's vocabulary.
 
 ### @consuming (annotation)
 Declares that a method consumes its receiver: the body owns `this`, and after the call returns the variable that held the receiver is consumed and subsequent uses are rejected.
-A modifier-position annotation on the method, parallel to `@mutating` (MUT-08), the two compose.
+A modifier-position annotation on the method, parallel to `@mutating` (MUT-13), the two compose.
 See `OWN-15`.
 
 ### @fixed (annotation)
 The single mutability marker: it withdraws *referent mutability*, the right to mutate a value through a binding by calling a `@mutating` method on it or writing through it.
 Mutability is granted by default at every position whose declared type is a mutable class, and nothing grants it, so `@fixed` is the only word on the axis (`MUT-01`).
-It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-03`).
-It is redundant where the position is already immutable and load-bearing everywhere else (`MUT-14`).
+It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-20`).
+It is redundant where the position is already immutable and load-bearing everywhere else (`MUT-31`).
 On a type-parameter declaration `<@fixed T>` writes `@fixed` at every usage of `T` and leaves the bound unchanged (`TARG-03`).
-On a class declaration `@fixed class C` declares an immutable class (`MUT-05`).
-On a type, `@fixed C` names the *frozen view* of `C` (`MUT-01b`).
+On a class declaration `@fixed class C` declares an immutable class (`MUT-10`).
+On a type, `@fixed C` names the *frozen view* of `C` (`MUT-30`).
 A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@fixed`.
-See `MUT-01`, `MUT-01b`, `MUT-14`.
+See `MUT-01`, `MUT-30`, `MUT-31`.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method.
@@ -176,29 +176,29 @@ See `DROP-04`.
 
 ### demanding use
 A use of a local that requires mutation: calling a `@mutating` method on it, writing through it, passing it to a mutable slot, or returning it through a mutable return type.
-A local with one borrows its source mutably, and a local with none is *effectively fixed* (`MUT-02a`).
-A demanding use of an immutable local is rejected (`MUT-10`).
-See `MUT-02a`.
+A local with one borrows its source mutably, and a local with none is *effectively fixed* (`MUT-60`).
+A demanding use of an immutable local is rejected (`MUT-15`).
+See `MUT-60`.
 
 ### effectively final
 A non-`final` local that is never reassigned.
-Its slot is fixed, so borrow analysis treats it as locked (`MUT-03a`).
+Its slot is fixed, so borrow analysis treats it as locked (`MUT-61`).
 A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
 
 ### effectively fixed
 A mutable local none of whose uses demands mutation: no `@mutating` call on it, no write through it, no passing it to a mutable slot, and no returning it through a mutable return type.
 Such a local borrows its source shared, so several of them over one value coexist (`OWN-03`).
-It is the borrow-mode counterpart of *effectively final*, classified from the uses the same way and for the same reason (`MUT-02a`).
+It is the borrow-mode counterpart of *effectively final*, classified from the uses the same way and for the same reason (`MUT-60`).
 
 ### fixed (static method on `laterita.lang.Intrinsics`)
 `fixed(x)` returns a `@fixed @bound` borrow of `x`, the expression-position form of the `@fixed` downgrade.
 The original stays usable and several frozen views coexist.
-See `MUT-15`.
+See `MUT-42`.
 
 ### frozen view
 `@fixed C`, the interface carrying only the members of `C` that need no mutability.
 Every mutable `C` implements it, so a `C` value fills a `@fixed C` slot and not the reverse.
-The views are ordered like the types they view, so `@fixed Object` is the top type (`MUT-01b`).
+The views are ordered like the types they view, so `@fixed Object` is the top type (`MUT-30`).
 It is not a type a class declaration names, so implementing it makes no class immutable (`HIER-01`).
 An immutable class declared under a mutable ancestor is the declaration-site form of the same thing (`HIER-03`, `HIER-04`).
 
@@ -214,10 +214,10 @@ See `OWN-03`.
 
 ### field (in a struct/class)
 A named member variable of a class.
-A field has the same two orthogonal mutability axes as a local (`MUT-07a`, `MUT-07b`): its slot is reassignable unless `final` (and only where the class and receiver are mutable), and it is mutated through unless annotated `@fixed`.
-Every field of an immutable class is `final` and `@fixed` (`MUT-07b`).
+A field has the same two orthogonal mutability axes as a local (`MUT-21`, `MUT-22`): its slot is reassignable unless `final` (and only where the class and receiver are mutable), and it is mutated through unless annotated `@fixed`.
+Every field of an immutable class is `final` and `@fixed` (`MUT-22`).
 Every field is initialized exactly once in a constructor (`OWN-11`) and follows ownership rules like a variable.
-See `OWN-09`, `MUT-07a`, `MUT-07b`.
+See `OWN-09`, `MUT-21`, `MUT-22`.
 
 ### flow-sensitive
 Analysed per program path rather than once per declaration.
@@ -254,18 +254,18 @@ See `DROP-06`.
 
 ### immutable class
 A class or interface declared `@fixed`, or inheriting immutability from an immutable supertype (`HIER-01`).
-Its fields are `final` and `@fixed`, and it declares no `@mutating` method, so its instances cannot be mutated through any binding (`MUT-05`, `MUT-07b`).
-It may inherit mutable members from a mutable ancestor, present but not callable on it (`MUT-10`), and may still hold `Cell<T>` interior-mutable state.
+Its fields are `final` and `@fixed`, and it declares no `@mutating` method, so its instances cannot be mutated through any binding (`MUT-10`, `MUT-22`).
+It may inherit mutable members from a mutable ancestor, present but not callable on it (`MUT-15`), and may still hold `Cell<T>` interior-mutable state.
 A class with no immutable supertype and no `@fixed` is mutable, the default (`HIER-02`).
 `String`, `Number`, and every `record` and `enum` are immutable.
 The stricter notion of a *value class* is reserved (see below).
-See `MUT-05`, `HIER-01`, `HIER-02`.
+See `MUT-10`, `HIER-01`, `HIER-02`.
 
 ### interior mutability
 The ability to mutate an object's contents through a `@fixed` (immutable) variable.
-Breaks the rule that an immutable binding reaches nothing mutable (`MUT-09`).
+Breaks the rule that an immutable binding reaches nothing mutable (`MUT-14`).
 Implemented only through `Cell<T>` in safe code.
-See `MUT-11`.
+See `MUT-16`.
 
 ### invariantly
 An overriding method's parameter must **match exactly** the base method's parameter.
@@ -307,28 +307,28 @@ See `COMP-02`.
 ### @mutating (annotation)
 Declares that a method may mutate its receiver: reassign the receiver's non-`final` fields, mutate through its fields, and call other `@mutating` methods on `this`.
 A declaration annotation on the method, kept a distinct token from `@fixed` so receiver mutation is not spelled like binding mutability.
-It may be declared only on a mutable class or interface, and by `MUT-10` it is callable only on a mutable receiver.
+It may be declared only on a mutable class or interface, and by `MUT-15` it is callable only on a mutable receiver.
 The receiver is the one position whose default is no mutation, since every method has one and an immutable class must still have callable methods.
-See `MUT-08`.
+See `MUT-13`.
 
 ### mutable borrow / mut borrow
 A borrow that grants read and write access through the borrowed value.
 Only one mutable borrow may be active at a time, and no other borrow may coexist with it.
 A mutable borrow requires the source variable to be mutable, or the borrow to occur within a `@mutating` method of the same object.
-A borrow of a value of an immutable class is always shared (`MUT-09`).
+A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
 
 ### mutable class
 A class or interface that is not declared `@fixed` and inherits immutability from no supertype, the default kind (`HIER-02`).
-It may declare `@mutating` methods and fields that are reassigned or mutated through (`MUT-05`).
-Every mutable class implements its own *frozen view* `@fixed C` (`MUT-01b`).
-See `MUT-05`, `HIER-02`.
+It may declare `@mutating` methods and fields that are reassigned or mutated through (`MUT-10`).
+Every mutable class implements its own *frozen view* `@fixed C` (`MUT-30`).
+See `MUT-10`, `HIER-02`.
 
 ### mutable slot / immutable slot
-A slot is *immutable* when it carries `@fixed` or its declared type is an immutable class, and *mutable* otherwise (`MUT-14`).
+A slot is *immutable* when it carries `@fixed` or its declared type is an immutable class, and *mutable* otherwise (`MUT-31`).
 The kind decides what may fill the slot: a mutable slot rejects an immutable value, and an immutable slot accepts either, downgrading a mutable one to its frozen view.
 `@fixed` on a slot whose declared type is already immutable is redundant, so `String s` and `@fixed String s` declare the same slot.
-See `MUT-14`, `MUT-01`.
+See `MUT-31`, `MUT-01`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value.
@@ -379,7 +379,7 @@ Not part of the normative spec.
 ### Pair<L, R>
 General-purpose mutable class in `laterita.lang` carrying two values.
 The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01.
-Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct field access `give(p.left)` / `give(p.right)`, OWN-06) and as `@bound Pair<@borrow T[], @borrow T[]>` by `T[].splitAt` (borrowed halves whose mutability follows the receiver, MUT-13).
+Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct field access `give(p.left)` / `give(p.right)`, OWN-06) and as `@bound Pair<@borrow T[], @borrow T[]>` by `T[].splitAt` (borrowed halves whose mutability follows the receiver, MUT-51).
 See `ARR-04`.
 
 ### ownership
@@ -398,8 +398,8 @@ See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
 How a parameter receives its argument: bare (borrows the argument mutably), `@fixed` (borrows it shared), `@take` (receives ownership and may mutate through it), or `@take @fixed` (receives ownership frozen).
-Every parameter slot is `final`: the name cannot be reassigned in the body (`MUT-03`).
-See `OWN-13`, `MUT-04`.
+Every parameter slot is `final`: the name cannot be reassigned in the body (`MUT-20`).
+See `OWN-13`, `MUT-41`.
 
 ### poisoned (Mutex)
 A `Mutex<T>` marked as unusable because the closure passed to its `with` / `tryWith` call propagated an exception out of the critical section.
@@ -438,7 +438,7 @@ The "caller must hold the bound lock" precondition is a runtime check: laterita 
 See `STD-12`.
 
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, MUT-08), or consuming (declared by `@consuming` on the method, OWN-15).
+How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, MUT-13), or consuming (declared by `@consuming` on the method, OWN-15).
 The receiver's variable mode must support the receiver mode (e.g., a bare variable cannot call a `@mutating` method).
 
 ### safe / unsafe (code)
@@ -523,13 +523,13 @@ See `STD-07`.
 Immutability propagates through a variable.
 A `@fixed` or shared variable cannot call `@mutating` methods on the held object and cannot mutate its fields, even if its own slot is reassignable.
 To mutate through, no level of the access path may be `@fixed` or shared.
-See `MUT-10`, `MUT-09`.
+See `MUT-15`, `MUT-14`.
 
 ### type-inferred variable
 A variable whose type is inferred from the RHS expression rather than written explicitly.
 Forms: `var name = expr` (reassignable), `final var name = expr` (slot locked), `@fixed var name = expr` (mutation through the referent withdrawn).
-A laterita `var` is reassignable by default, exactly as in Java, and takes its declared type, `@fixed` included, from the RHS of the first assignment (`MUT-02`).
-See `MUT-02`.
+A laterita `var` is reassignable by default, exactly as in Java, and takes its declared type, `@fixed` included, from the RHS of the first assignment (`MUT-40`).
+See `MUT-40`.
 
 ### type narrowing / smart cast
 Refining a variable's type along a conditional path.
@@ -547,7 +547,7 @@ See `OWN-07`.
 
 ### value class (reserved)
 Reserved for a future notion stricter than an immutable class, in the spirit of an identity-free inline value type.
-Laterita's `@fixed` classes are *immutable classes* (`MUT-05`), not value classes.
+Laterita's `@fixed` classes are *immutable classes* (`MUT-10`), not value classes.
 Do not use "value class" for a `@fixed` class or instance.
 
 ### virtual dispatch / static dispatch

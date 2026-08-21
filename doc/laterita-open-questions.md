@@ -30,8 +30,8 @@ Sealed hierarchies (Rust-style ADTs) make this acute: the natural Rust idiom is 
 Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 - What mutability does a pattern variable carry?
-MUT-02 reads a local's mutability off its declared type, and for `var` off the RHS of the first assignment, but a pattern variable has neither a written type nor an assignment.
-The candidates are the component's declared type, the scrutinee's mutability, and an explicit `@fixed` on the pattern variable, with MUT-02a's borrow-mode classification following whichever is chosen.
+MUT-40 reads a local's mutability off its declared type, and for `var` off the RHS of the first assignment, but a pattern variable has neither a written type nor an assignment.
+The candidates are the component's declared type, the scrutinee's mutability, and an explicit `@fixed` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
 
 **Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
 A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
@@ -41,7 +41,7 @@ Keeping the two terms separate is why the move-based take-apart operation was re
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums.
 Without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
-**Related codes:** OWN-02, OWN-13, OWN-06, MUT-02, MUT-02a, DES, DROP-04.
+**Related codes:** OWN-02, OWN-13, OWN-06, MUT-40, MUT-60, DES, DROP-04.
 
 ## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
@@ -149,7 +149,7 @@ The shape of the stdlib carrier is what's open.
 **Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a laterita spelling.
 
 **The issue.**
-Under MUT-03 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
+Under MUT-20 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
 The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
 Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
 The tension is that `val` is not a Java keyword.
@@ -159,15 +159,15 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 - Should `val` be accepted as sugar for `final var` (immutable inferred local)?
 - If so, only in `.lat` files (a LAT-topic form), or in `.java` too through an importable `val` type the compiler special-cases?
 
-**Related codes:** MUT-02, MUT-03, GEN-14, LAT-00.
+**Related codes:** MUT-40, MUT-20, GEN-14, LAT-00.
 
 ## OQ-36 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
 
-**Surfaced when:** specifying MUT-13 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
+**Surfaced when:** specifying MUT-51 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
 **The issue.**
 Ownership, borrow, and mutability are compile-time properties of a binding (OWN-01, OWN-03, MUT-01).
-Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-13-style inherited path explicitly.
+Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-51-style inherited path explicitly.
 Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
 
 **The question.**
@@ -176,13 +176,13 @@ Laterita currently offers no way to ask in source whether a value is mutable, fi
 - Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the static mode of the binding, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
-What is the result for a generic `T` whose mode is itself inherited (MUT-13)?
-- Do they compose with monomorphization, so a MUT-13 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
+What is the result for a generic `T` whose mode is itself inherited (MUT-51)?
+- Do they compose with monomorphization, so a MUT-51 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
 
 **Why it matters.**
-Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-13's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
+Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-51's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
 
-**Related codes:** OWN-01, OWN-03, MUT-01, MUT-13, OQ-37.
+**Related codes:** OWN-01, OWN-03, MUT-01, MUT-51, OQ-37.
 
 ## OQ-37 — Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
 
@@ -224,9 +224,9 @@ Candidates carry different trade-offs.
 - `@ro` / `@readonly` names the capability directly and matches what C# (`readonly`), C++ (`const`), and D (`const`) call it.
   It is the least ambiguous on parameters and fields.
   `@readonly class Money` is still odd, and `@ro` is terse to the point of being unguessable.
-- `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-05 does not.
+- `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-10 does not.
   It reads poorly on a parameter, where the point is the lend mode, not the value-ness.
-- `@frozen` matches the "frozen view" term the spec already uses (MUT-01b, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
+- `@frozen` matches the "frozen view" term the spec already uses (MUT-30, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
 - `@const` is the C++/D spelling and would be immediately understood, but `const` is a reserved Java keyword, so `@const` and the keyword sit confusingly close.
 
 **The question.**
@@ -237,7 +237,7 @@ Candidates carry different trade-offs.
 **Why it matters.**
 The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
 
-**Related codes:** MUT-01, MUT-01b, MUT-05, TARG-03, HIER-03.
+**Related codes:** MUT-01, MUT-30, MUT-10, TARG-03, HIER-03.
 
 ---
 

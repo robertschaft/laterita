@@ -16,7 +16,7 @@
  *
  * Laterita fork: ownership, borrow, and mutability annotations added on top of
  * the OpenJDK source.
- * See doc/laterita-spec.md (STD-08, MUT-12, MUT-13, OWN-00).
+ * See doc/laterita-spec.md (STD-08, MUT-50, MUT-51, OWN-00).
  */
 package java.util;
 
@@ -39,7 +39,7 @@ import static laterita.lang.Intrinsics.broken;
  * {@code size}, never resizing in place.
  *
  * <p>Iteration is a single method.
- * {@link #iterator()} is {@code @mutating(InheritFrom.RECEIVER)} (MUT-13), so
+ * {@link #iterator()} is {@code @mutating(InheritFrom.RECEIVER)} (MUT-51), so
  * the cursor inherits the list's mutability: over a mutable list it lends
  * {@code @bound T} and holds an exclusive borrow, over a {@code @fixed} list
  * (e.g. {@code fixed(list)}) it lends {@code @fixed @bound T} and holds a
@@ -54,7 +54,7 @@ public class ArrayList<T> implements Iterable<T> {
 
     /**
      * Fixed-length backing store.
-     * A bare field is mutated through (MUT-07a), which the element writes in
+     * A bare field is mutated through (MUT-21), which the element writes in
      * {@link ListItr} require.
      * TODO: {@code grow()} reallocates a larger array in {@code add}.
      */
@@ -72,7 +72,7 @@ public class ArrayList<T> implements Iterable<T> {
     //       grow(), ...
 
     /**
-     * Returns a cursor whose mutability is inherited from this list (MUT-13).
+     * Returns a cursor whose mutability is inherited from this list (MUT-51).
      * One method serves both read and in-place-update iteration, and the two
      * are its monomorphizations.
      */
@@ -94,7 +94,7 @@ public class ArrayList<T> implements Iterable<T> {
     /**
      * The read-or-update cursor.
      *
-     * <p>Class-level {@code @mutating(InheritFrom.RECEIVER)} (MUT-12, MUT-13):
+     * <p>Class-level {@code @mutating(InheritFrom.RECEIVER)} (MUT-50, MUT-51):
      * the borrow it holds on the enclosing {@code ArrayList} is inherited from
      * the {@code this} that constructs it, so it is exclusive when built from a
      * mutable list and shared when built from a {@code @fixed} one.
@@ -118,7 +118,7 @@ public class ArrayList<T> implements Iterable<T> {
         public @mutating @bound T next() {
             // TODO: if (cursor >= size) throw new NoSuchElementException();
             // Element mutability is inherited from the enclosing borrow
-            // (MUT-13):
+            // (MUT-51):
             // @bound T over a mutable list, @fixed @bound T over a
             // @fixed one.
             var element = elementData[cursor];
@@ -132,7 +132,7 @@ public class ArrayList<T> implements Iterable<T> {
      *
      * <p>Class-level {@code @mutating} (not inherited): it always borrows the
      * enclosing {@code ArrayList} mutably and exclusively, which is what
-     * licenses {@link #remove()} to restructure the list (MUT-12).
+     * licenses {@link #remove()} to restructure the list (MUT-50).
      */
     @mutating private class ListItr implements ListIterator<T> {
 
