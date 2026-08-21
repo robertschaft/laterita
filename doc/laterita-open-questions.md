@@ -163,11 +163,11 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 
 ## OQ-36 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
 
-**Surfaced when:** specifying MUT-51 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
+**Surfaced when:** specifying MUT-17 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
 **The issue.**
 Ownership, borrow, and mutability are compile-time properties of a binding (OWN-01, OWN-03, MUT-01).
-Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-51-style inherited path explicitly.
+Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-17-style inherited path explicitly.
 Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
 
 **The question.**
@@ -176,13 +176,13 @@ Laterita currently offers no way to ask in source whether a value is mutable, fi
 - Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the static mode of the binding, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
-What is the result for a generic `T` whose mode is itself inherited (MUT-51)?
-- Do they compose with monomorphization, so a MUT-51 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
+What is the result for a generic `T` whose mode is itself inherited (MUT-17)?
+- Do they compose with monomorphization, so a MUT-17 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
 
 **Why it matters.**
-Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-51's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
+Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-17's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
 
-**Related codes:** OWN-01, OWN-03, MUT-01, MUT-51, OQ-37.
+**Related codes:** OWN-01, OWN-03, MUT-01, MUT-17, OQ-37.
 
 ## OQ-37 — Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
 

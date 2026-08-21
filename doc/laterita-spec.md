@@ -351,6 +351,11 @@ EntryView<String, Integer> view = new EntryView<>(name, count);
 // view's lifetime = min(name, count)
 ```
 
+### LIFE-05 - A primitive carries no lifetime
+
+A primitive is passed, returned, and stored as a value copy (MUT-18).
+`@bound`, `@borrow`, and `@take` on a primitive are redundant, and a `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
+
 ### LIFE-04 - `@borrowCapped` caps an instance's lifetime within its borrow sources
 
 `@borrowCapped` is a class-level annotation, permitted on any class declaration.
@@ -391,7 +396,11 @@ No `@mutating` method may be declared on an immutable class or interface.
 ### MUT-11 - `record` and `enum` are immutable
 
 A `record` and an `enum` are immutable classes by construction.
-`@fixed` on either is redundant (MUT-31).
+
+### MUT-18 - Primitive types are immutable
+
+`boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, and `double` are immutable types.
+A nullable primitive (NULL-02) is immutable in the same way.
 
 ### MUT-12 - A borrow of an immutable instance may be a copy
 
@@ -405,7 +414,6 @@ A method without it cannot.
 It may be declared only on a mutable class or interface (MUT-10).
 `@mutating` sits in modifier position and is orthogonal to `@consuming` (OWN-15).
 It carries an `InheritFrom` value, `InheritFrom.NONE` by default, which is the always-mutating form specified here.
-`InheritFrom.RECEIVER` selects the receiver-inherited form (MUT-51).
 
 Override variance is HIER-05.
 
@@ -416,6 +424,30 @@ class Counter {
     public @mutating void inc()          { n = n + 1; }
     public final @mutating void reset()  { n = 0; }
 }
+```
+
+### MUT-17 - `@mutating(InheritFrom.RECEIVER)` inherits the receiver's mutability
+
+`InheritFrom.RECEIVER` (MUT-13) makes the receiver mode polymorphic: the method requires only the mutability its caller supplies.
+Called on a mutable receiver it behaves as `@mutating`, taking an exclusive receiver (MUT-15), and called on a `@fixed` or shared receiver it behaves as a plain method that never mutates.
+
+A `@bound` return of an `InheritFrom.RECEIVER` method inherits the receiver's mutability.
+Bound to a mutable receiver the returned borrow is mutable, and bound to a `@fixed` receiver it is `@fixed`.
+When the return is a container or cursor, the mutability of the elements it lends inherits the same way.
+
+An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02).
+
+```java
+class Box<T> {
+    T value;
+    @mutating(InheritFrom.RECEIVER) @bound T get() { return value; }   // one definition, both modes
+}
+
+Box<Foo> a = makeBox();
+var x = a.get();                 // @bound Foo: x.mutate() below makes a mutable
+x.mutate();
+@fixed Box<Foo> b = makeBox();
+var y = b.get();                 // @fixed @bound Foo: b is @fixed, so get() lends read-only
 ```
 
 ### MUT-14 - Immutability is transitive
@@ -484,21 +516,10 @@ The declared type is unrestricted.
 ### MUT-22 - Non-`final` field is reassignable through a mutable receiver
 
 Reassigning a field, rebinding its slot, is the slot axis (MUT-20): granted by default and locked by `final`.
-Reassigning a field mutates the enclosing instance, so a non-`final` field is reassignable only where the class is mutable and the receiver is mutable (MUT-13, MUT-15).
-For the receiver `this` that means a constructor, a `@mutating` method, or an `onDrop()` body (MUT-15).
+A non-`final` field is only reassignable through a constructor, a `@mutating` method, or an `onDrop()` body (MUT-15).
 Through any other mutable variable the write follows ordinary Java member access.
 
-Every field of an immutable class is `final` and `@fixed`, including one inherited from a mutable ancestor (HIER-03), and writing either on it is redundant (MUT-31).
-
-The two axes are independent, giving four field forms.
-`C` names a mutable class (MUT-10) in the forms below.
-
-| Field form | Reassign (receiver mutable) | Mutate through |
-|---|---|---|
-| `C f` | yes | yes |
-| `final C f` | no | yes |
-| `@fixed C f` | yes | no |
-| `final @fixed C f` | no | no |
+Every field of an immutable class is `final` and `@fixed`, including one inherited from a mutable ancestor (HIER-03).
 
 ```java
 class User {
@@ -530,7 +551,7 @@ view.inc();                // ERROR: inc is @mutating, view is @fixed (MUT-15)
 
 ### MUT-31 - Filling a slot from a value of the other kind
 
-A slot is *immutable* when it carries `@fixed` or its declared type is an immutable class (MUT-10), and *mutable* otherwise.
+A slot is *immutable* when it carries `@fixed` or its declared type is an immutable type (MUT-10, MUT-11, MUT-18), and *mutable* otherwise.
 A value is immutable when its class is immutable or the binding it comes from is immutable or shared, and mutable otherwise.
 
 | slot | mutable value | immutable value |
@@ -598,87 +619,55 @@ It returns a `@fixed @bound` borrow bound to `in` (OWN-17).
 ### MUT-50 - A non-static inner class borrows its enclosing instance
 
 A non-static inner class holds an implicit borrow of the instance that created it.
-The borrow is a synthetic `final @fixed @borrow` field naming that enclosing instance, shared by default.
-By OWN-09 an inner instance is therefore `@bound` to its enclosing instance.
+The borrow is a synthetic `final @borrow` field naming that enclosing instance, mutable by default.
+By OWN-09 an inner instance is `@bound` to its enclosing instance.
 The enclosing borrow's mode is fixed on the inner-class declaration (OWN-00).
 
-`@mutating` in the inner-class declaration's modifier position widens the implicit borrow to `final @borrow`, an exclusive borrow of the enclosing instance.
-A `@mutating` inner class may not be `@fixed` (MUT-13) and may appear only inside a mutable class (MUT-01).
-The two axes are independent: `@fixed` or its absence fixes the inner class's own mutability, while `@mutating` or its absence fixes the borrow it takes on the enclosing instance.
+`@fixed` on the inner-class declaration narrows the implicit borrow to `final @fixed @borrow`, a shared borrow of the enclosing instance.
+An inner class with a mutable enclosing borrow may appear only inside a mutable class (MUT-10).
 
 Reaching an enclosing level beyond the direct one is transitive.
-A write to a field of an outer level succeeds only when every inner class between the write and that level is `@mutating`, making the whole access path a chain of mutable borrows.
-The first non-`@mutating` level borrows the level beyond it shared, and a write through that link is rejected (MUT-14).
+A write to a field of an outer level succeeds only when no inner class between the write and that level is `@fixed`.
+The first `@fixed` level borrows the level beyond it shared, and a write through that link is rejected (MUT-14).
 
 ```java
 class Document {
     int revision;
 
-    @mutating class Section {
+    class Section {
         int ordinal;
 
-        @mutating class Paragraph {
+        class Paragraph {
             @mutating void renumber() {
-                ordinal  = 2;   // OK: Paragraph is @mutating, so it holds Section as a mutable borrow
-                revision = 3;   // OK: every enclosing level is @mutating, so Document is reached mutably
+                ordinal  = 2;   // OK: Paragraph holds Section as a mutable borrow
+                revision = 3;   // OK: no level is @fixed, Document is reached mutably
             }
         }
     }
 
-    class Appendix {
+    @fixed class Appendix {
         int page;
 
-        @mutating class Footnote {
+        class Footnote {
             @mutating void renumber() {
-                page = 2;       // OK: Footnote is @mutating, so it holds Appendix as a mutable borrow
-                // revision = 1; // ERROR: Appendix is not @mutating, so Document is only shared-borrowed (MUT-14)
+                page = 2;       // OK: Footnote holds Appendix as a mutable borrow
+                // revision = 1; // ERROR: Appendix is @fixed, Document is shared-borrowed (MUT-14)
             }
         }
     }
 }
 ```
 
-### MUT-51 - `@mutating(InheritFrom.RECEIVER)` inherits the receiver's mutability
+### MUT-51 - `@mutating(InheritFrom.RECEIVER)` on a non-static inner class
 
-`InheritFrom.RECEIVER` (MUT-13) makes the receiver mode polymorphic, so the method requires only the mutability its caller supplies.
-Called on a mutable receiver it behaves as `@mutating`, taking an exclusive receiver (MUT-15), and called on a `@fixed` or shared receiver it behaves as a plain method that never mutates.
-
-A `@bound` return of an `InheritFrom.RECEIVER` method inherits the receiver's mutability.
-Bound to a mutable receiver the returned borrow is mutable, and bound to a `@fixed` receiver it is `@fixed`.
-When the return is a container or cursor, the mutability of the elements it lends inherits the same way.
-
-```java
-class Box<T> {
-    T value;
-    @mutating(InheritFrom.RECEIVER) @bound T get() { return value; }   // one definition, both modes
-}
-
-Box<Foo> a = makeBox();
-var x = a.get();                 // @bound Foo: x.mutate() below makes a mutable
-x.mutate();
-@fixed Box<Foo> b = makeBox();
-var y = b.get();                 // @fixed @bound Foo: b is @fixed, so get() lends read-only
-```
-
-The value is admitted equally on the inner-class `@mutating` of MUT-50.
-`@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow inherit the mutability of the `this` that constructs the inner instance.
-So one class serves as a mutable cursor when built from a mutable enclosing instance and a read cursor when built from a shared one.
-
-An `InheritFrom.RECEIVER` declaration is monomorphized once per receiver mutability, like any generic (COMP-02).
-
-### MUT-52 - Primitive types are immutable
-
-`boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, and `double` carry no mutable surface, so every position of primitive type is immutable (MUT-10, MUT-31).
-The copy substitution of MUT-12 therefore reaches every one of them, and a copy of a primitive carries no lifetime of its own.
-A primitive parameter, return, or field is a value copy, and `@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant.
-A `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
-A nullable primitive (NULL-02) is immutable in the same way.
+`@mutating(InheritFrom.RECEIVER)` on a non-static inner class makes its enclosing-instance borrow (MUT-50) inherit the mutability of the `this` that constructs the inner instance.
+One class then serves as a mutable cursor when built from a mutable enclosing instance and a read cursor when built from a shared one.
 
 ### MUT-60 - A local with no demanding use is effectively fixed
 
 A mutable local (MUT-40) is *effectively fixed* when none of its uses demands mutation.
 The demanding uses are calling a `@mutating` method on it, writing through it, passing it to a mutable slot, and returning it through a mutable return type (MUT-31).
-Calling a `@mutating(InheritFrom.RECEIVER)` method (MUT-51) is demanding only when the borrow it returns has a demanding use.
+Calling a `@mutating(InheritFrom.RECEIVER)` method (MUT-17) is demanding only when the borrow it returns has a demanding use.
 An effectively fixed local borrows its source shared, and a local with a demanding use borrows it mutably (OWN-02, OWN-03).
 The classification covers the whole local.
 A demanding use of an immutable local is rejected (MUT-15).
@@ -875,7 +864,7 @@ class Bar<T, @fixed S, V extends Counter> {
 var x = new Bar<Role, Counter, Counter>(/* … */);   // T admits Role, S admits Counter
 ```
 
-A container's elements take their mutability from the binding that holds the container (MUT-14, MUT-51), so a type argument carries `@fixed` only to freeze elements that a mutable container would otherwise lend mutably.
+A container's elements take their mutability from the binding that holds the container (MUT-14, MUT-17), so a type argument carries `@fixed` only to freeze elements that a mutable container would otherwise lend mutably.
 
 ```java
 class Registry<T extends Counter> {           // mutable bound: admits Counter, not Role
@@ -893,7 +882,7 @@ var live   = new Registry<Counter>();
 live.bump();                                  // OK
 var seen   = live.get();                      // mutable borrow: live is mutable
 @fixed Registry<Counter> ro = live;
-var read   = ro.get();                        // @fixed borrow: ro is @fixed (MUT-51)
+var read   = ro.get();                        // @fixed borrow: ro is @fixed (MUT-17)
 
 var names  = new Box<String>();               // OK: String is immutable, the bound admits it
 var counts = new Box<Counter>();
@@ -1767,7 +1756,7 @@ class T[] {
 ```
 
 `splitAt` re-borrows the receiver (MUT-15), and the returned pair is `@bound` to the receiver's source (LIFE-02).
-Over a mutable receiver the halves lend mutably, and over a `@fixed` or shared receiver they lend read-only (MUT-51), so one declaration serves both the in-place-update and the read split.
+Over a mutable receiver the halves lend mutably, and over a `@fixed` or shared receiver they lend read-only (MUT-17), so one declaration serves both the in-place-update and the read split.
 `forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
 Each chunk passed to `body` is a mut slice of the receiver whose borrow expires at the call's return, so successive chunks are pairwise disjoint by construction.
 Fold-style reductions express by capturing a mutable accumulator in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
@@ -1819,12 +1808,12 @@ public final class Arrays {
 }
 ```
 
-The split appears under two names because a static method has no receiver to inherit from, so `@mutating(InheritFrom.RECEIVER)` cannot be spelled here (MUT-51).
+The split appears under two names because a static method has no receiver to inherit from, so `@mutating(InheritFrom.RECEIVER)` cannot be spelled here (MUT-17).
 `splitAt` takes a shared borrow and lends read-only halves, `splitMutableAt` takes a mutable borrow and lends mutable ones.
 Both bind their return to the `@bound` parameter rather than to a receiver (OWN-17).
 Distinct names rather than an overloaded pair are required by OWN-13, which keeps the mutability annotations out of the overload signature.
 
-ARR-01's single `splitAt` is sugar over this pair (LAT-00): it desugars to `splitMutableAt` on a mutable receiver and to `splitAt` on a `@fixed` or shared one, which are the two monomorphizations MUT-51 produces.
+ARR-01's single `splitAt` is sugar over this pair (LAT-00): it desugars to `splitMutableAt` on a mutable receiver and to `splitAt` on a `@fixed` or shared one, which are the two monomorphizations MUT-17 produces.
 
 `stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter rather than to a receiver (OWN-17, OWN-18).
 Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`, and callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)`.
@@ -1870,7 +1859,7 @@ Instantiations encountered in this spec:
 - `Pair<T[], T[]>`: owned pair, returned by `splitOff`.
 The owning halves are obtained by destructing the pair, `give(p.left)` and `give(p.right)` (OWN-06).
 - `@bound Pair<@borrow T[], @borrow T[]>`: pair of borrowed halves, returned by `splitAt` (TARG-01, LIFE-02).
-Whether those halves lend mutably follows the receiver `splitAt` was called on (MUT-51).
+Whether those halves lend mutably follows the receiver `splitAt` was called on (MUT-17).
 
 The class itself is non-`@local`.
 Heterogeneous (`L ≠ R`) instantiations are permitted.
@@ -2021,14 +2010,14 @@ The compiler must reject:
 ### STD-08 — Borrow-checked iteration
 
 Iteration reuses Java's `Iterator<T>` and `ListIterator<T>` by name.
-`Iterable<T>.iterator()` is `@mutating(InheritFrom.RECEIVER)` (MUT-51), so the cursor it returns inherits the collection's mutability.
+`Iterable<T>.iterator()` is `@mutating(InheritFrom.RECEIVER)` (MUT-17), so the cursor it returns inherits the collection's mutability.
 Over a mutable collection the cursor holds an exclusive borrow and `next()` yields `@bound T`, so elements may be modified in place.
 Over a `@fixed` collection it holds a shared borrow and `next()` yields `@fixed @bound T`, so several cursors coexist and nested reads are admitted (OWN-03).
 There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`, not separate methods.
 
 The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-40).
-A loop body with no demanding use of the loop variable leaves the receiver effectively fixed (MUT-60, MUT-51), so nested reads over one mutable list need no annotation, and `fixed(source)` states the shared borrow where the body does mutate but the outer read must continue.
+A loop body with no demanding use of the loop variable leaves the receiver effectively fixed (MUT-60, MUT-17), so nested reads over one mutable list need no annotation, and `fixed(source)` states the shared borrow where the body does mutate but the outer read must continue.
 
 Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `@mutating listIterator()`, which always holds an exclusive borrow rather than an inherited one.
 An enhanced-for never reaches `ListIterator`.
@@ -2307,8 +2296,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@fixed` | `TYPE_USE` | - | Generic type-argument usage is `@fixed`, and requires nothing of the container | TARG-03 |
 | `@fixed` | `TYPE_PARAMETER` | - | `<@fixed T>` writes `@fixed` at every usage of `T`, leaving the bound unchanged | TARG-03 |
 | `@mutating` | `METHOD` | default `InheritFrom` | Method mutates its receiver, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | MUT-13, FN-01 |
-| `@mutating(InheritFrom.RECEIVER)` | `METHOD` | - | Method inherits the receiver's mutability | MUT-13, MUT-51 |
-| `@mutating` | `TYPE` | only inside a mutable class | Non-static inner class holds a mutable borrow of its enclosing instance | MUT-50 |
+| `@mutating(InheritFrom.RECEIVER)` | `METHOD` | - | Method inherits the receiver's mutability | MUT-13, MUT-17 |
 | `@mutating(InheritFrom.RECEIVER)` | `TYPE` | only inside a mutable class | Non-static inner class inherits the mutability of its enclosing instance | MUT-50, MUT-51 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver, and in an anonymous FI prefix applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |

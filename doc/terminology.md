@@ -77,7 +77,7 @@ Laterita does not auto-box at the type level, so a null-bearing integer is writt
 
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views.
-Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-51`, spelled as the two static methods `splitAt` and `splitMutableAt` in the `.java` mirror), `forEachChunk` → borrowed slices via callback.
+Single-thread: `T[].splitAt` → `@bound Pair<@borrow T[], @borrow T[]>` (borrowed halves, lending mutably or read-only as the receiver does per `MUT-17`, spelled as the two static methods `splitAt` and `splitMutableAt` in the `.java` mirror), `forEachChunk` → borrowed slices via callback.
 Cross-thread: `T[].splitOff` → `Pair<T[], T[]>` (owning halves), `Arrays.stream(@bound T[])` → `Stream<T>` for read-only parallel processing via `Spliterator`.
 See `ARR-01`, `ARR-02`, `ARR-04`.
 
@@ -379,7 +379,7 @@ Not part of the normative spec.
 ### Pair<L, R>
 General-purpose mutable class in `laterita.lang` carrying two values.
 The same declaration covers owned, borrowed, and mixed cases, driven by what is substituted for `L` and `R` per TARG-01.
-Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct field access `give(p.left)` / `give(p.right)`, OWN-06) and as `@bound Pair<@borrow T[], @borrow T[]>` by `T[].splitAt` (borrowed halves whose mutability follows the receiver, MUT-51).
+Instantiated as `Pair<T[], T[]>` by `T[].splitOff` (owned halves, destructed by direct field access `give(p.left)` / `give(p.right)`, OWN-06) and as `@bound Pair<@borrow T[], @borrow T[]>` by `T[].splitAt` (borrowed halves whose mutability follows the receiver, MUT-17).
 See `ARR-04`.
 
 ### ownership

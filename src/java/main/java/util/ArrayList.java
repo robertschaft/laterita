@@ -16,7 +16,7 @@
  *
  * Laterita fork: ownership, borrow, and mutability annotations added on top of
  * the OpenJDK source.
- * See doc/laterita-spec.md (STD-08, MUT-50, MUT-51, OWN-00).
+ * See doc/laterita-spec.md (STD-08, MUT-17, MUT-50, MUT-51, OWN-00).
  */
 package java.util;
 
@@ -39,7 +39,7 @@ import static laterita.lang.Intrinsics.broken;
  * {@code size}, never resizing in place.
  *
  * <p>Iteration is a single method.
- * {@link #iterator()} is {@code @mutating(InheritFrom.RECEIVER)} (MUT-51), so
+ * {@link #iterator()} is {@code @mutating(InheritFrom.RECEIVER)} (MUT-17), so
  * the cursor inherits the list's mutability: over a mutable list it lends
  * {@code @bound T} and holds an exclusive borrow, over a {@code @fixed} list
  * (e.g. {@code fixed(list)}) it lends {@code @fixed @bound T} and holds a
@@ -72,7 +72,7 @@ public class ArrayList<T> implements Iterable<T> {
     //       grow(), ...
 
     /**
-     * Returns a cursor whose mutability is inherited from this list (MUT-51).
+     * Returns a cursor whose mutability is inherited from this list (MUT-17).
      * One method serves both read and in-place-update iteration, and the two
      * are its monomorphizations.
      */
@@ -118,7 +118,7 @@ public class ArrayList<T> implements Iterable<T> {
         public @mutating @bound T next() {
             // TODO: if (cursor >= size) throw new NoSuchElementException();
             // Element mutability is inherited from the enclosing borrow
-            // (MUT-51):
+            // (MUT-17):
             // @bound T over a mutable list, @fixed @bound T over a
             // @fixed one.
             var element = elementData[cursor];
@@ -130,11 +130,11 @@ public class ArrayList<T> implements Iterable<T> {
     /**
      * The structural cursor.
      *
-     * <p>Class-level {@code @mutating} (not inherited): it always borrows the
-     * enclosing {@code ArrayList} mutably and exclusively, which is what
-     * licenses {@link #remove()} to restructure the list (MUT-50).
+     * <p>No class-level {@code InheritFrom.RECEIVER}: it takes the default
+     * enclosing borrow, mutable and exclusive, which is what licenses
+     * {@link #remove()} to restructure the list (MUT-50).
      */
-    @mutating private class ListItr implements ListIterator<T> {
+    private class ListItr implements ListIterator<T> {
 
         int cursor;
         int lastReturned = -1;
