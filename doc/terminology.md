@@ -126,12 +126,12 @@ See `OWN-15`.
 
 ### @fixed (annotation)
 The single mutability marker: it withdraws *referent mutability*, the right to mutate a value through a binding by calling a `@mutating` method on it or writing through it.
-Mutability is granted by default at every position, and nothing grants it, so `@fixed` is the only word on the axis (`MUT-01`).
-It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-02`, `MUT-03`).
+Mutability is granted by default at every position whose declared type is a mutable class, and nothing grants it, so `@fixed` is the only word on the axis (`MUT-01`).
+It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-03`).
 It is redundant where the position is already immutable and load-bearing everywhere else (`MUT-14`).
-On a type-parameter declaration `<@fixed T>` is shorthand for `<T extends @fixed Object>`, freezing every usage of `T` (`TARG-03`).
+On a type-parameter declaration `<@fixed T>` writes `@fixed` at every usage of `T` and leaves the bound unchanged (`TARG-03`).
 On a class declaration `@fixed class C` declares an immutable class (`MUT-05`).
-On a type, `@fixed C` names the *frozen view* of `C`, a supertype of `C` (`MUT-01b`).
+On a type, `@fixed C` names the *frozen view* of `C` (`MUT-01b`).
 A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@fixed`.
 See `MUT-01`, `MUT-01b`, `MUT-14`.
 
@@ -176,13 +176,13 @@ See `DROP-04`.
 
 ### effectively final
 A non-`final` local that is never reassigned.
-Its slot is fixed, so borrow analysis treats it as locked (`MUT-02`).
+Its slot is fixed, so borrow analysis treats it as locked (`MUT-03`).
 A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
 
 ### effectively fixed
-A local none of whose uses demands referent mutability: no `@mutating` call on it, no write through it, no passing it to a slot that is not `@fixed`, and no returning it through a return type that is not `@fixed`.
+A mutable local none of whose uses demands mutation: no `@mutating` call on it, no write through it, no passing it to a mutable slot, and no returning it through a mutable return type.
 Such a local borrows its source shared, so several of them over one value coexist (`OWN-03`).
-The referent-axis counterpart of *effectively final*, inferred the same way and for the same reason (`MUT-02`).
+It is the borrow-mode counterpart of *effectively final*, classified from the uses the same way and for the same reason (`MUT-02a`).
 
 ### fixed (static method on `laterita.lang.Intrinsics`)
 `fixed(x)` returns a `@fixed @bound` borrow of `x`, the expression-position form of the `@fixed` downgrade.
@@ -190,8 +190,9 @@ The original stays usable and several frozen views coexist.
 See `MUT-15`.
 
 ### frozen view
-`@fixed C`, the type carrying only the members of `C` that need no mutability.
-It is a supertype of `C`, so a `C` value fills a `@fixed C` slot and not the reverse, and `@fixed Object` is the top type (`MUT-01b`).
+`@fixed C`, the interface carrying only the members of `C` that need no mutability.
+Every mutable `C` implements it, so a `C` value fills a `@fixed C` slot and not the reverse, and `@fixed Object` is the top type (`MUT-01b`).
+It is not a type a class declaration names, so implementing it makes no class immutable (`HIER-01`).
 An immutable class declared under a mutable ancestor is the declaration-site form of the same thing (`HIER-03`, `HIER-04`).
 
 ### erased parameter types
@@ -508,7 +509,7 @@ See `MUT-10`, `MUT-09`.
 ### type-inferred variable
 A variable whose type is inferred from the RHS expression rather than written explicitly.
 Forms: `var name = expr` (reassignable), `final var name = expr` (slot locked), `@fixed var name = expr` (mutation through the referent withdrawn).
-A laterita `var` is reassignable by default, exactly as in Java, and a local's referent mutability is inferred from its own uses and capped by its initializer (`MUT-02`).
+A laterita `var` is reassignable by default, exactly as in Java, and takes its declared type, `@fixed` included, from the RHS of the first assignment (`MUT-02`).
 See `MUT-02`.
 
 ### type narrowing / smart cast

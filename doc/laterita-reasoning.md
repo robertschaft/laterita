@@ -40,7 +40,7 @@ Expression-position concepts can't be annotations (`@give x` would not parse) so
 With static import, call sites read `give(x)` and `broken()` unqualified.
 To `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`: a `var x = expr` is reassignable exactly as a Java `var`, and its referent mutability is inferred from the local's own uses, with `@fixed var x = expr` capping it (MUT-02).
+Type inference reuses Java's `var`: a `var x = expr` is reassignable exactly as a Java `var`, and takes its declared type, `@fixed` included, from the first RHS (MUT-02).
 No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
@@ -120,7 +120,7 @@ The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread lea
 
 ---
 
-## Mutability (MUT-01 through MUT-15)
+## Mutability (MUT-01 through MUT-16)
 
 ### Why `@fixed` is the single mutability marker (MUT-01)
 
@@ -141,12 +141,16 @@ It also keeps ordinary-looking Java code meaning what a Java reader expects: a `
 The cost is that a read-only intent over a mutable class must be written.
 That cost lands on the API that publishes the guarantee, which is where a reader looks for it, and a written guarantee is stronger than a defaulted one.
 
-### Why `@fixed C` is a supertype of `C` (MUT-01b, HIER-04)
+### Why `@fixed C` is the frozen view rather than a supertype (MUT-01b, HIER-04)
 
 `@fixed C` offers a subset of `C`'s surface: the methods that need no mutability and the fields read as `final` and `@fixed`.
 A value of `C` therefore satisfies every obligation a `@fixed C` slot imposes, and a `@fixed C` value satisfies fewer than a `C` slot demands.
-That is exactly a supertype relation, so the language states it as one instead of inventing a separate assignability rule for the annotation.
-Widening, argument passing, return covariance, and override variance all then follow from the subtyping the rest of the language already has, and `@fixed Object` falls out as the top type, which is what the `@fixed T` type-parameter bound desugars to (TARG-03).
+Assignability has to follow that shape, so widening, argument passing, return covariance, and override variance can all be read off the subtyping the language already has, and `@fixed Object` falls out as the top type.
+
+Calling `@fixed C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
+HIER-01 makes a class immutable when a type it names as a supertype is immutable, and `@fixed C` is immutable, so every class would inherit immutability from its own frozen view and the mutable kind would have no inhabitants.
+An implemented interface is the shape that fits: it carries the members and the assignability, it is what the frozen view actually is, and HIER-01 reads only the types a declaration names, which `@fixed C` is not.
+The circularity disappears without weakening HIER-01, which still has to hold for real supertypes.
 
 HIER-04 is the same relation read on declared class kinds, and it is what keeps MUT-10's check static.
 An immutable class satisfies `@fixed S` for each supertype `S` and not `S` itself, so a `@mutating` method can never be reached through a widening or a cast on a value the program treats as frozen.
@@ -161,25 +165,21 @@ Laterita keeps them apart.
 Folding both onto one marker would make the common "mutable object, locked slot" pattern, `private final List<Item> items`, inexpressible without one marker undoing half of the other, and would put an annotation on every reassigned-but-not-mutated local that Java writes bare.
 Keeping them separate lines each axis up with the word that already means it, and every combination is spellable with none redundant.
 
-Reassigning a slot repoints a name and mutates no object, so it needs no guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-02).
+Reassigning a slot repoints a name and mutates no object, so it needs no guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-03).
 
-### Why a local's referent mutability is inferred from its uses (MUT-02)
+### Why a local's borrow mode follows its uses (MUT-02, MUT-02a)
 
-A local is not a published contract.
-OWN-00 requires every fact needed to *use* a class to sit on its declaration, and a local sits inside one body where the compiler already sees every use and already runs the flow analysis that places borrows.
-So the marker buys the reader nothing the surrounding lines do not already show, and the language infers instead of asking.
-Java sets the precedent on the other axis: effective finality is inferred from use with no keyword, and CLO-02 infers a closure's capture mode the same way.
+A local's mutability is a declaration fact, read exactly where a Java reader reads it: `Counter c = ...` is mutable because `Counter` is, `@fixed Counter c = ...` is not, and `String s = ...` is not because `String` is not.
+A `var` local reads its declaration off the first RHS, which is the same place `var` already gets everything else.
+Nothing about the local is derived from what later lines do to it, so a reader answers "can this line mutate `c`?" from `c`'s declaration and `Counter`'s, never by scanning the rest of the block.
 
-Inference is also what keeps the mutable default from being expensive.
-A mutable borrow is exclusive (OWN-03), so a local that took one merely by being unannotated would lock its source for its whole live range, and the ordinary shape of reading code, several names over one structure or a nested read of one collection, would stop compiling.
-Under MUT-02 such a local has no demanding use, so it is effectively fixed, borrows shared, and coexists with any number of others.
-A local that does call a `@mutating` method, write through the binding, or hand the value to a mutable slot has announced the stronger borrow in the line that needs it, which is where a reader looks.
+What the uses do decide is narrower and is not a mutability question at all: which *borrow* the local takes from its source.
+A mutable borrow is exclusive (OWN-03), so a local that took one merely by being of a mutable type would lock its source for its whole live range, and the ordinary shape of reading code, several names over one structure or a nested read of one collection, would stop compiling.
+MUT-02a classifies such a local as effectively fixed, so it borrows shared and coexists with any number of others, and a local that calls a `@mutating` method, writes through the binding, or hands the value to a mutable slot takes the exclusive borrow in the line that needs it.
+That classification is not published, sits inside one body, and mirrors what the compiler already does for effective finality (MUT-03) and for closure capture modes (CLO-02).
 
-`@fixed` remains available on a local for the case that wants the restriction stated and checked rather than derived, and it caps the inference so a later mutating use is rejected instead of silently widening the borrow.
-The initializer caps it from the other side: inference decides what the local demands, and the value it was given decides what can be supplied.
-
-Inference needs no special case for primitives.
-A primitive has no mutating surface, so no use of a primitive local is ever demanding, and `var n = computeCount();` binds with no mismatch.
+Splitting the two keeps `@fixed` on a local meaningful.
+It states and checks a restriction on the local itself rather than nudging a classification, so a later mutating use is a rejected demand on an immutable local, not a silently widened borrow.
 
 ### Why fields default to mutable (MUT-07a, MUT-07b)
 
@@ -256,7 +256,7 @@ The two bodies are identical apart from a single mutability qualifier, and the c
 `InheritFrom.RECEIVER` writes the operation once and lets the receiver's mutability flow to the result, so a single `iterator()` serves both read and in-place-update iteration and the enhanced-for needs no cursor-selection rule.
 The `Iterable`/`MutIterable` and `Iterator`/`MutIterator` splits that a two-method design forces both collapse onto it.
 
-It composes with the local inference of MUT-02 in the way that makes ordinary collection code compile.
+It composes with the borrow classification of MUT-02a in the way that makes ordinary collection code compile.
 An inherited call is a demanding use of its receiver only when the borrow it returns has a demanding use, so a loop that reads its elements leaves the collection shared and nests with any other read of the same collection, while a loop that mutates an element takes the exclusive borrow it needs and no more.
 Neither shape carries an annotation.
 
@@ -272,12 +272,30 @@ The selector is a named `InheritFrom` enum rather than a bare flag so the same i
 ### Why the slot-filling cases resolve as they do, and why `fixed` exists (MUT-14, MUT-15)
 
 Mutability subtracts freely and cannot be added, so the four cases of MUT-14 are not policy but the only sound reading.
-`@fixed` on a mutable value is a downgrade, `@fixed` on a value that is already immutable removes nothing, and a bare slot fed an immutable value is the one case that has to fail, because it would have to add a capability the value never had.
+`@fixed` on a mutable value is a downgrade, `@fixed` on a value that is already immutable removes nothing, and a mutable slot fed an immutable value is the one case that has to fail, because it would have to add a capability the value never had.
 Accepting the redundant case rather than rejecting it matches `final`'s treatment and lets generated or defensive code state a property without the compiler second-guessing whether it was needed.
+
+A slot's kind comes from its declared type as well as from `@fixed`, which is what keeps that failing case rare and predictable.
+`String` is immutable, so `String s` is an immutable slot and `@fixed String s` declares the same one, and a slot can only be mutable where its type could honor mutation.
+Without that reading every ordinary `String`, record, and primitive position would be a mutable slot fed an immutable value, so the one failing case would swallow most of the language and `@fixed` would have to be written on declarations where it withdraws nothing.
+It also carries into generics for free: a usage of `T` substituted by an immutable argument is an immutable slot with nothing generic-specific said about it (TARG-03).
 
 `fixed(x)` is the expression-position form of the same downgrade, standing to `@fixed` as `give` stands to `@take`: the annotation freezes a declaration, the intrinsic freezes an expression.
 It earns its place because the downgrade is most often wanted mid-expression, on the source of a loop or a call argument, where no declaration exists to annotate.
 It returns a shared borrow rather than a copy, so the original stays usable and several frozen views coexist.
+
+### Why primitives need no rules of their own (MUT-16)
+
+The ownership model describes slots that point at heap values with one owner among them, and a primitive fits none of it: there is nothing to point at, nothing to drop, and no borrow of an `int` that differs observably from a copy.
+The reflex is to carve primitives out with their own rule set, and that would restate for eight types what the immutable-class rules already say.
+
+A primitive has no `@mutating` method and no mutable field, so it carries no mutable surface, which is the definition of the immutable kind (MUT-05).
+Everything follows from that with no new machinery.
+Every primitive position is an immutable slot (MUT-14), so `void f(int x)` lends shared rather than taking an exclusive borrow of the caller's slot, and MUT-05's copy-for-borrow substitution turns that lend into the value copy Java already has.
+A copy of a primitive carries no lifetime of its own, so `@bound` and `@borrow` on one constrain nothing and are redundant rather than special-cased.
+
+Without the rule, MUT-04's mutable parameter default reads `void f(int x)` as Rust's `&mut i32`, an out-parameter, which is neither what a Java developer writes nor what the rare shared-counter case wants.
+That case is served where it is served in Rust, by `AtomicInt` and `Cell<int>` (STD-04, STD-05), with the sharing visible at the declaration.
 
 ### Why immutability is the marked class kind (MUT-05 through HIER-04)
 
@@ -312,7 +330,11 @@ Writing `@fixed` on a class that already inherits it is redundant rather than an
 Mutability is not a guarantee, so nothing has to inherit it and nothing does.
 An unmarked class is mutable because that is what "published no immutability promise" means, and `Object`, which publishes none, is an ordinary mutable class.
 A neutral root, a third kind belonging to one class, is rejected: it adds a case to every rule that reads a supertype's kind and buys only a different default for classes extending `Object` directly.
-`@fixed Object` names the frozen view of the root (MUT-01b), which is the top type and the bound that `<@fixed T>` desugars to, so nothing is lost by the root being an ordinary class.
+`@fixed Object` names the frozen view of the root (MUT-01b), which is the top type and the implicit type-parameter bound (TARG-03), so nothing is lost by the root being an ordinary class.
+
+The root's own methods take the top type rather than the mutable one.
+`equals` compares, so it needs no mutability from its argument, and declaring it `equals(@fixed Object)` lets every value fill it, immutable arguments included.
+`equals(Object)` would demand a mutable argument for a read, which no immutable value could satisfy, so `record.equals(otherRecord)` would not compile.
 
 An immutable class extending a mutable one (HIER-03) is the useful corner the rules leave open.
 It inherits the mutable API but cannot call it (MUT-10), so `@fixed class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
@@ -1169,7 +1191,7 @@ Secret-zeroing isn't actually solved by `String.clear()` because copies have typ
 The remaining motivation, narrow-domain in-place edits, doesn't justify a mut-method surface that the rest of the design pushes against.
 
 A variable or field may still be *declared* `@fixed String`, since `@fixed` is general (MUT-01) and rejecting it on one type would be a special case, but it withdraws nothing.
-`String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-02, MUT-07b), not from the referent axis.
+`String` has no `@mutating` method, and reassignment comes from the non-`final` slot (MUT-03, MUT-07b), not from the referent axis.
 
 ### Why default receiver mode is borrow (STR-08)
 
@@ -1252,27 +1274,28 @@ Rust draws the same line: a value produced through `&self` is owned by the calle
 
 Even the aliasing case adds no generic-specific rule.
 A mutable borrow of a held value re-borrows the whole structure (OWN-03, MUT-10), exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), so it is available only while the structure is held mutably, the same as drawing a mutable borrow from any holder.
-Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows can never each draw a mutable borrow of the same held value, and a local owning its structure satisfies the exclusivity through the inference of MUT-02.
+Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows can never each draw a mutable borrow of the same held value, and a local owning its structure satisfies the exclusivity through the classification of MUT-02a.
 A `@borrow` held value keeps `@fixed` as a meaningful marker that distinguishes a shared borrow from a mutable one, which is why a `@borrow` type argument may still carry it.
 A genuinely shared structure whose held values mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
-### Why a type parameter takes its mutability from its bound, and `@fixed` opts out (TARG-03)
+### Why the bound decides admission and the argument decides mutability (TARG-03)
 
-A generic body is checked once and monomorphized against every argument (COMP-02), so it must be sound for the most capable argument it admits.
-The bound names exactly that argument, so a usage of `T` carries the bound's kind and nothing else has to be written.
-The implicit bound is `Object`, which is mutable (HIER-02), so an unconstrained `T` is mutable, and a constrained parameter such as `T extends Map` or `T extends Money` carries that supertype's kind for free with no per-usage marks.
-A body checked against a possibly-mutable `T` stays correct when `T` turns out to be immutable, so the reading is conservative in the safe direction.
-Because a mutable `T`'s surface is unknown to the body, no `@mutating` method of it can be named there, and what the body gains from the mutable reading is only the right to pass a `T` on to another mutable slot.
+Two questions meet at a type parameter and only one marker was ever needed for them.
+Which arguments may be substituted is the bound's question, and Java already answers it by subtyping.
+What a usage of `T` may do is the usage's question, and after substitution a usage is an ordinary position whose declared type is the argument, so MUT-14 answers it with no generic-specific rule: `Box<Counter>` holds a mutable element, `Box<String>` an immutable one.
 
-`@fixed` is the opt-out, mirroring how `@own` (TARG-06) opts a parameter out of admitting borrows.
-`@fixed T extends B` at the declaration, shorthand for `T extends @fixed B`, freezes every usage at once and is the form a value-only container wants.
-`@fixed` on a single usage narrows just that occurrence, for a body that stores a `T` mutably in one field but exposes it immutably through one accessor.
+Keeping them apart is what makes `Box<String>` compile.
+The implicit bound has to be the top type `@fixed Object`, because a mutable `Object` bound would admit only mutable arguments and reject every immutable one, and an unconstrained parameter that cannot hold a `String` is not a container.
+A written bound then narrows admission exactly as far as the body needs: `class Registry<T extends Counter>` calls `inc()` on a `T`, so it must admit only arguments that carry `inc()`, and the mutable bound says so.
+
+The body stays checkable against the bound alone, which is what keeps OWN-00 intact for generics.
+A body may name the bound's `@mutating` methods and nothing else, so a bound with no mutable surface admits no mutating call and needs no separate proof per argument.
+The mutability that reaches a *caller* is a different matter and travels the ordinary routes: from the binding that holds the container (MUT-09) and, at a lending method, from `@mutating(InheritFrom.RECEIVER)` (MUT-13).
+That is why an unconstrained `Box<T>` can lend a mutable `Counter` while its own body could not have mutated one.
+
+`@fixed` at the declaration is then a pure abbreviation, mirroring how `@own` (TARG-06) is a pure restriction: `class Foo<@fixed T extends B>` writes `@fixed T` at each usage and leaves `B` alone, so a value-only container states its intent once instead of at ten usages.
+Folding a bound widening into the same marker would tie a body-side abbreviation to a caller-side admission rule, leaving "admits only mutable arguments, usages frozen" unspellable and making `class Foo<@fixed T>` admit arguments a reader deduced from the bound.
 Because `@fixed` only withdraws a capability, it requires nothing of its holder, the opposite of the bare form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-10).
-
-The declaration-site form *widens* what the parameter admits rather than narrowing it, which is the reading that makes the three shapes a generic author actually wants fall out of the bound alone.
-A body that calls a `@mutating` method on a `T` needs a mutable bound, and `class Registry<T extends Counter>` already supplies it: `@fixed Counter` is a supertype of `Counter` (MUT-01b), so it fails the bound and no argument the body cannot honor is admitted.
-A body that never mutates a `T` needs the same declaration and nothing more, because the mutability its callers see on an element comes from the binding that holds the container (MUT-09) and, at a lending method, from `@mutating(InheritFrom.RECEIVER)` (MUT-13), not from the type argument.
-A body that must hold elements frozen even through a mutable container writes `<@fixed T extends Counter>`, whose bound is `@fixed Counter` and so admits mutable and immutable arguments alike.
 
 That leaves nothing for a third marker to do.
 A positive marker on a bound (`T extends @mut Counter`) restates what a mutable bound already means, and a third "either kind" marker (`<@fixable T extends Counter>`) asks the argument's own mutability to reach the body, which the check-once discipline forbids: a body proved sound against one bound cannot also be proved sound against a stronger reading of the same parameter.

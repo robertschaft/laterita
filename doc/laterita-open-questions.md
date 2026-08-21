@@ -146,7 +146,7 @@ The shape of the stdlib carrier is what's open.
 **Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a laterita spelling.
 
 **The issue.**
-Under MUT-02 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
+Under MUT-03 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
 The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
 Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
 The tension is that `val` is not a Java keyword.
@@ -157,46 +157,6 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 - If so, only in `.lat` files (a LAT-topic form), or in `.java` too through an importable `val` type the compiler special-cases?
 
 **Related codes:** MUT-02, MUT-03, GEN-14, LAT-00.
-
-## OQ-33 — Primitives in the ownership and mutability system
-
-**Surfaced when:** thinking through the `OWN` framing of variables as Java-variable slots carrying an ownership discipline.
-The framing maps cleanly onto reference types (each slot points at a heap value, with one owner among the slots) but is awkward for `int`, `long`, `double`, `boolean`, etc.
-Primitives have no heap identity: there is nothing to point at, nothing to drop, and a "borrow" of an `int` has no observable difference from a copy.
-
-**The issue.**
-A bare `int x` parameter in Laterita is a mutable slot by MUT-04, so read literally it behaves like Rust's `&mut i32`: the compiler passes a pointer to the caller's int slot and the callee mutates through it.
-This is implementable (Laterita compiles natively per COMP-01) but unusual, and MUT-04's default makes it the reading every unannotated primitive parameter gets, which is why the question needs an answer rather than a convention.
-The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `AtomicI32` with interior mutability.
-`&mut <primitive>` is rare even in Rust stdlib (it shows up generically through `mem::swap` / `mem::replace`, not as a deliberate out-parameter).
-The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern, struct and array out-pointers dominate.
-Java itself has no equivalent: primitives are pass-by-value.
-
-If primitives sit outside the borrow system entirely, follow-on rules need to be specified.
-
-**Partly settled.**
-MUT-02 infers a local's referent mutability from its uses, and a primitive has no `@mutating` method to call, so no use of a primitive local is demanding and `var n = computeCount();` binds with no annotation on either side.
-The local-and-return mutability concern is therefore closed, and what remains open is the ownership and borrow treatment of primitives, which MUT-04's mutable parameter default now makes urgent rather than academic.
-
-**The question.**
-
-- *Is a primitive parameter always pass-by-value, so that MUT-04's mutable default has nothing to bite on?*
-  The proposal: yes, a primitive parameter is a copy, `@fixed` on it is redundant rather than meaningful, and a bare primitive parameter takes no exclusive borrow of the caller's slot.
-  A primitive cannot be borrowed in a way distinguishable from a copy, and the few cases that genuinely want pass-by-pointer (shared counters, atomic flags) are served better by `AtomicInt` / `AtomicBoolean` (STD-04 territory) or by `Cell<int>` (STD-05).
-  Leaving this unstated is what would make `void f(int x)` read as an out-parameter.
-- *What about `@bound` on primitive returns and `@borrow` on primitive fields?*
-  The proposal: both rejected for the same reason, there is no storage to bind a lifetime to.
-  A primitive field is always its own owner (the enclosing instance holds the bits inline).
-- *Does any of this carry across `Nullable` (NULL-02)?*
-  An `int?` is encoded as a tagged union, not a primitive pointer.
-  Borrow rules might apply to the storage of the nullable wrapper even when the underlying type is primitive.
-
-**Why it matters.**
-The `OWN` model of variables-as-ownership-disciplined-slots only holds for reference types.
-Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately what a bare `int x` parameter, a `@bound int foo()`, and a `@borrow int x;` field mean.
-The natural answer is "primitives are pass-by-value and carry no referent axis", but the spec should say so once rather than leave it implicit, and MUT-04's mutable parameter default means the implicit reading is now the wrong one.
-
-**Related codes:** OWN-01, OWN-13, OWN-16, MUT-01, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
 
 ## OQ-36 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
 
@@ -242,3 +202,36 @@ Does it subsume the build-time annotation processing that already replaces seria
 A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogramming layer to replace the runtime reflection it drops, folds the OQ-36 predicates into zero-cost constants, and provides the substrate for the build-time code generation the language already relies on.
 
 **Related codes:** COMP-02, RESV, OQ-36, GH #14.
+
+---
+
+## OQ-38 — The surface name of `@fixed`
+
+**Surfaced when:** settling MUT-01 on a single negative marker for the referent axis, which fixes the shape of the word but not the word itself.
+
+**The issue.**
+`@fixed` reads well against `final` on a local (`final @fixed List<Item> items` is two locks named by two words) and it is short.
+It is less good elsewhere.
+On a class declaration `@fixed class Money` says "this class cannot change" where the intended reading is "instances of this class expose no mutation", and a reader coming from Java hears `fixed` as the slot property `final` already owns.
+On a parameter, `void render(@fixed Scene s)` states a read-only lend, which is the meaning most call sites care about, and `fixed` names it only indirectly.
+The marker appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
+
+Candidates carry different trade-offs.
+
+- `@ro` / `@readonly` names the capability directly and matches what C# (`readonly`), C++ (`const`), and D (`const`) call it.
+  It is the least ambiguous on parameters and fields.
+  `@readonly class Money` is still odd, and `@ro` is terse to the point of being unguessable.
+- `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-05 does not.
+  It reads poorly on a parameter, where the point is the lend mode, not the value-ness.
+- `@frozen` matches the "frozen view" term the spec already uses (MUT-01b, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
+- `@const` is the C++/D spelling and would be immediately understood, but `const` is a reserved Java keyword, so `@const` and the keyword sit confusingly close.
+
+**The question.**
+
+- Which name does the marker carry across all eight positions?
+- Is one name for every position the right call, or does the class declaration want a different word from the binding positions, at the cost of MUT-01's single-word property?
+
+**Why it matters.**
+The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
+
+**Related codes:** MUT-01, MUT-01b, MUT-05, TARG-03, HIER-03.
