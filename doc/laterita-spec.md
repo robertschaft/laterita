@@ -55,7 +55,7 @@ Other variables holding the same value are **borrows**, bounded by the owner's l
 A local owns or borrows its value depending on its initializer.
 
 - A **producer expression** (call, constructor, literal) yields an owner.
-- A **naming RHS** (the name of an existing variable) yields a shared borrow of that source.
+- A **naming RHS** (the name of an existing variable) yields a borrow of that source, shared or mutable per MUT-02a.
 
 ```java
 String a = makeString();    // owner: RHS is a producer
@@ -397,12 +397,6 @@ view.read();               // OK
 view.inc();                // ERROR: inc is @mutating, view is @fixed (MUT-10)
 ```
 
-`@fixed` on an element type freezes the elements of a container (TARG-03):
-
-```java
-List<@fixed Counter> all = new ArrayList<>();   // all.get(0).inc() rejected
-```
-
 ### MUT-02 - Local mutability follows the declaration
 
 A local grants mutation of its referent unless it is immutable.
@@ -455,18 +449,21 @@ config.setProperty("verbose", "true");   // OK: config is mutable
 config = loadConfig();                   // ERROR: final locks the slot
 ```
 
-A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
-Only an effectively final local may be captured by a closure (CLO-01).
+A parameter slot is always locked, so a parameter name cannot be reassigned in the body (OWN-13).
+A `@take` parameter may still be moved onward with `give` (OWN-07), which consumes the value rather than rebinding the slot.
+
 Reassigning a slot that owns its value drops the previous value first (DROP-01).
 
 `final` is never redundant on a local.
 
+### MUT-03a - A local that is never reassigned is effectively final
+
+A non-`final` local that is never reassigned is *effectively final*: its slot is fixed, so borrow analysis (OWN-02, OWN-03) treats it as locked.
+Only an effectively final local may be captured by a closure (CLO-01).
+
 ### MUT-04 - Parameter mutability modes
 
-Extending OWN-13, a parameter slot is always `final`: the parameter name cannot be reassigned in the body.
-A `@take` parameter may still be moved onward with `give` (OWN-07), which consumes the value rather than rebinding the slot.
-
-A bare parameter of a mutable class receives a mutable borrow, and `@fixed` makes it a shared borrow.
+Extending OWN-13, a bare parameter of a mutable class receives a mutable borrow, and `@fixed` makes it a shared borrow.
 With `@take`, a bare parameter receives ownership with mutate-through, and `@fixed` receives ownership frozen.
 
 `C` names a mutable class (MUT-05) in the forms below.
@@ -490,6 +487,9 @@ When `@fixed` is not written, the kind follows the supertypes (HIER-01, HIER-02)
 
 A mutable class carries a *mutable surface*: `@mutating` methods (MUT-08) and fields that may be reassigned or mutated through (MUT-07a, MUT-07b).
 No `@mutating` method may be declared on an immutable class or interface.
+
+### MUT-05a - A borrow of an immutable instance may be a copy
+
 Under the same lifetime constraints the compiler may substitute a copy of an immutable instance for a borrow of it, and the reverse.
 
 ### MUT-06 - `record` and `enum` are immutable
@@ -558,7 +558,7 @@ class Counter {
 An immutable binding grants no mutation of anything reached through it, whatever the declarations of the fields on the path.
 Mutation through a borrow requires the borrow itself to be mutable.
 
-A borrow of an immutable class is always shared, since there is no mutable surface for a borrow to hold exclusively (OWN-03).
+A borrow of an immutable class is always shared (OWN-03).
 
 ### MUT-10 - Calling `@mutating` methods
 
@@ -692,7 +692,7 @@ It returns a `@fixed @bound` borrow bound to `in` (OWN-17).
 ### MUT-16 - Primitive types are immutable
 
 `boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, and `double` carry no mutable surface, so every position of primitive type is immutable (MUT-05, MUT-14).
-The copy substitution of MUT-05 therefore reaches every one of them, and a copy of a primitive carries no lifetime of its own.
+The copy substitution of MUT-05a therefore reaches every one of them, and a copy of a primitive carries no lifetime of its own.
 A primitive parameter, return, or field is a value copy, and `@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant.
 A `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
 A nullable primitive (NULL-02) is immutable in the same way.
@@ -702,7 +702,7 @@ A nullable primitive (NULL-02) is immutable in the same way.
 A mutable parameter (MUT-14) that its body never uses demandingly (MUT-02a) is reported, naming `@fixed` as the fix.
 The report is a warning: the declaration is the published contract and compiles as written.
 
-The rule reaches a parameter whose declared type is a type parameter through the bound, since the body is checked once against it (TARG-03).
+The rule reaches a parameter whose declared type is a type parameter through the bound (TARG-03).
 It does not reach a parameter whose declared type is an immutable class, which demands nothing to withdraw, nor an override, whose parameter modes are constrained by the method it implements (HIER-05).
 
 ```java
@@ -733,7 +733,7 @@ A class or interface that is not immutable by construction (MUT-06), carries no 
 ### HIER-03 - Immutable subclass of a mutable ancestor is a frozen view
 
 An immutable class extending a mutable class inherits its ancestors' fields and `@mutating` methods.
-The inherited `@mutating` methods are not callable on the immutable class (MUT-10), and its inherited fields are `final` and `@fixed` (MUT-07b).
+The inherited `@mutating` methods are not callable on the immutable class (MUT-10).
 
 ```java
 class Counter {
@@ -846,7 +846,7 @@ The borrow checker needs nothing beyond the bound to check the body, and nothing
 `@fixed` on the type-parameter declaration is a usage shorthand.
 `class Foo<@fixed T extends B>` writes `@fixed T` at each usage of `T` in the body, and leaves `B`, and with it the arguments the parameter admits, unchanged.
 Written on a single usage (`@fixed T field`, `List<@fixed T> xs`, a `@fixed T` parameter, return, or local) it freezes that occurrence and leaves the rest as the argument supplies.
-`@fixed` requires nothing of its holder, since it only withdraws a capability.
+`@fixed` requires nothing of its holder.
 
 The two decisions are independent, giving six declaration forms.
 `B` names a mutable class (MUT-05) in the forms below.
@@ -1537,7 +1537,7 @@ Closure may be invoked any number of times sequentially but not concurrently.
 - **Consume**: captured variables include a moved value.
 Closure may be invoked exactly once.
 
-A captured local must be effectively final (MUT-03): neither the closure body nor the enclosing method may reassign it.
+A captured local must be effectively final (MUT-03a): neither the closure body nor the enclosing method may reassign it.
 This is Java's own lambda-capture rule (JLS 15.27.2).
 Mutation of captured state therefore always goes through the referent axis: the closure captures a mutable local and mutates through it, the checked form of Java's holder idiom.
 Such a closure is a mut-call value (CLO-04), invocable only through a mutable variable (CLO-03).
@@ -2358,7 +2358,7 @@ Stdlib static methods that carry laterita-specific semantics live on `laterita.l
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls, the laterita compiler attaches the additional semantics specified in the rules above.
 
-Type inference uses Java's `var` keyword, which changes neither mutability axis (MUT-02).
+Type inference uses Java's `var` keyword, which changes neither mutability axis (MUT-02, MUT-03).
 
 Java's `synchronized` keyword is not supported: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block.
 Mutual exclusion is provided exclusively through `Mutex<T>` (STD-09) for data-bound locking and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less / multi-condition cases.
@@ -2666,7 +2666,7 @@ This reproduces Lombok's per-instance private-lock semantics through the existin
 
 `val` is unsupported in laterita.
 Lombok's `val` is an immutable inferred local, which laterita spells `final var` (MUT-02, MUT-03).
-Lombok's `var` maps to laterita's `var` unchanged: both declare a reassignable inferred local (MUT-02).
+Lombok's `var` maps to laterita's `var` unchanged: both declare a reassignable inferred local (MUT-03).
 Such a local takes its referent mutability from the first RHS (MUT-02), a distinction Lombok does not have.
 See OQ-34.
 

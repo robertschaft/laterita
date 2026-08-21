@@ -167,7 +167,7 @@ Laterita keeps them apart.
 Folding both onto one marker would make the common "mutable object, locked slot" pattern, `private final List<Item> items`, inexpressible without one marker undoing half of the other, and would put an annotation on every reassigned-but-not-mutated local that Java writes bare.
 Keeping them separate lines each axis up with the word that already means it, and every combination is spellable with none redundant.
 
-Reassigning a slot repoints a name and mutates no object, so it needs no guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-03).
+Reassigning a slot repoints a name and mutates no object, so it needs no guard, and a never-reassigned slot is treated as effectively final for borrow analysis (MUT-03a).
 
 ### Why a local's borrow mode follows its uses (MUT-02, MUT-02a)
 
@@ -194,7 +194,7 @@ What a field marker adds on top is a restriction the class states about *itself*
 `final @fixed List<Item> items` is the class publishing that it never mutates the list at all, a promise Java cannot express and that is worth a word when it is true.
 Reassigning a field is the orthogonal slot axis (MUT-07b), reachable only through a mutable receiver, so an immutable class exposes no field mutation of either sort after construction and needs neither marker on its own fields (MUT-07b).
 
-### Why a parameter slot is always final (MUT-04)
+### Why a parameter slot is always final (MUT-03)
 
 A parameter name is a slot the caller filled.
 Rebinding it inside the body discards the link to what the caller passed, a move Java permits but style guides routinely forbid.
@@ -220,6 +220,12 @@ A receiver-mutating method answers a question Java developers have always had to
 Today you read the body or hope the documentation is accurate.
 With `@mutating` on the method, the compiler knows and the caller knows.
 By MUT-10 a `@mutating` method is only callable on a mutable receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
+
+### Why a borrow of an immutable class is always shared (MUT-09)
+
+Exclusivity exists to keep a mutation from being observed through a second name.
+An immutable class offers no mutable surface for a borrow to hold, so there is nothing for exclusivity to protect and no reason to pay its cost.
+Making such borrows shared is what lets any number of readers coexist over one immutable value, and it is the precondition for the copy substitution of MUT-05a: a copy and a borrow are interchangeable only when no holder can tell them apart.
 
 ### Why mutability is transitive (MUT-10)
 
@@ -293,7 +299,7 @@ The reflex is to carve primitives out with their own rule set, and that would re
 
 A primitive has no `@mutating` method and no mutable field, so it carries no mutable surface, which is the definition of the immutable kind (MUT-05).
 Everything follows from that with no new machinery.
-Every primitive position is an immutable slot (MUT-14), so `void f(int x)` lends shared rather than taking an exclusive borrow of the caller's slot, and MUT-05's copy-for-borrow substitution turns that lend into the value copy Java already has.
+Every primitive position is an immutable slot (MUT-14), so `void f(int x)` lends shared rather than taking an exclusive borrow of the caller's slot, and MUT-05a's copy-for-borrow substitution turns that lend into the value copy Java already has.
 A copy of a primitive carries no lifetime of its own, so `@bound` and `@borrow` on one constrain nothing and are redundant rather than special-cased.
 
 Without the rule, MUT-04's mutable parameter default reads `void f(int x)` as Rust's `&mut i32`, an out-parameter, which is neither what a Java developer writes nor what the rare shared-counter case wants.
@@ -306,6 +312,7 @@ The cost lands outside the file where the mistake was made, which is the worst p
 
 What the compiler can do is say so.
 The body is already analysed for the demanding uses that classify a local (MUT-02a), so the same analysis answers whether a parameter's mutability was ever used, and the fix is one word the diagnostic can name.
+It reaches a parameter typed by a type parameter for the same reason: TARG-03 checks the body once against the bound, so one pass answers the question for every argument rather than per monomorphization.
 
 It stays a warning because the declaration may be deliberate.
 An interface method, a hook a subclass will override with a mutating body, or a signature held stable for source compatibility all demand mutability the current body does not use, and an error would force `@fixed` onto declarations whose author has a reason not to write it.
@@ -318,7 +325,7 @@ A reader classifying a type wants the second answer from its declaration line, a
 
 The marker is the immutable kind rather than the mutable one for the same reason the binding-level marker is negative.
 Immutability is the promise, mutability the absence of one, and a promise is what a declaration exists to publish.
-`@fixed class Money` tells a reader and the compiler that no instance ever changes, which is a fact with consequences everywhere the type appears: no `@mutating` methods, fields `final` and `@fixed`, borrows always shared (MUT-09), and copy-for-borrow substitution permitted (MUT-05).
+`@fixed class Money` tells a reader and the compiler that no instance ever changes, which is a fact with consequences everywhere the type appears: no `@mutating` methods, fields `final` and `@fixed`, borrows always shared (MUT-09), and copy-for-borrow substitution permitted (MUT-05a).
 An unmarked class publishes none of that and is an ordinary Java class.
 
 This runs with the Valhalla value-class proposal rather than against it, where the identity class is the unmarked default and `value class` is the opt-in, and it keeps a Laterita class declaration meaning what the same line means in Java.

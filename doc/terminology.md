@@ -174,9 +174,15 @@ Compiler bookkeeping tracking whether each field of a destructed value is still 
 Used to emit correct `onDrop()` calls when only some fields remain.
 See `DROP-04`.
 
+### demanding use
+A use of a local that requires mutation: calling a `@mutating` method on it, writing through it, passing it to a mutable slot, or returning it through a mutable return type.
+A local with one borrows its source mutably, and a local with none is *effectively fixed* (`MUT-02a`).
+A demanding use of an immutable local is rejected (`MUT-10`).
+See `MUT-02a`.
+
 ### effectively final
 A non-`final` local that is never reassigned.
-Its slot is fixed, so borrow analysis treats it as locked (`MUT-03`).
+Its slot is fixed, so borrow analysis treats it as locked (`MUT-03a`).
 A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
 
 ### effectively fixed
@@ -312,6 +318,18 @@ A mutable borrow requires the source variable to be mutable, or the borrow to oc
 A borrow of a value of an immutable class is always shared (`MUT-09`).
 See `OWN-03`, `OWN-13`.
 
+### mutable class
+A class or interface that is not declared `@fixed` and inherits immutability from no supertype, the default kind (`HIER-02`).
+It may declare `@mutating` methods and fields that are reassigned or mutated through (`MUT-05`).
+Every mutable class implements its own *frozen view* `@fixed C` (`MUT-01b`).
+See `MUT-05`, `HIER-02`.
+
+### mutable slot / immutable slot
+A slot is *immutable* when it carries `@fixed` or its declared type is an immutable class, and *mutable* otherwise (`MUT-14`).
+The kind decides what may fill the slot: a mutable slot rejects an immutable value, and an immutable slot accepts either, downgrading a mutable one to its frozen view.
+`@fixed` on a slot whose declared type is already immutable is redundant, so `String s` and `@fixed String s` declare the same slot.
+See `MUT-14`, `MUT-01`.
+
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value.
 Access is scoped to a closure: `with(@mutating (T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result.
@@ -380,7 +398,7 @@ See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
 How a parameter receives its argument: bare (borrows the argument mutably), `@fixed` (borrows it shared), `@take` (receives ownership and may mutate through it), or `@take @fixed` (receives ownership frozen).
-Every parameter slot is `final`: the name cannot be reassigned in the body (`MUT-04`).
+Every parameter slot is `final`: the name cannot be reassigned in the body (`MUT-03`).
 See `OWN-13`, `MUT-04`.
 
 ### poisoned (Mutex)
