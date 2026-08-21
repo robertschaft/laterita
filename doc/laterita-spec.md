@@ -647,8 +647,6 @@ A `@bound` return of an `InheritFrom.RECEIVER` method inherits the receiver's mu
 Bound to a mutable receiver the returned borrow is mutable, and bound to a `@fixed` receiver it is `@fixed`.
 When the return is a container or cursor, the mutability of the elements it lends inherits the same way.
 
-Calling such a method is a demanding use of its receiver (MUT-60) only when the returned borrow itself has a demanding use.
-
 ```java
 class Box<T> {
     T value;
@@ -680,6 +678,7 @@ A nullable primitive (NULL-02) is immutable in the same way.
 
 A mutable local (MUT-40) is *effectively fixed* when none of its uses demands mutation.
 The demanding uses are calling a `@mutating` method on it, writing through it, passing it to a mutable slot, and returning it through a mutable return type (MUT-31).
+Calling a `@mutating(InheritFrom.RECEIVER)` method (MUT-51) is demanding only when the borrow it returns has a demanding use.
 An effectively fixed local borrows its source shared, and a local with a demanding use borrows it mutably (OWN-02, OWN-03).
 The classification covers the whole local.
 A demanding use of an immutable local is rejected (MUT-15).

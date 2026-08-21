@@ -17,8 +17,8 @@ Currently the spec in doc is work in progress and needs to mature.
 - State each fact once in `doc/laterita-spec.md` and reach it from elsewhere by a cross-reference (`per OWN-15`, `(UNS-02)`). Restating a cited rule is a defect, since only one copy gets amended later. The `spec-compactness-reviewer` agent reports spans that repeat information the spec already carries.
 - Do not change existing OQ numbers or spec codes. For new questions use unused numbers. Relocating a rule may leave a numbered gap; that is fine (stable IDs).
 - A spec code carries no suffix letter. A rule split in two takes two numbers, never `NN-07a` and `NN-07b`.
-- Within a topic, rules are grouped by concept and each group starts at the next multiple of ten: the first group runs `NN-01` upward, the second from `NN-10`, the third from `NN-20`, and so on. Numbers ascend in document order, which runs from the most basic rule to the highest concept, so a reader meets every rule after the rules it depends on. Unused numbers at the end of a group are the room a later rule moves into, and gaps between groups are expected rather than a defect.
-- A new rule takes the next free number in the group it belongs to. When it has to sit between two existing rules, renumber that group rather than reach for a suffix, and update every reference. The convention governs a topic that is being renumbered or newly written, and does not by itself call for renumbering a topic that is already stable.
+- Within a topic, rules are grouped by concept and each group starts at the next multiple of ten: `NN-01` upward, then `NN-10`, then `NN-20`. Document order runs from the most basic rule to the highest concept, so a reader meets every rule after the rules it depends on. Gaps are expected rather than a defect.
+- A new rule is written where it belongs in its group and takes that group's first free number, so a number may sit out of order. The convention governs a topic being renumbered or newly written, not one that is already stable.
 
 ## Specification voice
 
