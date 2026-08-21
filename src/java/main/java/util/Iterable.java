@@ -31,7 +31,7 @@ public interface Iterable<T> {
     /**
      * Returns a cursor over the elements.
      *
-     * <p>{@code @mutating(InheritFrom.RECEIVER)}: the cursor inherits this
+     * <p>{@code @readonly(InheritFrom.RECEIVER)}: the cursor inherits this
      * collection's mutability (MUT-17).
      * Over a mutable collection it is a mutable cursor holding an
      * exclusive borrow, and {@code next()} lends {@code @bound T}.
@@ -41,5 +41,5 @@ public interface Iterable<T> {
      * There is no separate mutable factory: the two forms are the
      * monomorphizations of this one method.
      */
-    @mutating(InheritFrom.RECEIVER) @bound Iterator<T> iterator();
+    @readonly(InheritFrom.RECEIVER) @bound Iterator<T> iterator();
 }

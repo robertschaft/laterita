@@ -20,7 +20,7 @@
  */
 package java.util;
 
-// @fixed, @bound, @borrow, @take, @mutating, InheritFrom, ...
+// @fixed, @bound, @borrow, @take, @readonly, InheritFrom, ...
 import laterita.lang.annotation.*;
 // give: move-out of an array slot (OWN-07)
 import static laterita.lang.Intrinsics.give;
@@ -39,7 +39,7 @@ import static laterita.lang.Intrinsics.broken;
  * {@code size}, never resizing in place.
  *
  * <p>Iteration is a single method.
- * {@link #iterator()} is {@code @mutating(InheritFrom.RECEIVER)} (MUT-17), so
+ * {@link #iterator()} is {@code @readonly(InheritFrom.RECEIVER)} (MUT-17), so
  * the cursor inherits the list's mutability: over a mutable list it lends
  * {@code @bound T} and holds an exclusive borrow, over a {@code @fixed} list
  * (e.g. {@code fixed(list)}) it lends {@code @fixed @bound T} and holds a
@@ -77,32 +77,32 @@ public class ArrayList<T> implements Iterable<T> {
      * are its monomorphizations.
      */
     @Override
-    public @mutating(InheritFrom.RECEIVER) @bound Iterator<T> iterator() {
+    public @readonly(InheritFrom.RECEIVER) @bound Iterator<T> iterator() {
         return new Itr();
     }
 
     /**
      * Returns a structural cursor.
-     * Always {@code @mutating}, so it takes an exclusive borrow (never
+     * Never {@code @readonly}, so it takes an exclusive borrow (never
      * inherited): {@code remove}/{@code set}/{@code add} always mutate the
      * list.
      */
-    public @mutating @bound ListIterator<T> listIterator() {
+    public @bound ListIterator<T> listIterator() {
         return new ListItr();
     }
 
     /**
      * The read-or-update cursor.
      *
-     * <p>Class-level {@code @mutating(InheritFrom.RECEIVER)} (MUT-50, MUT-51):
+     * <p>Class-level {@code @readonly(InheritFrom.RECEIVER)} (MUT-50, MUT-51):
      * the borrow it holds on the enclosing {@code ArrayList} is inherited from
      * the {@code this} that constructs it, so it is exclusive when built from a
      * mutable list and shared when built from a {@code @fixed} one.
      * The class is mutable, which covers its own {@link #cursor} field.
-     * Method-level {@code @mutating} on {@link #next()} is the ordinary
+     * The absence of {@code @readonly} on {@link #next()} is the ordinary
      * receiver mutation of advancing that cursor.
      */
-    @mutating(InheritFrom.RECEIVER)
+    @readonly(InheritFrom.RECEIVER)
     private class Itr implements Iterator<T> {
 
         /** Index of the next element to return. */
@@ -115,7 +115,7 @@ public class ArrayList<T> implements Iterable<T> {
         }
 
         @Override
-        public @mutating @bound T next() {
+        public @bound T next() {
             // TODO: if (cursor >= size) throw new NoSuchElementException();
             // Element mutability is inherited from the enclosing borrow
             // (MUT-17):
@@ -145,7 +145,7 @@ public class ArrayList<T> implements Iterable<T> {
         @Override public int     previousIndex(){ return cursor - 1; }
 
         @Override
-        public @mutating @bound T next() {
+        public @bound T next() {
             // TODO: if (cursor >= size) throw new NoSuchElementException();
             lastReturned = cursor;
             // @bound T: the enclosing borrow is mutable
@@ -155,7 +155,7 @@ public class ArrayList<T> implements Iterable<T> {
         }
 
         @Override
-        public @mutating @bound T previous() {
+        public @bound T previous() {
             // TODO: if (cursor <= 0) throw new NoSuchElementException();
             cursor = cursor - 1;
             lastReturned = cursor;
@@ -163,7 +163,7 @@ public class ArrayList<T> implements Iterable<T> {
         }
 
         @Override
-        public @mutating T remove() {
+        public T remove() {
             // TODO: if (lastReturned < 0) throw new IllegalStateException();
             //
             // Fixed array, no resize.
@@ -181,7 +181,7 @@ public class ArrayList<T> implements Iterable<T> {
         }
 
         @Override
-        public @mutating void set(@take T e) {
+        public void set(@take T e) {
             // TODO: if (lastReturned < 0) throw new IllegalStateException();
             // Replace through the mutable enclosing borrow:
             //   elementData[lastReturned] = e;
@@ -189,7 +189,7 @@ public class ArrayList<T> implements Iterable<T> {
         }
 
         @Override
-        public @mutating void add(@take T e) {
+        public void add(@take T e) {
             // TODO: grow if size == elementData.length, shift the tail up
             //       from cursor, then insert e:
             //         size = size + 1; cursor = cursor + 1;

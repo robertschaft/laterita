@@ -61,7 +61,7 @@ String  forced    = maybeName!!;   // NullPointerException if maybeName is null
 Write a single-abstract-method signature directly as a method-parameter type — with full ownership modes — instead of declaring a named interface for the callback.
 
 ```java
-<R> Stream<R> map(@mutating (@take T) -> R fn);
+<R> Stream<R> map((@take T) -> R fn);
 void          forEach((@bound Record) -> void action);
 ```
 

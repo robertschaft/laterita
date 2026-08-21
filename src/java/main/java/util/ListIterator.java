@@ -25,7 +25,7 @@ import laterita.lang.annotation.*;
  * A structural cursor: it can {@code remove}, {@code set}, and {@code add} as
  * well as traverse.
  *
- * <p>Obtained from a {@code @mutating listIterator()} rather than the
+ * <p>Obtained from a mutating {@code listIterator()} rather than the
  * enhanced-for's {@link Iterable#iterator()}, so it always holds an exclusive
  * mutable borrow of the collection, never an inherited one, because
  * structural modification always mutates the collection (STD-08).
@@ -43,7 +43,7 @@ public interface ListIterator<T> extends Iterator<T> {
      * Advances backward and returns the previous element as a borrow bound to
      * the collection.
      */
-    @mutating @bound T previous();
+    @bound T previous();
 
     /** Index of the element a subsequent {@link #next()} would return. */
     int nextIndex();
@@ -57,17 +57,17 @@ public interface ListIterator<T> extends Iterator<T> {
      * Statement-form {@code it.remove();} drops the value via {@code onDrop}
      * (DROP-01), matching Java's void-returning {@code remove}.
      */
-    @mutating T remove();
+    T remove();
 
     /**
      * Replaces the last element returned by {@link #next()} or
      * {@link #previous()}.
      */
-    @mutating void set(@take T e);
+    void set(@take T e);
 
     /**
      * Inserts an element before the one a subsequent {@link #next()} would
      * return.
      */
-    @mutating void add(@take T e);
+    void add(@take T e);
 }

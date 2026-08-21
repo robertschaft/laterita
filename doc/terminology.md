@@ -83,7 +83,7 @@ See `ARR-01`, `ARR-02`, `ARR-04`.
 
 ### call mode
 A property of a functional-interface *type*: the receiver mode of its single abstract method.
-**shared-call** (bare SAM, invocable through a shared borrow), **mut-call** (`@mutating` SAM, invocable through a mutable variable), or **once-call** (`@consuming` SAM, invocable once, consuming the value).
+**shared-call** (`@readonly` SAM, invocable through a shared borrow), **mut-call** (bare SAM, invocable through a mutable variable), or **once-call** (`@consuming` SAM, invocable once, consuming the value).
 The `Fn` / `FnMut` / `FnOnce` distinction, carried on the SAM.
 Distinct from the *variable mode* of the variable that holds the value.
 See `CLO-03`.
@@ -121,18 +121,18 @@ In Rust, this is a "move", Laterita uses the verb `give` in Java's vocabulary.
 
 ### @consuming (annotation)
 Declares that a method consumes its receiver: the body owns `this`, and after the call returns the variable that held the receiver is consumed and subsequent uses are rejected.
-A modifier-position annotation on the method, parallel to `@mutating` (MUT-13), the two compose.
+A modifier-position annotation on the method, parallel to `@readonly` (MUT-13), the two compose.
 See `OWN-15`.
 
 ### @fixed (annotation)
-The single mutability marker: it withdraws *referent mutability*, the right to mutate a value through a binding by calling a `@mutating` method on it or writing through it.
+The single mutability marker: it withdraws *referent mutability*, the right to mutate a value through a binding by calling a mutating method on it or writing through it.
 Mutability is granted by default at every position whose declared type is a mutable class, and nothing grants it, so `@fixed` is the only word on the axis (`MUT-01`).
 It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-20`).
 It is redundant where the position is already immutable and load-bearing everywhere else (`MUT-31`).
 On a type-parameter declaration `<@fixed T>` writes `@fixed` at every usage of `T` and leaves the bound unchanged (`TARG-03`).
 On a class declaration `@fixed class C` declares an immutable class (`MUT-10`).
 On a type, `@fixed C` names the *frozen view* of `C` (`MUT-30`).
-A method that mutates its receiver is marked with the companion annotation `@mutating`, not `@fixed`.
+A method that does not mutate its receiver is marked with the companion annotation `@readonly`, not `@fixed`.
 See `MUT-01`, `MUT-30`, `MUT-31`.
 
 ### contravariantly
@@ -175,7 +175,7 @@ Used to emit correct `onDrop()` calls when only some fields remain.
 See `DROP-04`.
 
 ### demanding use
-A use of a local that requires mutation: calling a `@mutating` method on it, writing through it, passing it to a mutable slot, or returning it through a mutable return type.
+A use of a local that requires mutation: calling a mutating method on it, writing through it, passing it to a mutable slot, or returning it through a mutable return type.
 A local with one borrows its source mutably, and a local with none is *effectively fixed* (`MUT-60`).
 A demanding use of an immutable local is rejected (`MUT-15`).
 See `MUT-60`.
@@ -186,7 +186,7 @@ Its slot is fixed, so borrow analysis treats it as locked (`MUT-61`).
 A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
 
 ### effectively fixed
-A mutable local none of whose uses demands mutation: no `@mutating` call on it, no write through it, no passing it to a mutable slot, and no returning it through a mutable return type.
+A mutable local none of whose uses demands mutation: no mutating call on it, no write through it, no passing it to a mutable slot, and no returning it through a mutable return type.
 Such a local borrows its source shared, so several of them over one value coexist (`OWN-03`).
 It is the borrow-mode counterpart of *effectively final*, classified from the uses the same way and for the same reason (`MUT-60`).
 
@@ -227,7 +227,7 @@ Ownership, borrow state, and null narrowing are tracked flow-sensitively, so a v
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`.
 The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04), fields and declared local types use a nominal functional interface instead.
 `.lat`-only per LAT-05, `.java` sources use a nominal functional interface at the same position.
-The anonymous form admits an optional `@mutating` or `@consuming` prefix that declares the SAM's receiver mode, its call mode (CLO-03).
+The anonymous form admits an optional `@readonly` or `@consuming` prefix that declares the SAM's receiver mode, its call mode (CLO-03).
 Laterita treats nominal and anonymous forms uniformly.
 Used for callbacks, functional operations, and closure types.
 See `FN-01`.
@@ -254,7 +254,7 @@ See `DROP-06`.
 
 ### immutable class
 A class or interface declared `@fixed`, or inheriting immutability from an immutable supertype (`HIER-01`).
-Its fields are `final` and `@fixed`, and it declares no `@mutating` method, so its instances cannot be mutated through any binding (`MUT-10`, `MUT-22`).
+Its fields are `final` and `@fixed`, and every method it declares is `@readonly`, so its instances cannot be mutated through any binding (`MUT-10`, `MUT-22`).
 It may inherit mutable members from a mutable ancestor, present but not callable on it (`MUT-15`), and may still hold `Cell<T>` interior-mutable state.
 A class with no immutable supertype and no `@fixed` is mutable, the default (`HIER-02`).
 `String`, `Number`, and every `record` and `enum` are immutable.
@@ -304,23 +304,16 @@ The compile-time process of specializing generic code.
 Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation.
 See `COMP-02`.
 
-### @mutating (annotation)
-Declares that a method may mutate its receiver: reassign the receiver's non-`final` fields, mutate through its fields, and call other `@mutating` methods on `this`.
-A declaration annotation on the method, kept a distinct token from `@fixed` so receiver mutation is not spelled like binding mutability.
-It may be declared only on a mutable class or interface, and by `MUT-15` it is callable only on a mutable receiver.
-The receiver is the one position whose default is no mutation, since every method has one and an immutable class must still have callable methods.
-See `MUT-13`.
-
 ### mutable borrow / mut borrow
 A borrow that grants read and write access through the borrowed value.
 Only one mutable borrow may be active at a time, and no other borrow may coexist with it.
-A mutable borrow requires the source variable to be mutable, or the borrow to occur within a `@mutating` method of the same object.
+A mutable borrow requires the source variable to be mutable, or the borrow to occur within a mutating method of the same object.
 A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
 
 ### mutable class
 A class or interface that is not declared `@fixed` and inherits immutability from no supertype, the default kind (`HIER-02`).
-It may declare `@mutating` methods and fields that are reassigned or mutated through (`MUT-10`).
+It may declare mutating methods and fields that are reassigned or mutated through (`MUT-10`).
 Every mutable class implements its own *frozen view* `@fixed C` (`MUT-30`).
 See `MUT-10`, `HIER-02`.
 
@@ -332,7 +325,7 @@ See `MUT-31`, `MUT-01`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value.
-Access is scoped to a closure: `with(@mutating (T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result.
+Access is scoped to a closure: `with((T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result.
 The action slot is mut-call so the closure may capture state by mutable borrow.
 The mutex is poisoned (`THR-10`) if the closure throws.
 See `STD-09`.
@@ -353,7 +346,7 @@ See `NULL-02`, `LAT-01`.
 ### @Delegate (annotation on fields)
 Placed on a field or record component, it causes the compiler to generate, for every `public` instance method of the field's declared type, a forwarding method on the owner that calls the same method on the field.
 `Object` and `static` methods are not forwarded.
-Forwarder return types are the source method's own (they *decay*), and ownership annotations (`@consuming`, `@mutating`) are propagated.
+Forwarder return types are the source method's own (they *decay*), and ownership annotations (`@consuming`, `@readonly`) are propagated.
 An explicitly declared method shadows the forwarder of the same signature, which is how part of a forwarded surface is overridden.
 `@Delegate` on a `@Nullable` field, a signature clash between two `@Delegate` fields, and cyclic delegation are compile errors.
 See `GEN-01`.
@@ -392,8 +385,8 @@ See `OWN-01`.
 The rules governing whether an overriding method's signature may differ from the base method's.
 One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse.
 `@take` on a parameter is invariant.
-`@bound` on a parameter or return, `@mutating`, `@consuming`, and `@fixed` on a return may all be dropped, never added, and `@fixed` on a parameter or on a class may be added, never dropped.
-The FI-slot call-mode axis inverts surface direction (override may *strengthen* the slot (bare → `@mutating` → `@consuming`)) because the annotation governs closure acceptance, not parameter variable.
+`@bound` on a parameter or return, `@consuming`, and `@fixed` on a return may all be dropped, never added, and `@fixed` on a parameter or on a class, and `@readonly` on a method, may be added, never dropped.
+The FI-slot call-mode axis inverts surface direction (override may *strengthen* the slot (`@readonly` → bare → `@consuming`)) because the annotation governs closure acceptance, not parameter variable.
 See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
@@ -437,9 +430,18 @@ Names and shapes match `java.util.concurrent.locks.Condition`.
 The "caller must hold the bound lock" precondition is a runtime check: laterita does not statically associate a `Condition` with a specific `LockGuard` lifetime.
 See `STD-12`.
 
+### @readonly (annotation)
+Withdraws receiver mutation: a `@readonly` method may not reassign the receiver's non-`final` fields, mutate through its fields, or call a mutating method on `this`.
+A method without it may do all three, and is callable only on a mutable receiver (`MUT-15`).
+A declaration annotation on the method, kept a distinct token from `@fixed`: `@fixed` says what a binding may do, `@readonly` says what a method does to whatever receiver it is given.
+On an immutable class every method is `@readonly` and writing it is redundant (`MUT-10`).
+On a non-static inner class it withdraws the same thing one level out, giving the class a shared borrow of its enclosing instance (`MUT-50`).
+With `InheritFrom.RECEIVER` the method instead takes the mutability its caller supplies (`MUT-17`).
+See `MUT-13`.
+
 ### receiver mode (of a method)
-How a method accesses its receiver (`this`): bare (read-only), mutating (declared by `@mutating` on the method, MUT-13), or consuming (declared by `@consuming` on the method, OWN-15).
-The receiver's variable mode must support the receiver mode (e.g., a bare variable cannot call a `@mutating` method).
+How a method accesses its receiver (`this`): read-only (declared by `@readonly` on the method, MUT-13), mutating (bare), or consuming (declared by `@consuming` on the method, OWN-15).
+The receiver's variable mode must support the receiver mode (e.g., a `@fixed` variable cannot call a mutating method).
 
 ### safe / unsafe (code)
 **Safe code** obeys all ownership and lifetime rules, checked by the compiler.
@@ -521,7 +523,7 @@ See `STD-07`.
 
 ### transitivity (of mutability)
 Immutability propagates through a variable.
-A `@fixed` or shared variable cannot call `@mutating` methods on the held object and cannot mutate its fields, even if its own slot is reassignable.
+A `@fixed` or shared variable cannot call mutating methods on the held object and cannot mutate its fields, even if its own slot is reassignable.
 To mutate through, no level of the access path may be `@fixed` or shared.
 See `MUT-15`, `MUT-14`.
 
@@ -570,7 +572,7 @@ See `STD-03`.
 |----------|---------|
 | `T`, `U`, etc. | Type variable, representing any type |
 | `T?` | Nullable version of type `T` (`.lat` form, where `.java` writes `@Nullable T` per LAT-01) |
-| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R`, shared-call by default. Prefix with `@mutating` or `@consuming` for mut-call / once-call. Legal as parameter, return, generic bound, or generic type argument per FN-04. (`.lat`-only per LAT-05) |
+| `(T1, T2, ..., Tn) -> R` | Anonymous functional interface taking `T1, ..., Tn` and returning `R`, mut-call by default. Prefix with `@readonly` or `@consuming` for shared-call / once-call. Legal as parameter, return, generic bound, or generic type argument per FN-04. (`.lat`-only per LAT-05) |
 | `variable:` or `method:` or `parameter:` | Marks the following code snippet's scope (e.g., method signature, local variable) |
 
 ### Spec Code Prefixes
@@ -582,7 +584,7 @@ Codes are grouped by area:
 |--------|------|
 | `OWN` | Ownership: owned vs. borrowed variables, move and borrow rules, `@take` / `@borrow` / `@bound`, `@consuming` |
 | `LIFE` | Lifetime intersection across multiple borrow sources |
-| `MUT` | Mutability rules: the `@fixed` marker, `@mutating` methods, transitivity, interior mutability |
+| `MUT` | Mutability rules: the `@fixed` and `@readonly` markers, transitivity, interior mutability |
 | `HIER` | Class hierarchy: inherited immutability, default kind, immutable subclass freeze, no-widening, override variance |
 | `TARG` | Annotations admitted inside generic type arguments, and type-parameter mutability |
 | `STAT` | Static field rules |
