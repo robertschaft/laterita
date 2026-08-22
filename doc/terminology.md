@@ -125,15 +125,10 @@ A modifier-position annotation on the method, parallel to `@readonly` (MUT-13), 
 See `OWN-15`.
 
 ### @fixed (annotation)
-Declares that a variable may not be used to modify the object it refers to, by calling a mutating method on it or by assigning one of its fields.
-A variable is mutable unless it is annotated `@fixed` or its declared type is immutable (`MUT-01`).
-Whether a variable is mutable is independent of whether it may be assigned, which `final` governs (`MUT-20`).
-`@fixed` has no effect where the declared type is already immutable (`MUT-31`).
-A type parameter annotated `@fixed` annotates every use of it and leaves the bound unchanged (`TARG-03`).
-A class or interface annotated `@fixed` is immutable (`MUT-10`).
-On a type, `@fixed C` names the *frozen view* of `C` (`MUT-30`).
-A method that does not mutate its receiver is marked with the companion annotation `@readonly`, not `@fixed`.
-See `MUT-01`, `MUT-30`, `MUT-31`.
+Declares that a variable may not be used to modify the object it refers to.
+On a class or interface it declares an *immutable class*, and on a type it names the *frozen view* `@fixed C`.
+The companion annotation on a method is `@readonly`.
+See `MUT-01`, `MUT-10`, `MUT-30`, `TARG-03`.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method.
@@ -175,19 +170,19 @@ Used to emit correct `onDrop()` calls when only some fields remain.
 See `DROP-04`.
 
 ### mutating use
-A use of a local variable that requires mutation: a call to a mutating method on it, an assignment through it, passing it to a mutable parameter, or returning it through a mutable return type.
-A local variable with one borrows its source as a mutable borrow, and one with none is *effectively fixed* (`MUT-60`).
-It is a compile-time error for an immutable local variable to have a mutating use (`MUT-15`).
+A use of a local variable that requires mutation.
+A local variable with one borrows its source as a mutable borrow, one with none is *effectively fixed*.
 See `MUT-60`.
 
 ### effectively final
 A local variable that is not declared `final` and is never assigned after its initializer.
-Borrow analysis treats it as `final` (`MUT-61`).
-A closure may capture only an effectively final local variable, exactly Java's lambda rule (`CLO-01`).
+Borrow analysis treats it as `final`, and only such a variable may be captured by a closure.
+See `MUT-61`, `CLO-01`.
 
 ### effectively fixed
-A mutable local variable with no *mutating use* (`MUT-60`).
-It borrows its source as a shared borrow, so several such variables over one value may coexist (`OWN-03`).
+A mutable local variable with no *mutating use*.
+It borrows its source as a shared borrow, so several such variables over one value may coexist.
+See `MUT-60`.
 
 ### fixed (static method on `laterita.lang.Intrinsics`)
 `fixed(x)` returns a `@fixed @bound` borrow of `x`, applying the `MUT-31` conversion to an expression.
@@ -195,11 +190,10 @@ It borrows its source as a shared borrow, so several such variables over one val
 See `MUT-42`.
 
 ### frozen view
-`@fixed C`, the interface carrying only the members of `C` that need no mutability.
-Every mutable `C` implements it, so a value of type `C` may be assigned to a variable of type `@fixed C` and not the reverse.
-The views are ordered like the types they view, so `@fixed Object` is the top type (`MUT-30`).
-It is not a type a class declaration names, so implementing it makes no class immutable (`HIER-01`).
-An immutable class declared under a mutable ancestor is the declaration-site form of the same thing (`HIER-03`, `HIER-04`).
+`@fixed C`, the interface containing only the `@readonly` methods of `C`.
+A value of type `C` may be assigned to a variable of type `@fixed C` and not the reverse.
+An immutable class declared under a mutable ancestor is the declaration-site form of the same thing.
+See `MUT-30`, `HIER-03`, `HIER-04`.
 
 ### erased parameter types
 A signature's parameter types with generic type arguments removed, as under Java's erasure.
@@ -252,10 +246,9 @@ Used exclusively for `onDrop()`.
 See `DROP-06`.
 
 ### immutable class
-A class or interface declared `@fixed`, or inheriting immutability from an immutable supertype (`HIER-01`).
-Its fields are `final` and `@fixed`, and every method it declares is `@readonly`, so its instances cannot be modified through any variable (`MUT-10`, `MUT-22`).
-It may inherit mutable members from a mutable ancestor, present but not callable on it (`MUT-15`), and may still hold `Cell<T>` interior-mutable state.
-A class with no immutable supertype and no `@fixed` is mutable, the default (`HIER-02`).
+A class or interface annotated `@fixed`, or inheriting immutability from an immutable supertype.
+Its fields are `final` and `@fixed` and every method it declares is `@readonly`, so its instances cannot be modified through any variable.
+It may inherit mutable members from a mutable ancestor, present but not callable on it, and may still hold `Cell<T>` interior-mutable state.
 `String`, `Number`, and every `record` and `enum` are immutable.
 The stricter notion of a *value class* is reserved (see below).
 See `MUT-10`, `HIER-01`, `HIER-02`.
@@ -311,16 +304,13 @@ A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
 
 ### mutable class
-A class or interface that is not annotated `@fixed` and inherits immutability from no supertype, the default kind (`HIER-02`).
-It may declare mutating methods, and fields that may be assigned or modified through (`MUT-10`).
-Every mutable class implements its own *frozen view* `@fixed C` (`MUT-30`).
+A class or interface that is not annotated `@fixed` and inherits immutability from no supertype, the default kind.
+It may declare mutating methods, and fields that may be assigned or modified through.
 See `MUT-10`, `HIER-02`.
 
 ### mutable variable / immutable variable
-A variable is *immutable* if it is annotated `@fixed` or its declared type is immutable, and *mutable* otherwise (`MUT-31`).
+A variable is *immutable* if it is annotated `@fixed` or its declared type is immutable, and *mutable* otherwise.
 A mutable variable may not be assigned an immutable value.
-An immutable variable may be assigned either, taking a mutable value as its frozen view.
-`@fixed` on a variable whose declared type is already immutable has no effect, so `String s` and `@fixed String s` declare the same variable.
 See `MUT-31`, `MUT-01`.
 
 ### Mutex<T>
@@ -431,13 +421,11 @@ The "caller must hold the bound lock" precondition is a runtime check: laterita 
 See `STD-12`.
 
 ### @readonly (annotation)
-A method annotated `@readonly` may not assign the receiver's non-`final` fields, modify the objects those fields refer to, or call a mutating method on `this`.
-A method not so annotated may do all three, and may be called only on a mutable receiver (`MUT-15`).
-A method modifier, distinct from `@fixed`: `@fixed` states what a variable may do, `@readonly` states what a method does to its receiver.
-Every method of an immutable class is `@readonly` and the annotation has no effect there (`MUT-10`).
-An inner class annotated `@readonly` holds a shared borrow of its enclosing instance (`MUT-50`).
-With `InheritFrom.RECEIVER` the method takes the mutability its caller supplies (`MUT-17`).
-See `MUT-13`.
+A method annotated `@readonly` does not modify its receiver, and may be called on any receiver.
+A method not so annotated may be called only on a mutable receiver.
+`@fixed` states what a variable may do, `@readonly` what a method does to its receiver.
+On an inner class it makes the enclosing borrow shared.
+See `MUT-13`, `MUT-15`, `MUT-17`, `MUT-50`.
 
 ### receiver mode (of a method)
 How a method accesses its receiver (`this`): read-only (declared by `@readonly` on the method, MUT-13), mutating (bare), or consuming (declared by `@consuming` on the method, OWN-15).

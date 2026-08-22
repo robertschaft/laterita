@@ -517,9 +517,8 @@ The declared type of the field is not restricted.
 
 ### MUT-22 - Assigning a field
 
-A field that is not `final` may be assigned (MUT-20).
-Through `this`, it may be assigned only in a constructor, in a method that is not `@readonly`, or in an `onDrop()` body (MUT-15).
-Through any other mutable variable, assignment follows ordinary Java field access.
+A field may be assigned only through a mutable variable (MUT-15).
+Through `this` that means a constructor, a method that is not `@readonly`, or an `onDrop()` body.
 
 Every field of an immutable class is `final` and `@fixed`, including one inherited from a mutable superclass (HIER-03).
 
@@ -535,16 +534,15 @@ class User {
 
 ### MUT-30 - The type `@fixed C`
 
-For every class or interface `C`, `@fixed C` is an interface declaring the members of `C` that do not require a mutable receiver (MUT-15, MUT-22).
-Every mutable class `C` implements `@fixed C`.
+For every class or interface `C`, `@fixed C` is an interface containing only its `@readonly` methods (MUT-13).
+`@fixed C` implements the `@fixed` counterparts of all interfaces that `C` implements or extends.
+Every mutable class `C` implements `@fixed C`, and `@fixed Object` is the top type.
+
 A value of type `C` may be assigned to a variable of type `@fixed C`.
 It is a compile-time error to assign a value of type `@fixed C` to a variable of type `C`.
-`@fixed D` is a subtype of `@fixed C` whenever `D` is a subtype of `C`.
-`@fixed Object` is the top type.
 
-It is a compile-time error for `@fixed C` to appear in the `extends` or `implements` clause of a class or interface declaration.
-A class that implements it is not thereby immutable (HIER-01).
-It may appear as a type-parameter bound (TARG-03).
+`@fixed C` may appear in an `implements` clause, restricting the class to `C`'s `@readonly` methods, and as a type-parameter bound (TARG-03).
+A class does not become immutable by implementing it (HIER-01).
 
 ```java
 class Counter { int n; void inc() { n = n + 1; } @readonly int read() { return n; } }
@@ -562,10 +560,8 @@ Otherwise it is mutable.
 A value is immutable if its class is immutable, or if the variable it is read from is immutable or is a shared borrow.
 Otherwise it is mutable.
 
-| variable | mutable value | immutable value |
-|---|---|---|
-| mutable | assigned | compile-time error |
-| immutable | assigned as `@fixed C` (MUT-30) | assigned |
+It is a compile-time error to assign an immutable value to a mutable variable.
+An immutable variable may be assigned a value of either kind, a mutable one as `@fixed C` (MUT-30).
 
 `@fixed` on a variable whose declared type is immutable has no effect.
 `String s` and `@fixed String s` declare the same variable.
@@ -735,7 +731,7 @@ class Counter {
 
 ### HIER-01 - Immutability is inherited
 
-A class or interface is immutable when a type named in its `extends` or `implements` clause is immutable.
+A class or interface is immutable when a type named in its `extends` or `implements` clause is immutable, other than a `@fixed C` (MUT-30).
 The rule reaches superclasses and implemented or extended interfaces alike, and applies transitively.
 Annotating such a declaration `@fixed` has no effect (MUT-31).
 
