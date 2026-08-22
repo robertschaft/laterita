@@ -354,6 +354,22 @@ Every method of an immutable interface being `@readonly` lets MUT-15's static ch
 
 ## Class Hierarchy and Override (HIER-01 through HIER-05)
 
+### Why an immutable static type is not always an immutable instance (HIER-06)
+
+Propagating immutability through `extends` alone buys a mutable class the right to implement a value-contract interface, and costs one implication the rest of the language had been assuming: that an immutable static type means an immutable object underneath.
+
+For a class the implication still holds, because a subclass of an immutable class is immutable and there is nowhere else for the run-time class to come from.
+For an interface it does not, and a variable of immutable interface type may now hold a mutable instance that another variable mutates.
+The frozen view `@fixed C` was always in this position, since it is an interface over a class that is usually mutable, so HIER-06 states one rule rather than two.
+
+Almost nothing depends on the implication, because the borrow rules never did.
+A variable of immutable type takes a shared borrow whatever its run-time class, and exclusivity (OWN-03) already stops anyone mutating the object while that borrow is live, so the guarantee a reader wants from `@fixed Shape s` is delivered by the variable and not by the class kind.
+
+MUT-12 is the exception and the reason HIER-06 exists.
+Replacing a borrow with a copy is invisible only where the object has no observable identity, which an immutable class is entitled to assume and a mutable one is not.
+A `Circle` reached through an immutable `Shape` is still comparable by `==` through the `Circle` that owns it, so a copy substituted there would be observable.
+Keying the permission on the declared type being an immutable class closes that, and closes the frozen-view case that predates the `extends` rule.
+
 ### Why immutability is inherited and the default is mutable (HIER-01, HIER-02)
 
 A subclass value fills a supertype slot, so it has to keep every guarantee the supertype published.

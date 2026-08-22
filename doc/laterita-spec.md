@@ -402,7 +402,8 @@ Every primitive type (e.g. `boolean`, `int`, `double`) is immutable.
 
 ### MUT-12 - A borrow of an immutable instance may be a copy
 
-Where the lifetime constraints are the same, the compiler may replace a borrow of an immutable instance with a copy of it, or a copy with a borrow.
+Where the lifetime constraints are the same, the compiler may replace a borrow of a variable whose declared type is an immutable class with a copy of the instance, or a copy with a borrow.
+It may not do so for a variable whose declared type is an immutable interface or the interface `@fixed C` (HIER-06).
 
 ### MUT-13 - `@readonly` methods
 
@@ -454,7 +455,7 @@ var y = b.get();                 // @fixed @bound Foo: b is @fixed
 
 An immutable variable may not be used to modify any object reachable through it, whatever the fields on the path declare.
 An object may be modified through a borrow only if that borrow is mutable.
-A borrow of an instance of an immutable class is always shared (OWN-03).
+A borrow of a variable whose declared type is an immutable class is always shared (OWN-03).
 
 ### MUT-15 - Calling a mutating method
 
@@ -726,6 +727,14 @@ A class that implements an immutable interface is not thereby immutable, and mus
 Annotating an immutable declaration `@fixed` has no effect (MUT-31).
 
 A class whose supertypes are all mutable may still be annotated `@fixed`, which is the frozen view of HIER-03.
+
+### HIER-06 - An immutable static type does not always mean an immutable instance
+
+Every subclass of an immutable class is immutable (HIER-01).
+A variable whose declared type is an immutable class refers to an instance of an immutable class.
+
+A variable whose declared type is an immutable interface, or the interface `@fixed C` (MUT-30), may refer to an instance of a mutable class.
+A rule that requires the run-time class to be immutable holds only for the first (MUT-12).
 
 ### HIER-02 - `Object`
 
