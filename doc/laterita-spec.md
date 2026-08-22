@@ -403,7 +403,6 @@ Every primitive type (e.g. `boolean`, `int`, `double`) is immutable.
 ### MUT-12 - A borrow of an immutable instance may be a copy
 
 Where the lifetime constraints are the same, the compiler may replace a borrow of a variable whose declared type is an immutable class with a copy of the instance, or a copy with a borrow.
-It may not do so for a variable whose declared type is an immutable interface or the interface `@fixed C` (HIER-06).
 
 ### MUT-13 - `@readonly` methods
 
@@ -727,14 +726,6 @@ A class that implements an immutable interface is not thereby immutable, and mus
 Annotating an immutable declaration `@fixed` has no effect (MUT-31).
 
 A class whose supertypes are all mutable may still be annotated `@fixed`, which is the frozen view of HIER-03.
-
-### HIER-06 - An immutable static type does not always mean an immutable instance
-
-Every subclass of an immutable class is immutable (HIER-01).
-A variable whose declared type is an immutable class refers to an instance of an immutable class.
-
-A variable whose declared type is an immutable interface, or the interface `@fixed C` (MUT-30), may refer to an instance of a mutable class.
-A rule that requires the run-time class to be immutable holds only for the first (MUT-12).
 
 ### HIER-02 - `Object`
 
