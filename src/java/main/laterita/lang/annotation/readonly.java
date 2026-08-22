@@ -10,7 +10,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Withdraws receiver mutation.
+ * Declares that a method does not modify its receiver.
  *
  * <p>A method may mutate its receiver unless it carries this annotation
  * (MUT-13).
@@ -29,9 +29,9 @@ import java.lang.annotation.Target;
  * On an immutable class every method is {@code @readonly} and writing it is
  * redundant (MUT-10).
  *
- * <p>On a non-static inner class the annotation withdraws the same thing one
- * level out: the class holds a shared borrow of its enclosing instance rather
- * than a mutable one (MUT-50).
+ * <p>On a non-static inner class the annotation states the same one level
+ * out: the class holds a shared borrow of its enclosing instance rather than
+ * a mutable one (MUT-50).
  *
  * <p>The {@link InheritFrom} value chooses the form (MUT-17, MUT-51).
  * {@link InheritFrom#NONE}, the default, is the always-read-only form above.

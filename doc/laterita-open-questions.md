@@ -166,13 +166,13 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 **Surfaced when:** specifying MUT-17 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
 **The issue.**
-Ownership, borrow, and mutability are compile-time properties of a binding (OWN-01, OWN-03, MUT-01).
+Ownership, borrow, and mutability are compile-time properties of a variable (OWN-01, OWN-03, MUT-01).
 Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-17-style inherited path explicitly.
 Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
 
 **The question.**
 
-- Is there a standard set of predicates over a binding: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
+- Is there a standard set of predicates over a variable: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
 - Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the static mode of the binding, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
@@ -210,14 +210,14 @@ A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogram
 
 ## OQ-38 — The surface name of `@fixed`
 
-**Surfaced when:** settling MUT-01 on a single negative marker for the referent axis, which fixes the shape of the word but not the word itself.
+**Surfaced when:** settling MUT-01 on a single negative annotation, which fixes the shape of the word but not the word itself.
 
 **The issue.**
 `@fixed` reads well against `final` on a local (`final @fixed List<Item> items` is two locks named by two words) and it is short.
 It is less good elsewhere.
-On a class declaration `@fixed class Money` says "this class cannot change" where the intended reading is "instances of this class expose no mutation", and a reader coming from Java hears `fixed` as the slot property `final` already owns.
+On a class declaration `@fixed class Money` says "this class cannot change" where the intended reading is "instances of this class expose no mutation", and a reader coming from Java hears `fixed` as the assignment property `final` already owns.
 On a parameter, `void render(@fixed Scene s)` states a read-only lend, which is the meaning most call sites care about, and `fixed` names it only indirectly.
-The marker appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
+The annotation appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
 
 Candidates carry different trade-offs.
 
@@ -233,7 +233,7 @@ Candidates carry different trade-offs.
 
 **The question.**
 
-- Which name does the marker carry across all eight positions?
+- Which name does the annotation carry across all eight positions?
 - Is one name for every position the right call, or does the class declaration want a different word from the binding positions, at the cost of MUT-01's single-word property?
 - Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that a method is annotated `@readonly` (MUT-13)?
   A variable annotation built from the same root, `@ro` against `@readonly`, would let a reader carry one idea across both.

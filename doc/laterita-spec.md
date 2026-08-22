@@ -355,8 +355,7 @@ EntryView<String, Integer> view = new EntryView<>(name, count);
 
 ### LIFE-05 - A primitive has no lifetime
 
-A primitive is passed, returned, and stored as a copy of its value (MUT-18).
-`@bound`, `@borrow`, and `@take` have no effect on a primitive, and a `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
+`@bound`, `@borrow`, and `@take` have no effect on a primitive (MUT-18), and a `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
 
 ### LIFE-04 - `@borrowCapped` caps an instance's lifetime within its borrow sources
 
@@ -382,8 +381,7 @@ To modify an object is to call a mutating method on it (MUT-13) or to assign one
 A variable is mutable unless it is annotated `@fixed`, or its declared type is immutable (MUT-31).
 A local variable (MUT-40), a field (MUT-21), a parameter (MUT-41), a return type, a type argument, a use of a type parameter (TARG-03), a class or interface declaration (MUT-10), and a type-parameter declaration (TARG-03) may be annotated `@fixed`.
 
-Whether a variable is mutable is independent of whether it may be assigned.
-A `final` variable may be assigned only once (MUT-20) and may still be mutable.
+Whether a variable is mutable is independent of whether it may be assigned (MUT-20).
 
 ### MUT-10 - Mutable and immutable classes
 
@@ -492,10 +490,7 @@ This is the only mechanism that MUT-14 does not cover.
 
 ### MUT-20 - `final` variables
 
-A variable may be declared `final`.
-A `final` variable may be assigned only once.
-It is a compile-time error to assign a `final` variable that is not definitely unassigned.
-`final` does not affect whether the variable is mutable (MUT-01).
+`final` does not affect whether a variable is mutable (MUT-01).
 
 ```java
 final Properties config = loadConfig();  // Properties is mutable, so is config (MUT-01)
@@ -555,9 +550,7 @@ view.inc();                // ERROR: inc is a mutating method, view is @fixed (M
 
 ### MUT-31 - Assignment between mutable and immutable
 
-A variable is immutable if it is annotated `@fixed`, or its declared type is immutable (MUT-10, MUT-11, MUT-18).
-Otherwise it is mutable.
-A value is immutable if its class is immutable, or if the variable it is read from is immutable or is a shared borrow.
+A value is immutable if its class is immutable (MUT-10, MUT-11, MUT-18), or if the variable it is read from is immutable (MUT-01) or is a shared borrow.
 Otherwise it is mutable.
 
 It is a compile-time error to assign an immutable value to a mutable variable.
@@ -569,8 +562,7 @@ A `@fixed` annotation that has no effect is permitted wherever `@fixed` is appli
 
 ### MUT-40 - Local variables
 
-A local variable is mutable unless it is annotated `@fixed`, or its declared type is immutable (MUT-31).
-For a `var` declaration the declared type, including `@fixed`, is the type of the initializer.
+For a `var` declaration the declared type, including `@fixed`, is the type of the initializer (MUT-01).
 A later assignment does not change it.
 
 `C` names a mutable class and `F` an immutable class (MUT-10) in the forms below.
@@ -825,7 +817,7 @@ class BadReader implements Reader {
 
 ## TARG — Annotations in Generic Type Arguments
 
-### TARG-01 - `@borrow` admitted in a type argument
+### TARG-01 - `@borrow` in a type argument
 
 `@borrow` may appear inside a generic type argument.
 It declares that the values substituted for that type parameter are borrows, the same role `@borrow` plays on a field (OWN-09).
@@ -881,11 +873,11 @@ class Counter { int n; void inc() { n = n + 1; } }
 
 class Bar<T, @fixed S, V extends Counter> {
     T t1;          // mutable when the argument is, with no known mutating method to call
-    @fixed T t2;   // frozen usage of T
+    @fixed T t2;   // frozen use of T
     S s1;          // @fixed, from the declaration
     @fixed S s2;   // redundant (MUT-31)
-    V v1;          // mutable: v1.inc() is admitted, V's bound carries inc()
-    @fixed V v2;   // frozen usage of a Counter
+    V v1;          // mutable: V's bound declares inc()
+    @fixed V v2;   // frozen use of a Counter
 }
 
 var x = new Bar<Role, Counter, Counter>(/* … */);   // T admits Role, S admits Counter
@@ -895,7 +887,7 @@ The elements of a container take their mutability from the variable holding the 
 A type argument is annotated `@fixed` to make the elements of a mutable container immutable.
 
 ```java
-class Registry<T extends Counter> {           // mutable bound: admits Counter, not Role
+class Registry<T extends Counter> {           // mutable bound: accepts Counter, not Role
     T counter;
     void bump()                                 { counter.inc(); }         // the bound carries inc()
     @readonly(InheritFrom.RECEIVER) @bound T get() { return counter; }     // lends as the receiver does
@@ -2317,8 +2309,8 @@ Combinations not listed are currently not supported and won't compile.
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
 | `@fixed` | `TYPE` | redundant on enum, record, and any class with an immutable supertype | Class or interface is immutable | MUT-10, HIER-01 |
-| `@fixed` | `LOCAL_VARIABLE` | redundant when the declared type is an immutable class | Declares the local immutable (the slot axis is separate: reassignable by default, locked by `final`) | MUT-40 |
-| `@fixed` | `FIELD` | redundant in an immutable class and on a field of immutable type | Withdraws mutate-through on the field (the slot axis is MUT-22) | MUT-21 |
+| `@fixed` | `LOCAL_VARIABLE` | redundant when the declared type is an immutable class | The local variable may not be used to modify the object (assignment is the separate `final` axis) | MUT-40 |
+| `@fixed` | `FIELD` | redundant in an immutable class and on a field of immutable type | The field may not be used to modify the object (assignment is MUT-22) | MUT-21 |
 | `@fixed` | `PARAMETER` | redundant when the type is an immutable class | Parameter receives a shared borrow instead of a mutable one, and its absence is reported when the body never mutates through it | MUT-41, MUT-70 |
 | `@fixed` | `METHOD` | redundant when the type is an immutable class | Return is a `@fixed` variable | MUT-01 |
 | `@fixed` | `TYPE_USE` | - | Generic type-argument usage is `@fixed`, and requires nothing of the container | TARG-03 |
@@ -2335,7 +2327,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
 | `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow slot, and the enclosing instance must be `@bound` | TARG-01 |
 | `@own` | `TYPE_PARAMETER` | - | Type parameter rejects a borrowed type argument (dual of `@borrow`) | TARG-06 |
-| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `METHOD` (return) | - | Variable holds a borrowed value (instance-level marker on a `@borrow`-field or `@borrow`-substituted-generic instance, OWN-09, TARG-01) | OWN-09 |
+| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `METHOD` (return) | - | Variable holds a borrowed value (on an instance with a `@borrow` field or a `@borrow`-substituted type argument, OWN-09, TARG-01) | OWN-09 |
 | `@borrowCapped` | `TYPE` | inherited by subclasses | Every `@borrow` source the instance holds must stay live until its scope exit | LIFE-04, DROP-11 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |

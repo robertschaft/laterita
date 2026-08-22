@@ -151,8 +151,9 @@ With that ordering `@fixed Object` falls out as the top type rather than being a
 
 Calling `@fixed C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
 HIER-01 makes a class immutable when a type it names as a supertype is immutable, and `@fixed C` is immutable, so every class would inherit immutability from its own frozen view and the mutable kind would have no inhabitants.
-An implemented interface is the shape that fits: it carries the members and the assignability, it is what the frozen view actually is, and HIER-01 reads only the types a declaration names, which `@fixed C` is not.
-The circularity disappears without weakening HIER-01, which still has to hold for real supertypes.
+An implemented interface is the shape that fits: it carries the members and the assignability, and it is what the frozen view actually is.
+HIER-01 names `@fixed C` as its one exception, so a class may implement a frozen view to restrict itself to a read-only surface without becoming immutable.
+The rule still holds unweakened for every other supertype.
 
 HIER-04 is the same relation read on declared class kinds, and it is what keeps MUT-15's check static.
 An immutable class satisfies `@fixed S` for each supertype `S` and not `S` itself, so a mutating method can never be reached through a widening or a cast on a value the program treats as frozen.

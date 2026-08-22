@@ -29,8 +29,8 @@ There are two kinds: shared (immutable) and mutable.
 See `OWN-03` for the rules.
 
 ### @borrow (annotation on fields, record components, type arguments, and parameters)
-Declares that a slot is a borrow slot rather than an owned slot: a field, a record component, or a generic type argument (`TARG-01`).
-An instance of a class containing any `@borrow` slot can only be produced as a `@bound` value, with lifetime intersecting each source (LIFE-03).
+Declares that a field, a record component, or a generic type argument holds a borrow rather than an owned value (`TARG-01`).
+An instance of a class with any `@borrow` field can only be produced as a `@bound` value, with lifetime intersecting each source (LIFE-03).
 On a parameter it is meaningful only with `@take`: a `@take @borrow` parameter retains the borrow and caps `this` at the parameter's source by signature (`OWN-21`), while a bare `@borrow` parameter equals a plain borrow.
 It names no source, the structural role, distinct from `@bound`, which marks a borrowed *value* whose source is named.
 See `OWN-09`, `OWN-21`, `LIFE-03`, `TARG-01`.
@@ -42,7 +42,7 @@ On a return type, declares that the return is bound to `this` (`OWN-18`).
 It names a source, the relational role, distinct from `@borrow`, which declares a borrow slot whose source is fixed elsewhere.
 
 ### @own (annotation on type parameters)
-Declares that a type parameter rejects a borrowed type argument: `class C<@own T>` admits `C<Foo>` but not `C<@borrow Foo>`.
+Declares that a type parameter rejects a borrowed type argument: `class C<@own T>` accepts `C<Foo>` but not `C<@borrow Foo>`.
 The dual of `@borrow`, and the analog of a `'static` bound in Rust.
 Applied to the owning containers `Arc` (`STD-02`) and `Mutex` (`STD-09`).
 See `TARG-06`.
@@ -60,7 +60,7 @@ Parameter, return (`OWN-17`, `OWN-18`).
 Field, record component, generic type argument, and parameter with `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
 - `@fixed`.
 Local, field, parameter, return, type argument, type-parameter declaration, and class or interface declaration.
-The only mutability marker, withdrawing referent mutability wherever it appears (`MUT-01`, `TARG-03`).
+The only mutability annotation: wherever it appears the object may not be modified (`MUT-01`, `TARG-03`).
 - `@take`.
 Parameter only.
 Rejected on fields, locals, and generic type arguments (`OWN-10`, `TARG-02`).
@@ -141,15 +141,10 @@ Used to duplicate an object.
 Laterita auto-generates one per `OBJ-01` if not provided.
 
 ### destruction
-Taking an owned object apart field by field, by `give`-ing a directly named accessible field (`give(obj.field)`).
-Works on a POJO in any source, and on a `record` only in `.lat`, where its components are public (`LAT-08`).
-A record's accessor returns a borrow and cannot be moved.
-An object is destructed as soon as its first field is moved out: from then on no method may be called on it, its fields may not be assigned, and it cannot be returned or stored, only taken further apart.
-Its lifetime ends at that point (DES-02) and its formerly owned fields live on independently in the scope that received them (OWN-06).
-The scope drops each such field at its end like any owned variable, unless the field is moved on first, tracking per field whether it survives (DROP-04).
-Available only on classes that implement no `onDrop()`.
-A class with an `onDrop()` body is moved whole (`DROP-08`).
-See the `DES` topic.
+Taking an owned object apart field by field with `give(obj.field)`.
+Once its first field is moved out the object may only be taken further apart, and the fields live on independently in the scope that received them.
+A class with an `onDrop()` body is moved whole instead.
+See the `DES` topic, `OWN-06`, `DROP-08`.
 
 ### divergence point / diverges
 A code path that reaches `broken()` (a static method declared in `laterita.lang.Intrinsics`) that must not be reachable.
@@ -168,11 +163,6 @@ See `DROP-01`, `DROP-09`.
 Compiler bookkeeping tracking whether each field of a destructed value is still owned.
 Used to emit correct `onDrop()` calls when only some fields remain.
 See `DROP-04`.
-
-### mutating use
-A use of a local variable that requires mutation.
-A local variable with one borrows its source as a mutable borrow, one with none is *effectively fixed*.
-See `MUT-60`.
 
 ### effectively final
 A local variable that is not declared `final` and is never assigned after its initializer.
@@ -207,7 +197,7 @@ See `OWN-03`.
 
 ### field (in a struct/class)
 A named member variable of a class.
-A field has the same two orthogonal mutability axes as a local (`MUT-21`, `MUT-22`): its slot is reassignable unless `final` (and only where the class and receiver are mutable), and it is mutated through unless annotated `@fixed`.
+A field has the same two axes as a local variable (`MUT-21`, `MUT-22`): it may be assigned unless `final`, and only through a mutable variable, and the object it refers to may be modified unless it is annotated `@fixed`.
 Every field of an immutable class is `final` and `@fixed` (`MUT-22`).
 Every field is initialized exactly once in a constructor (`OWN-11`) and follows ownership rules like a variable.
 See `OWN-09`, `MUT-21`, `MUT-22`.
@@ -220,7 +210,7 @@ Ownership, borrow state, and null narrowing are tracked flow-sensitively, so a v
 An interface with a single abstract method (SAM: Single Abstract Method), or an anonymous structural form written inline as `(P1, P2, ...) -> R`.
 The anonymous form is legal as a parameter type, return type, generic bound, or generic type argument (FN-04), fields and declared local types use a nominal functional interface instead.
 `.lat`-only per LAT-05, `.java` sources use a nominal functional interface at the same position.
-The anonymous form admits an optional `@readonly` or `@consuming` prefix that declares the SAM's receiver mode, its call mode (CLO-03).
+The anonymous form accepts an optional `@readonly` or `@consuming` prefix that declares the SAM's receiver mode, its call mode (CLO-03).
 Laterita treats nominal and anonymous forms uniformly.
 Used for callbacks, functional operations, and closure types.
 See `FN-01`.
@@ -246,7 +236,7 @@ Used exclusively for `onDrop()`.
 See `DROP-06`.
 
 ### immutable class
-A class or interface annotated `@fixed`, or inheriting immutability from an immutable supertype.
+A class or interface annotated `@fixed`, or inheriting immutability from a supertype (`HIER-01`).
 Its fields are `final` and `@fixed` and every method it declares is `@readonly`, so its instances cannot be modified through any variable.
 It may inherit mutable members from a mutable ancestor, present but not callable on it, and may still hold `Cell<T>` interior-mutable state.
 `String`, `Number`, and every `record` and `enum` are immutable.
@@ -266,7 +256,7 @@ See `HIER-05`. (Contrast with contravariance.)
 
 ### .lat / .java (source file extensions)
 The two file extensions accepted by `latc`.
-`.lat` admits the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`.
+`.lat` accepts the full surface, including `T?`, `?.`, `?:`, `!!`, and inline FI types `(P1, …, Pn) -> R`.
 `.java` is the Java-compatible subset, and the `.lat` forms and their `.java`-surface desugarings are specified in the `LAT` topic.
 Both extensions share the same type system, annotations, and intrinsics.
 
@@ -278,7 +268,7 @@ See `COMP-07`.
 ### lifetime
 The span of time during which a variable is valid.
 A borrowed variable's lifetime is bounded by the variable it borrows from.
-It cannot outlive the referent.
+It cannot outlive the object it borrows.
 A compiler error to use a variable after the value it refers to is dropped.
 See `LIFE-01`.
 
@@ -296,6 +286,11 @@ The compile-time process of specializing generic code.
 Each instantiation of a generic type or method (e.g., `List<String>` and `List<int>`) generates a separate implementation.
 See `COMP-02`.
 
+### mutating use
+A use of a local variable that requires mutation.
+A local variable with one borrows its source as a mutable borrow, one with none is *effectively fixed*.
+See `MUT-60`.
+
 ### mutable borrow / mut borrow
 A borrow that grants read and write access through the borrowed value.
 Only one mutable borrow may be active at a time, and no other borrow may coexist with it.
@@ -304,7 +299,7 @@ A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
 
 ### mutable class
-A class or interface that is not annotated `@fixed` and inherits immutability from no supertype, the default kind.
+A class or interface that is not annotated `@fixed` and inherits immutability from no supertype (`HIER-01`), the default kind.
 It may declare mutating methods, and fields that may be assigned or modified through.
 See `MUT-10`, `HIER-02`.
 
@@ -316,7 +311,7 @@ See `MUT-31`, `MUT-01`.
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value.
 Access is scoped to a closure: `with((T) -> R)` and `tryWith(...)` acquire the lock, run the closure on the protected value, release the lock, and return the closure's result.
-The action slot is mut-call so the closure may capture state by mutable borrow.
+The action parameter is mut-call so the closure may capture state by mutable borrow.
 The mutex is poisoned (`THR-10`) if the closure throws.
 See `STD-09`.
 
@@ -327,7 +322,7 @@ The result is a distinct nominal type (not a subtype of the component's type, no
 `record Email(@Delegate @take String raw)` and `record UserId(@Delegate @take Long raw)` are newtypes by idiom.
 
 ### nullable type (also `T?` / `@Nullable T`)
-A type that admits both a value and the special value `null`.
+A type that accepts both a value and the special value `null`.
 Written `T?` in `.lat` sources and `@Nullable T` in `.java` sources (`@Nullable` declared in `laterita.lang.annotation`).
 Different from Java's implicit nullability.
 A bare `T` in Laterita is non-nullable.
@@ -376,12 +371,12 @@ The rules governing whether an overriding method's signature may differ from the
 One principle: an override may **demand less** of its callers (parameters, receiver) and **guarantee more** to them (return), never the reverse.
 `@take` on a parameter is invariant.
 `@bound` on a parameter or return, `@consuming`, and `@fixed` on a return may all be dropped, never added, and `@fixed` on a parameter or on a class, and `@readonly` on a method, may be added, never dropped.
-The FI-slot call-mode axis inverts surface direction (override may *strengthen* the slot (`@readonly` → bare → `@consuming`)) because the annotation governs closure acceptance, not parameter variable.
+The FI call-mode axis inverts surface direction (an override may *strengthen* it, `@readonly` → bare → `@consuming`) because the annotation governs closure acceptance, not the parameter variable.
 See `HIER-05` for the unified table.
 
 ### parameter mode / ownership mode
 How a parameter receives its argument: bare (borrows the argument mutably), `@fixed` (borrows it shared), `@take` (receives ownership and may mutate through it), or `@take @fixed` (receives ownership frozen).
-Every parameter slot is `final`: the name cannot be reassigned in the body (`MUT-20`).
+Every parameter is `final`: it cannot be assigned in the body (`MUT-20`).
 See `OWN-13`, `MUT-41`.
 
 ### poisoned (Mutex)
@@ -485,9 +480,9 @@ Laterita's compiler performs static analysis of ownership, borrows, lifetime, mu
 ### static field
 A field declared `static`, class- or module-level storage with one instance per program.
 Immutable per `STAT-01` and initialized from a const expression.
-Every static field is `final` and `@fixed` whatever its declaration writes, the one position where the language withdraws mutability rather than leaving the choice to the author.
+Every static field is `final` and `@fixed` whatever its declaration writes, the one position where the language forbids mutation rather than leaving the choice to the author.
 The declared type must be non-`@local` (`STAT-03`).
-Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable slot.
+Shared mutable program-wide state is expressed by storing a `Mutex<T>` (`STD-09`), `Arc<T>` (`STD-02`), or an atomic primitive in the immutable field.
 
 ### synthesized / synthesis
 Generated by the compiler rather than written in source.
@@ -511,13 +506,13 @@ See `STD-07`.
 
 ### transitivity (of mutability)
 Immutability propagates through a variable.
-A `@fixed` or shared variable cannot call mutating methods on the held object and cannot mutate its fields, even if its own slot is reassignable.
+A `@fixed` or shared variable cannot call mutating methods on the held object and cannot assign its fields, even if the variable itself may be assigned.
 To mutate through, no level of the access path may be `@fixed` or shared.
 See `MUT-15`, `MUT-14`.
 
 ### type-inferred variable
 A variable whose type is inferred from the RHS expression rather than written explicitly.
-Forms: `var name = expr` (reassignable), `final var name = expr` (slot locked), `@fixed var name = expr` (mutation through the referent withdrawn).
+Forms: `var name = expr` (assignable), `final var name = expr` (assigned once), `@fixed var name = expr` (the object may not be modified).
 A laterita `var` is reassignable by default, exactly as in Java, and takes its declared type, `@fixed` included, from the RHS of the first assignment (`MUT-40`).
 See `MUT-40`.
 
@@ -607,7 +602,7 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | `Arc<T>` (multi-threaded) | Variable (with atomic refcount) | Like `Rc<T>`, but thread-safe, and less common in Java due to GC |
 | Ownership + `give(...)` | Explicit transfer | Java has no ownership concept, so all variables are borrows |
 | Borrow (`&`) | Variable | Similar to Java, but lifetime rules are stricter |
-| `@fixed` (no mutate-through) | Reference used only to read the object | Java has no way to say it, while laterita withdraws mutation with `@fixed`, with reassignment the separate `final` axis |
+| `@fixed` (no mutate-through) | Reference used only to read the object | Java has no way to say it, while laterita forbids mutation with `@fixed`, with assignment the separate `final` axis |
 | `@fixed class` vs. mutable class | Valhalla `value class` | Both opt *in* to the restricted kind, and a class with no immutable supertype and no `@fixed` is an ordinary mutable class (HIER-02) |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability, with no GC hazard |
