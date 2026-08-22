@@ -166,7 +166,7 @@ The same coordination patterns are expressible through three stdlib types: `Mute
 * **OQ-33**: Primitives in the ownership and mutability system.
 Resolved by MUT-18: a primitive type carries no mutable surface, so it is immutable, every primitive position is immutable (MUT-31), and MUT-12's copy substitution makes a primitive parameter, return, or field a value copy.
 `@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant rather than rejected, and a `@borrow` field of primitive type does not make its instance `@bound`.
-A bare `int x` parameter is therefore a copy, not an out-parameter, and a nullable primitive is immutable the same way.
+A bare `int x` parameter is therefore a copy, not an out-parameter.
 The dedicated primitive rule set is rejected, see the rejected-alternatives table.
 * **OQ-35**: Captures of reassigned locals vs. Java's effectively-final rule.
 Resolved by CLO-01: a captured local must be effectively final, exactly `javac`'s lambda rule (JLS 15.27.2), so a closure cannot write to a captured slot on either surface and Mutate-mode captures mutate through a mutable capture instead.

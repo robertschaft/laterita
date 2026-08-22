@@ -229,7 +229,8 @@ It runs therefore exactly one of the special operations that are normally only p
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
 
-`@consuming` sits in modifier position and composes with `@readonly` (MUT-13).
+`@consuming` sits in modifier position and can be combined with `@readonly` (MUT-13).
+The combination is callable on a `@fixed` receiver, which an unmarked `@consuming` method is not.
 `@consuming` calls require an owned receiver and no `give(...)` wrapper.
 
 ```java
@@ -395,12 +396,11 @@ Every method of an immutable class or interface is `@readonly`, including one in
 
 ### MUT-11 - `record` and `enum` are immutable
 
-A `record` and an `enum` are immutable classes by construction.
+Every `record` and every `enum` is immutable.
 
 ### MUT-18 - Primitive types are immutable
 
-`boolean`, `byte`, `short`, `char`, `int`, `long`, `float`, and `double` are immutable types.
-A nullable primitive (NULL-02) is immutable in the same way.
+Every primitive type (e.g. `boolean`, `int`, `double`) is immutable.
 
 ### MUT-12 - A borrow of an immutable instance may be a copy
 
