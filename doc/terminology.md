@@ -125,10 +125,10 @@ A modifier-position annotation on the method, parallel to `@readonly` (MUT-13), 
 See `OWN-15`.
 
 ### @fixed (annotation)
-The single mutability marker: it withdraws *referent mutability*, the right to mutate a value through a binding by calling a mutating method on it or writing through it.
-Mutability is granted by default at every position whose declared type is a mutable class, and nothing grants it, so `@fixed` is the only word on the axis (`MUT-01`).
-It is orthogonal to reassigning the binding itself, the *slot*, which is on by default and locked by `final` (`MUT-20`).
-It is redundant where the position is already immutable and load-bearing everywhere else (`MUT-31`).
+Declares that a variable may not be used to modify the object it refers to, by calling a mutating method on it or by assigning one of its fields.
+A variable is mutable unless it is declared `@fixed` or its declared type is immutable (`MUT-01`).
+Whether a variable is mutable is independent of whether it may be assigned, which `final` governs (`MUT-20`).
+`@fixed` has no effect where the declared type is already immutable (`MUT-31`).
 On a type-parameter declaration `<@fixed T>` writes `@fixed` at every usage of `T` and leaves the bound unchanged (`TARG-03`).
 On a class declaration `@fixed class C` declares an immutable class (`MUT-10`).
 On a type, `@fixed C` names the *frozen view* of `C` (`MUT-30`).
@@ -174,30 +174,29 @@ Compiler bookkeeping tracking whether each field of a destructed value is still 
 Used to emit correct `onDrop()` calls when only some fields remain.
 See `DROP-04`.
 
-### demanding use
-A use of a local that requires mutation: calling a mutating method on it, writing through it, passing it to a mutable slot, or returning it through a mutable return type.
-A local with one borrows its source mutably, and a local with none is *effectively fixed* (`MUT-60`).
-A demanding use of an immutable local is rejected (`MUT-15`).
+### mutating use
+A use of a local variable that requires mutation: a call to a mutating method on it, an assignment through it, passing it to a mutable parameter, or returning it through a mutable return type.
+A local variable with one borrows its source as a mutable borrow, and one with none is *effectively fixed* (`MUT-60`).
+It is a compile-time error for an immutable local variable to have a mutating use (`MUT-15`).
 See `MUT-60`.
 
 ### effectively final
-A non-`final` local that is never reassigned.
-Its slot is fixed, so borrow analysis treats it as locked (`MUT-61`).
-A closure may capture only an effectively final local, exactly Java's lambda rule (`CLO-01`).
+A local variable that is not declared `final` and is never assigned after its initializer.
+Borrow analysis treats it as `final` (`MUT-61`).
+A closure may capture only an effectively final local variable, exactly Java's lambda rule (`CLO-01`).
 
 ### effectively fixed
-A mutable local none of whose uses demands mutation: no mutating call on it, no write through it, no passing it to a mutable slot, and no returning it through a mutable return type.
-Such a local borrows its source shared, so several of them over one value coexist (`OWN-03`).
-It is the borrow-mode counterpart of *effectively final*, classified from the uses the same way and for the same reason (`MUT-60`).
+A mutable local variable with no *mutating use* (`MUT-60`).
+It borrows its source as a shared borrow, so several such variables over one value may coexist (`OWN-03`).
 
 ### fixed (static method on `laterita.lang.Intrinsics`)
-`fixed(x)` returns a `@fixed @bound` borrow of `x`, the expression-position form of the `@fixed` downgrade.
-The original stays usable and several frozen views coexist.
+`fixed(x)` returns a `@fixed @bound` borrow of `x`, applying the `MUT-31` conversion to an expression.
+`x` remains usable and several such borrows may coexist.
 See `MUT-42`.
 
 ### frozen view
 `@fixed C`, the interface carrying only the members of `C` that need no mutability.
-Every mutable `C` implements it, so a `C` value fills a `@fixed C` slot and not the reverse.
+Every mutable `C` implements it, so a value of type `C` may be assigned to a variable of type `@fixed C` and not the reverse.
 The views are ordered like the types they view, so `@fixed Object` is the top type (`MUT-30`).
 It is not a type a class declaration names, so implementing it makes no class immutable (`HIER-01`).
 An immutable class declared under a mutable ancestor is the declaration-site form of the same thing (`HIER-03`, `HIER-04`).
@@ -317,10 +316,11 @@ It may declare mutating methods and fields that are reassigned or mutated throug
 Every mutable class implements its own *frozen view* `@fixed C` (`MUT-30`).
 See `MUT-10`, `HIER-02`.
 
-### mutable slot / immutable slot
-A slot is *immutable* when it carries `@fixed` or its declared type is an immutable class, and *mutable* otherwise (`MUT-31`).
-The kind decides what may fill the slot: a mutable slot rejects an immutable value, and an immutable slot accepts either, downgrading a mutable one to its frozen view.
-`@fixed` on a slot whose declared type is already immutable is redundant, so `String s` and `@fixed String s` declare the same slot.
+### mutable variable / immutable variable
+A variable is *immutable* if it is declared `@fixed` or its declared type is immutable, and *mutable* otherwise (`MUT-31`).
+A mutable variable may not be assigned an immutable value.
+An immutable variable may be assigned either, taking a mutable value as its frozen view.
+`@fixed` on a variable whose declared type is already immutable has no effect, so `String s` and `@fixed String s` declare the same variable.
 See `MUT-31`, `MUT-01`.
 
 ### Mutex<T>

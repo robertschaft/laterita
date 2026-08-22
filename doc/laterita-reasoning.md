@@ -274,7 +274,7 @@ The two bodies are identical apart from a single mutability qualifier, and the c
 The `Iterable`/`MutIterable` and `Iterator`/`MutIterator` splits that a two-method design forces both collapse onto it.
 
 It composes with the borrow classification of MUT-60 in the way that makes ordinary collection code compile.
-An inherited call is a demanding use of its receiver only when the borrow it returns has a demanding use, so a loop that reads its elements leaves the collection shared and nests with any other read of the same collection, while a loop that mutates an element takes the exclusive borrow it needs and no more.
+An inherited call is a mutating use of its receiver only when the borrow it returns has a mutating use, so a loop that reads its elements leaves the collection shared and nests with any other read of the same collection, while a loop that mutates an element takes the exclusive borrow it needs and no more.
 Neither shape carries an annotation.
 
 The mechanism has precedent in statically typed languages shaped by exactly this duplication.
@@ -320,7 +320,7 @@ A bare parameter lends exclusively, so an author who writes `void render(Scene s
 The cost lands outside the file where the mistake was made, which is the worst place for it, and no inference can fix it: a parameter is published contract, and deriving it from the body would make a caller's obligations depend on a body it cannot see (OWN-00).
 
 What the compiler can do is say so.
-The body is already analysed for the demanding uses that classify a local (MUT-60), so the same analysis answers whether a parameter's mutability was ever used, and the fix is one word the diagnostic can name.
+The body is already analysed for the mutating uses that classify a local variable (MUT-60), so the same analysis answers whether a parameter's mutability was ever used, and the fix is one word the diagnostic can name.
 It reaches a parameter typed by a type parameter for the same reason: TARG-03 checks the body once against the bound, so one pass answers the question for every argument rather than per monomorphization.
 
 The two exclusions fall out of the same reading.

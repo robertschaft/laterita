@@ -23,6 +23,8 @@ Currently the spec in doc is work in progress and needs to mature.
 ## Specification voice
 
 `doc/laterita-spec.md` states rules, not arguments for them.
+It uses the vocabulary of the Java Language Specification: variable, value, class, instance, field, method, parameter.
+A rule reads as a plain statement of what is permitted or what is an error ("A `final` variable may be assigned only once", "It is a compile-time error to ..."), not as a description of a mechanism acting on the program.
 It carries no rationale ("because...", "so that...", "this keeps X small", "deliberately") and no history ("previously", "the old rule", "we decided").
 Stating what a rule entails is normative and belongs in the spec, while stating why the rule is right belongs in `doc/laterita-reasoning.md`.
 The `spec-reasoning-auditor` agent checks a spec change against this rule and reports violations.
