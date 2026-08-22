@@ -224,8 +224,8 @@ Candidates carry different trade-offs.
 - `@ro` / `@readonly` names the capability directly and matches what C# (`readonly`), C++ (`const`), and D (`const`) call it.
   It is the least ambiguous on parameters and fields.
   `@readonly class Money` is still odd, and `@ro` is terse to the point of being unguessable.
-  `@readonly` is also taken: MUT-13 spends it on the method axis, where it withdraws receiver mutation.
-  Reusing one word for both axes would state two different claims, what a binding may do and what a method does to its receiver, in the same token.
+  `@readonly` is also taken: MUT-13 uses it as a method modifier, where it forbids receiver mutation.
+  One word for both would state two different things in the same token, what a variable may do and what a method does to its receiver.
 - `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-10 does not.
   It reads poorly on a parameter, where the point is the lend mode, not the value-ness.
 - `@frozen` matches the "frozen view" term the spec already uses (MUT-30, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
@@ -235,9 +235,9 @@ Candidates carry different trade-offs.
 
 - Which name does the marker carry across all eight positions?
 - Is one name for every position the right call, or does the class declaration want a different word from the binding positions, at the cost of MUT-01's single-word property?
-- Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that the method axis is spelled `@readonly` (MUT-13)?
-  A binding marker built from the same root, `@ro` against `@readonly`, or a different root that still rhymes, would let a reader carry one idea across both axes.
-  The two axes are distinct (MUT-01, MUT-13), so a shared root must not become a shared meaning.
+- Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that a method is annotated `@readonly` (MUT-13)?
+  A variable annotation built from the same root, `@ro` against `@readonly`, would let a reader carry one idea across both.
+  The two are distinct (MUT-01, MUT-13), and a shared root must not become a shared meaning.
 
 **Why it matters.**
 The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.

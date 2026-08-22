@@ -126,11 +126,11 @@ See `OWN-15`.
 
 ### @fixed (annotation)
 Declares that a variable may not be used to modify the object it refers to, by calling a mutating method on it or by assigning one of its fields.
-A variable is mutable unless it is declared `@fixed` or its declared type is immutable (`MUT-01`).
+A variable is mutable unless it is annotated `@fixed` or its declared type is immutable (`MUT-01`).
 Whether a variable is mutable is independent of whether it may be assigned, which `final` governs (`MUT-20`).
 `@fixed` has no effect where the declared type is already immutable (`MUT-31`).
-On a type-parameter declaration `<@fixed T>` writes `@fixed` at every usage of `T` and leaves the bound unchanged (`TARG-03`).
-On a class declaration `@fixed class C` declares an immutable class (`MUT-10`).
+A type parameter annotated `@fixed` annotates every use of it and leaves the bound unchanged (`TARG-03`).
+A class or interface annotated `@fixed` is immutable (`MUT-10`).
 On a type, `@fixed C` names the *frozen view* of `C` (`MUT-30`).
 A method that does not mutate its receiver is marked with the companion annotation `@readonly`, not `@fixed`.
 See `MUT-01`, `MUT-30`, `MUT-31`.
@@ -253,7 +253,7 @@ See `DROP-06`.
 
 ### immutable class
 A class or interface declared `@fixed`, or inheriting immutability from an immutable supertype (`HIER-01`).
-Its fields are `final` and `@fixed`, and every method it declares is `@readonly`, so its instances cannot be mutated through any binding (`MUT-10`, `MUT-22`).
+Its fields are `final` and `@fixed`, and every method it declares is `@readonly`, so its instances cannot be modified through any variable (`MUT-10`, `MUT-22`).
 It may inherit mutable members from a mutable ancestor, present but not callable on it (`MUT-15`), and may still hold `Cell<T>` interior-mutable state.
 A class with no immutable supertype and no `@fixed` is mutable, the default (`HIER-02`).
 `String`, `Number`, and every `record` and `enum` are immutable.
@@ -262,7 +262,7 @@ See `MUT-10`, `HIER-01`, `HIER-02`.
 
 ### interior mutability
 The ability to mutate an object's contents through a `@fixed` (immutable) variable.
-Breaks the rule that an immutable binding reaches nothing mutable (`MUT-14`).
+Breaks the rule that an immutable variable reaches nothing mutable (`MUT-14`).
 Implemented only through `Cell<T>` in safe code.
 See `MUT-16`.
 
@@ -311,13 +311,13 @@ A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
 
 ### mutable class
-A class or interface that is not declared `@fixed` and inherits immutability from no supertype, the default kind (`HIER-02`).
-It may declare mutating methods and fields that are reassigned or mutated through (`MUT-10`).
+A class or interface that is not annotated `@fixed` and inherits immutability from no supertype, the default kind (`HIER-02`).
+It may declare mutating methods, and fields that may be assigned or modified through (`MUT-10`).
 Every mutable class implements its own *frozen view* `@fixed C` (`MUT-30`).
 See `MUT-10`, `HIER-02`.
 
 ### mutable variable / immutable variable
-A variable is *immutable* if it is declared `@fixed` or its declared type is immutable, and *mutable* otherwise (`MUT-31`).
+A variable is *immutable* if it is annotated `@fixed` or its declared type is immutable, and *mutable* otherwise (`MUT-31`).
 A mutable variable may not be assigned an immutable value.
 An immutable variable may be assigned either, taking a mutable value as its frozen view.
 `@fixed` on a variable whose declared type is already immutable has no effect, so `String s` and `@fixed String s` declare the same variable.
@@ -431,12 +431,12 @@ The "caller must hold the bound lock" precondition is a runtime check: laterita 
 See `STD-12`.
 
 ### @readonly (annotation)
-Withdraws receiver mutation: a `@readonly` method may not reassign the receiver's non-`final` fields, mutate through its fields, or call a mutating method on `this`.
-A method without it may do all three, and is callable only on a mutable receiver (`MUT-15`).
-A declaration annotation on the method, kept a distinct token from `@fixed`: `@fixed` says what a binding may do, `@readonly` says what a method does to whatever receiver it is given.
-On an immutable class every method is `@readonly` and writing it is redundant (`MUT-10`).
-On a non-static inner class it withdraws the same thing one level out, giving the class a shared borrow of its enclosing instance (`MUT-50`).
-With `InheritFrom.RECEIVER` the method instead takes the mutability its caller supplies (`MUT-17`).
+A method annotated `@readonly` may not assign the receiver's non-`final` fields, modify the objects those fields refer to, or call a mutating method on `this`.
+A method not so annotated may do all three, and may be called only on a mutable receiver (`MUT-15`).
+A method modifier, distinct from `@fixed`: `@fixed` states what a variable may do, `@readonly` states what a method does to its receiver.
+Every method of an immutable class is `@readonly` and the annotation has no effect there (`MUT-10`).
+An inner class annotated `@readonly` holds a shared borrow of its enclosing instance (`MUT-50`).
+With `InheritFrom.RECEIVER` the method takes the mutability its caller supplies (`MUT-17`).
 See `MUT-13`.
 
 ### receiver mode (of a method)

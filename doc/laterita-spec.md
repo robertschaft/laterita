@@ -230,7 +230,7 @@ It runs therefore exactly one of the special operations that are normally only p
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
 
-`@consuming` sits in modifier position and can be combined with `@readonly` (MUT-13).
+`@consuming` is a method modifier and may be combined with `@readonly` (MUT-13).
 The combination is callable on a `@fixed` receiver, which an unmarked `@consuming` method is not.
 `@consuming` calls require an owned receiver and no `give(...)` wrapper.
 
@@ -353,10 +353,10 @@ EntryView<String, Integer> view = new EntryView<>(name, count);
 // view's lifetime = min(name, count)
 ```
 
-### LIFE-05 - A primitive carries no lifetime
+### LIFE-05 - A primitive has no lifetime
 
-A primitive is passed, returned, and stored as a value copy (MUT-18).
-`@bound`, `@borrow`, and `@take` on a primitive are redundant, and a `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
+A primitive is passed, returned, and stored as a copy of its value (MUT-18).
+`@bound`, `@borrow`, and `@take` have no effect on a primitive, and a `@borrow` field of primitive type does not make its instance `@bound` (OWN-09).
 
 ### LIFE-04 - `@borrowCapped` caps an instance's lifetime within its borrow sources
 
@@ -379,8 +379,8 @@ The compiler must reject any program in which a `@borrowCapped` instance's scope
 A variable is *mutable* if the object it refers to may be modified through it.
 To modify an object is to call a mutating method on it (MUT-13) or to assign one of its fields.
 
-A variable is mutable unless it is declared `@fixed`, or its declared type is immutable (MUT-31).
-`@fixed` may be written on a local variable (MUT-40), a field (MUT-21), a parameter (MUT-41), a return type, a type argument or a use of a type parameter (TARG-03), a class or interface declaration (MUT-10), and a type-parameter declaration (TARG-03).
+A variable is mutable unless it is annotated `@fixed`, or its declared type is immutable (MUT-31).
+A local variable (MUT-40), a field (MUT-21), a parameter (MUT-41), a return type, a type argument, a use of a type parameter (TARG-03), a class or interface declaration (MUT-10), and a type-parameter declaration (TARG-03) may be annotated `@fixed`.
 
 Whether a variable is mutable is independent of whether it may be assigned.
 A `final` variable may be assigned only once (MUT-20) and may still be mutable.
@@ -388,8 +388,8 @@ A `final` variable may be assigned only once (MUT-20) and may still be mutable.
 ### MUT-10 - Mutable and immutable classes
 
 A class, abstract class, or interface is *mutable* or *immutable*.
-A declaration marked `@fixed` (`@fixed class C`, `@fixed abstract class C`, `@fixed interface I`) is immutable.
-A declaration not marked `@fixed` takes its kind from its supertypes (HIER-01, HIER-02).
+A class or interface annotated `@fixed` (`@fixed class C`, `@fixed abstract class C`, `@fixed interface I`) is immutable.
+One that is not annotated `@fixed` takes its kind from its supertypes (HIER-01, HIER-02).
 
 A mutable class may declare methods that are not `@readonly` (MUT-13), and fields that may be assigned or modified through (MUT-21, MUT-22).
 Every method of an immutable class or interface is `@readonly`, including one inherited from a mutable superclass (HIER-03).
@@ -409,11 +409,11 @@ Where the lifetime constraints are the same, the compiler may replace a borrow o
 ### MUT-13 - `@readonly` methods
 
 A method may modify its receiver: assign the receiver's non-`final` fields, modify the objects the receiver's fields refer to, and call other mutating methods on `this`.
-A method declared `@readonly` may do none of these.
+A method annotated `@readonly` may do none of these.
 It may call other `@readonly` methods on `this`.
 
-`@readonly` is written in modifier position and may be combined with `@consuming` (OWN-15).
-It has an `InheritFrom` value, `InheritFrom.NONE` by default, which is the form specified here.
+`@readonly` is a method modifier and may be combined with `@consuming` (OWN-15).
+Its element `value` has type `InheritFrom` and defaults to `InheritFrom.NONE`, the form specified here.
 On an immutable class `@readonly` has no effect (MUT-10).
 
 HIER-05 specifies override variance.
@@ -429,7 +429,7 @@ class Counter {
 
 ### MUT-17 - `@readonly(InheritFrom.RECEIVER)` methods
 
-A method declared `@readonly(InheritFrom.RECEIVER)` (MUT-13) requires only the mutability its caller supplies.
+A method annotated `@readonly(InheritFrom.RECEIVER)` (MUT-13) requires only the mutability its caller supplies.
 Called on a mutable receiver it behaves as a mutating method and takes an exclusive borrow of the receiver (MUT-15).
 Called on an immutable receiver or a shared borrow it behaves as `@readonly`.
 
@@ -511,7 +511,7 @@ Assigning a variable that owns its value drops the previous value first (DROP-01
 ### MUT-21 - `@fixed` fields
 
 The object a field refers to may be modified through that field.
-A field declared `@fixed` may not be used to modify it.
+A field annotated `@fixed` may not be used to modify it.
 Modifying an object through a field requires a mutable receiver (MUT-15).
 The declared type of the field is not restricted.
 
@@ -542,7 +542,8 @@ It is a compile-time error to assign a value of type `@fixed C` to a variable of
 `@fixed D` is a subtype of `@fixed C` whenever `D` is a subtype of `C`.
 `@fixed Object` is the top type.
 
-`@fixed C` may not appear in the `extends` or `implements` clause of a class or interface declaration, and a class that implements it is not immutable (HIER-01).
+It is a compile-time error for `@fixed C` to appear in the `extends` or `implements` clause of a class or interface declaration.
+A class that implements it is not thereby immutable (HIER-01).
 It may appear as a type-parameter bound (TARG-03).
 
 ```java
@@ -556,7 +557,7 @@ view.inc();                // ERROR: inc is a mutating method, view is @fixed (M
 
 ### MUT-31 - Assignment between mutable and immutable
 
-A variable is immutable if it is declared `@fixed`, or its declared type is immutable (MUT-10, MUT-11, MUT-18).
+A variable is immutable if it is annotated `@fixed`, or its declared type is immutable (MUT-10, MUT-11, MUT-18).
 Otherwise it is mutable.
 A value is immutable if its class is immutable, or if the variable it is read from is immutable or is a shared borrow.
 Otherwise it is mutable.
@@ -568,11 +569,11 @@ Otherwise it is mutable.
 
 `@fixed` on a variable whose declared type is immutable has no effect.
 `String s` and `@fixed String s` declare the same variable.
-A `@fixed` that has no effect is permitted wherever `@fixed` may be written.
+A `@fixed` annotation that has no effect is permitted wherever `@fixed` is applicable.
 
 ### MUT-40 - Local variables
 
-A local variable is mutable unless it is declared `@fixed`, or its declared type is immutable (MUT-31).
+A local variable is mutable unless it is annotated `@fixed`, or its declared type is immutable (MUT-31).
 For a `var` declaration the declared type, including `@fixed`, is the type of the initializer.
 A later assignment does not change it.
 
@@ -589,7 +590,7 @@ A later assignment does not change it.
 var sb = new StringBuilder();   // the initializer is a StringBuilder, a mutable class
 sb.append("x");                 // OK
 
-@fixed var frozen = sb;         // frozen is declared @fixed
+@fixed var frozen = sb;         // frozen is annotated @fixed
 frozen.append("y");             // ERROR: frozen is immutable (MUT-15)
 
 var name = t.name();            // the initializer is a String, an immutable class
@@ -598,7 +599,7 @@ var name = t.name();            // the initializer is a String, an immutable cla
 ### MUT-41 - Parameters
 
 A parameter whose declared type is a mutable class receives a mutable borrow (OWN-13).
-Declared `@fixed`, it receives a shared borrow.
+Annotated `@fixed`, it receives a shared borrow.
 With `@take` it receives ownership, and `@fixed` makes that ownership immutable.
 
 `C` names a mutable class (MUT-10) in the forms below.
@@ -632,8 +633,8 @@ That borrow is a synthetic `final @borrow` field naming the enclosing instance, 
 By OWN-09 an inner instance is `@bound` to its enclosing instance.
 The inner-class declaration fixes the mode of that borrow (OWN-00).
 
-An inner class declared `@readonly` holds `final @fixed @borrow` instead, a shared borrow of the enclosing instance.
-This is what `@readonly` states on a method (MUT-13), one level out: the class does not modify its enclosing instance.
+An inner class annotated `@readonly` holds `final @fixed @borrow` instead, a shared borrow of the enclosing instance.
+`@readonly` states of the class what it states of a method (MUT-13): it does not modify its enclosing instance.
 An inner class with a mutable enclosing borrow may be declared only inside a mutable class (MUT-10).
 
 `@fixed` and `@readonly` on an inner-class declaration are independent.
@@ -672,7 +673,7 @@ class Document {
 
 ### MUT-51 - `@readonly(InheritFrom.RECEIVER)` inner classes
 
-An inner class declared `@readonly(InheritFrom.RECEIVER)` takes the mutability of its enclosing borrow (MUT-50) from the `this` that constructs the instance.
+An inner class annotated `@readonly(InheritFrom.RECEIVER)` takes the mutability of its enclosing borrow (MUT-50) from the `this` that constructs the instance.
 One such class serves as a mutable cursor when constructed from a mutable enclosing instance, and as a read cursor when constructed from a shared one.
 
 ### MUT-60 - Effectively fixed local variables
@@ -702,7 +703,7 @@ Only an effectively final local variable may be captured by a closure (CLO-01).
 
 ### MUT-70 - A parameter that does not need to be mutable is reported
 
-The compiler reports a mutable parameter (MUT-31) whose body contains no mutating use of it (MUT-60), and names `@fixed` as the correction.
+The compiler reports a mutable parameter (MUT-31) that the method body has no mutating use of (MUT-60), and names `@fixed` as the correction.
 The report is a warning and the declaration compiles as written.
 
 Where the declared type of the parameter is a type parameter, the bound is used (TARG-03).
@@ -736,16 +737,16 @@ class Counter {
 
 A class or interface is immutable when a type named in its `extends` or `implements` clause is immutable.
 The rule reaches superclasses and implemented or extended interfaces alike, and applies transitively.
-Writing `@fixed` on such a declaration is redundant (MUT-31).
+Annotating such a declaration `@fixed` has no effect (MUT-31).
 
-A class whose supertypes are all mutable may still be declared `@fixed`, which is the frozen view of HIER-03.
+A class whose supertypes are all mutable may still be annotated `@fixed`, which is the frozen view of HIER-03.
 
 ### HIER-02 - Default kind
 
 `Object` is mutable.
-Its `equals`, `hashCode`, and `toString` are declared `@readonly`, and `equals` takes a `@fixed Object` parameter, so every value fills it (MUT-30).
+Its `equals`, `hashCode`, and `toString` are annotated `@readonly`, and its `equals` parameter is `@fixed Object`, which every value may be assigned to (MUT-30).
 
-A class or interface that is not immutable by construction (MUT-11), carries no `@fixed`, and has no immutable supertype (HIER-01) is mutable.
+A class or interface that is not immutable by construction (MUT-11), is not annotated `@fixed`, and has no immutable supertype (HIER-01) is mutable.
 
 ### HIER-03 - Immutable subclass of a mutable ancestor is a frozen view
 
@@ -773,10 +774,10 @@ fc.inc();       // ERROR: inc mutates, FrozenCounter is immutable
 
 An immutable class implements `@fixed S` for each of its supertypes `S` and is not a subtype of `S` itself (MUT-30).
 Widening an immutable instance to a mutable supertype, class or interface, therefore yields the frozen view.
-A cast `(S) v` is rejected whenever `S` is mutable and `v` is immutable (MUT-31), so no cast recovers mutability the binding does not hold.
+It is a compile-time error to cast `v` to `S` when `S` is mutable and `v` is immutable (MUT-31).
 
-Mutability originates only at construction of a mutable class.
-It propagates only through variables, parameters, returns, and fields that carry no `@fixed`.
+An instance is mutable only from the construction of a mutable class.
+It stays mutable only through variables, parameters, returns, and fields that are not annotated `@fixed`.
 
 ```java
 @fixed Counter view = new FrozenCounter(5);   // OK: widens to the frozen view
@@ -850,31 +851,32 @@ As a type argument there is no object for it to describe.
 `Pair<@take K, @take V>` is a compile error.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`).
 
-### TARG-03 - Type-parameter mutability and the `@fixed` shorthand
+### TARG-03 - Type parameters and `@fixed`
 
-The bound fixes which arguments a type parameter admits, by ordinary subtyping (MUT-30, HIER-04).
-The implicit bound is `@fixed Object`, the top type, so an unconstrained `class Foo<T>` admits mutable and immutable arguments alike.
-A bound that is a mutable class admits only mutable arguments.
+The bound determines which type arguments a type parameter accepts, by ordinary subtyping (MUT-30, HIER-04).
+The implicit bound is `@fixed Object`, the top type, so an unbounded `class Foo<T>` accepts mutable and immutable type arguments alike.
+A bound that is a mutable class accepts only mutable type arguments.
 
-A usage of a type parameter, in a field, parameter, return, local, or nested type argument, is a position whose declared type is the substituted argument, and its mutability follows from that argument (MUT-31).
-The body is checked once against the bound: it may call the bound's mutating methods on a usage that carries no `@fixed`, and a bound with no mutable surface admits no such call.
-The borrow checker needs nothing beyond the bound to check the body, and nothing beyond the declaration to check a use site (OWN-00).
+A use of a type parameter, as a field, parameter, return, local variable, or nested type argument, is a variable whose declared type is the type argument substituted for it.
+Whether it is mutable follows from that type argument (MUT-31).
+The method body is checked once against the bound: it may call the bound's mutating methods on a use that is not annotated `@fixed`, and a bound with no mutable surface has no such method to call.
+Checking a body requires the bound alone, and checking a use site requires the declaration alone (OWN-00).
 
-`@fixed` on the type-parameter declaration is a usage shorthand.
-`class Foo<@fixed T extends B>` writes `@fixed T` at each usage of `T` in the body, and leaves `B`, and with it the arguments the parameter admits, unchanged.
-Written on a single usage (`@fixed T field`, `List<@fixed T> xs`, a `@fixed T` parameter, return, or local) it freezes that occurrence and leaves the rest as the argument supplies.
-`@fixed` requires nothing of its holder.
+A type parameter annotated `@fixed` annotates every use of it in the body.
+`class Foo<@fixed T extends B>` leaves the bound `B` unchanged, and with it the type arguments the parameter accepts.
+A single use may be annotated instead (`@fixed T field`, `List<@fixed T> xs`, a `@fixed T` parameter, return, or local variable), leaving the others to follow the type argument.
+`@fixed` requires nothing of the type argument.
 
-The two decisions are independent, giving six declaration forms.
+The bound and the annotation are independent, giving six forms.
 `B` names a mutable class (MUT-10) in the forms below.
 
-| Declaration | Admits | Usage of `T` |
+| Declaration | Accepts | Use of `T` |
 |---|---|---|
-| `<T>` | any argument | as the argument |
-| `<@fixed T>` | any argument | `@fixed` |
-| `<T extends B>` | subtypes of `B` | as the argument |
+| `<T>` | any type argument | as the type argument |
+| `<@fixed T>` | any type argument | `@fixed` |
+| `<T extends B>` | subtypes of `B` | as the type argument |
 | `<@fixed T extends B>` | subtypes of `B` | `@fixed` |
-| `<T extends @fixed B>` | subtypes of `B` and of `@fixed B` | as the argument |
+| `<T extends @fixed B>` | subtypes of `B` and of `@fixed B` | as the type argument |
 | `<@fixed T extends @fixed B>` | subtypes of `B` and of `@fixed B` | `@fixed` |
 
 ```java
@@ -893,7 +895,8 @@ class Bar<T, @fixed S, V extends Counter> {
 var x = new Bar<Role, Counter, Counter>(/* … */);   // T admits Role, S admits Counter
 ```
 
-A container's elements take their mutability from the binding that holds the container (MUT-14, MUT-17), so a type argument carries `@fixed` only to freeze elements that a mutable container would otherwise lend mutably.
+The elements of a container take their mutability from the variable holding the container (MUT-14, MUT-17).
+A type argument is annotated `@fixed` to make the elements of a mutable container immutable.
 
 ```java
 class Registry<T extends Counter> {           // mutable bound: admits Counter, not Role
@@ -1867,7 +1870,7 @@ public interface MutableConsumer<T> {
 
 General-purpose class carrying two values.
 A single declaration covers owned, borrow, and mixed cases: the mode is driven by what is substituted for `L` and `R` (TARG-01).
-It is mutable (HIER-02), so a binding of it is mutable and `@fixed` yields the frozen view (MUT-31).
+It is mutable (HIER-02), so a variable of this type is mutable, and `@fixed` gives the frozen view (MUT-31).
 
 ```java
 package laterita.lang;
@@ -2586,7 +2589,7 @@ The component accessor is the only path back to the wrapped value, and no implic
 
 ### GEN-02 — `@Getter` and `@Setter`
 
-`@Getter` on a field, or on the class for all fields, generates a `public @readonly(InheritFrom.RECEIVER)` bean accessor: `getFieldName()` (`isFieldName()` for a `boolean`) returning `@bound T` (OWN-18), a borrow of the field that lends as the receiver does (MUT-17).
+`@Getter` on a field, or on the class for all fields, generates a `public @readonly(InheritFrom.RECEIVER)` bean accessor: `getFieldName()` (`isFieldName()` for a `boolean`) returning `@bound T` (OWN-18), a borrow of the field with the mutability of the receiver (MUT-17).
 `@Getter(lazy = true)` on a final field generates a memoized accessor that computes the value once on first call.
 
 `@Setter` requires a mutable class (MUT-10) and generates a setter for each non-`final` non-`static` field.
