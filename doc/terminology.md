@@ -236,7 +236,7 @@ Used exclusively for `onDrop()`.
 See `DROP-06`.
 
 ### immutable class
-A class or interface annotated `@fixed`, or inheriting immutability from a supertype (`HIER-01`).
+A class or interface annotated `@fixed`, or extending an immutable type (`HIER-01`).
 Its fields are `final` and `@fixed` and every method it declares is `@readonly`, so its instances cannot be modified through any variable.
 It may inherit mutable members from a mutable ancestor, present but not callable on it, and may still hold `Cell<T>` interior-mutable state.
 `String`, `Number`, and every `record` and `enum` are immutable.
@@ -299,7 +299,7 @@ A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
 
 ### mutable class
-A class or interface that is not annotated `@fixed` and inherits immutability from no supertype (`HIER-01`), the default kind.
+A class or interface that is not annotated `@fixed` and extends no immutable type (`HIER-01`), the default kind.
 It may declare mutating methods, and fields that may be assigned or modified through.
 See `MUT-10`, `HIER-02`.
 
@@ -603,7 +603,7 @@ For junior Java developers, here are key Rust/Laterita concepts mapped to Java:
 | Ownership + `give(...)` | Explicit transfer | Java has no ownership concept, so all variables are borrows |
 | Borrow (`&`) | Variable | Similar to Java, but lifetime rules are stricter |
 | `@fixed` (no mutate-through) | Reference used only to read the object | Java has no way to say it, while laterita forbids mutation with `@fixed`, with assignment the separate `final` axis |
-| `@fixed class` vs. mutable class | Valhalla `value class` | Both opt *in* to the restricted kind, and a class with no immutable supertype and no `@fixed` is an ordinary mutable class (HIER-02) |
+| `@fixed class` vs. mutable class | Valhalla `value class` | Both opt *in* to the restricted kind, and a class extending no immutable type and carrying no `@fixed` is an ordinary mutable class (HIER-01) |
 | `@local` annotation | Thread-local or thread-affine concept | Java doesn't have language-level thread-affinity for types |
 | `Cell<T>` | `AtomicReference<T>` (simplified) | Like atomics, but for single-threaded interior mutability, with no GC hazard |
 | `Mutex<T>` | `synchronized` block on a protected field | Closure-scoped API ensures lock release and ties the lock to the protected value |

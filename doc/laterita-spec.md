@@ -387,7 +387,7 @@ Whether a variable is mutable is independent of whether it may be assigned (MUT-
 
 A class, abstract class, or interface is *mutable* or *immutable*.
 A class or interface annotated `@fixed` (`@fixed class C`, `@fixed abstract class C`, `@fixed interface I`) is immutable.
-One that is not annotated `@fixed` takes its kind from its supertypes (HIER-01, HIER-02).
+One that is not annotated `@fixed` takes its kind from the type it extends (HIER-01).
 
 A mutable class may declare methods that are not `@readonly` (MUT-13), and fields that may be assigned or modified through (MUT-21, MUT-22).
 Every method of an immutable class or interface is `@readonly`, including one inherited from a mutable superclass (HIER-03).
@@ -512,8 +512,7 @@ The declared type of the field is not restricted.
 
 ### MUT-22 - Assigning a field
 
-A field may be assigned only through a mutable variable (MUT-15).
-Through `this` that means a constructor, a method that is not `@readonly`, or an `onDrop()` body.
+A field may be assigned only through a mutable variable (MUT-13, MUT-15).
 
 Every field of an immutable class is `final` and `@fixed`, including one inherited from a mutable superclass (HIER-03).
 
@@ -527,7 +526,7 @@ class User {
 }
 ```
 
-### MUT-30 - The type `@fixed C`
+### MUT-30 - The interface `@fixed C`
 
 For every class or interface `C`, `@fixed C` is an interface containing only its `@readonly` methods (MUT-13).
 `@fixed C` implements the `@fixed` counterparts of all interfaces that `C` implements or extends.
@@ -537,7 +536,6 @@ A value of type `C` may be assigned to a variable of type `@fixed C`.
 It is a compile-time error to assign a value of type `@fixed C` to a variable of type `C`.
 
 `@fixed C` may appear in an `implements` clause, restricting the class to `C`'s `@readonly` methods, and as a type-parameter bound (TARG-03).
-A class does not become immutable by implementing it (HIER-01).
 
 ```java
 class Counter { int n; void inc() { n = n + 1; } @readonly int read() { return n; } }
@@ -721,20 +719,18 @@ class Counter {
 
 ## HIER — Class Hierarchy and Override
 
-### HIER-01 - Immutability is inherited
+### HIER-01 - Immutability is inherited through `extends`
 
-A class or interface is immutable when a type named in its `extends` or `implements` clause is immutable, other than a `@fixed C` (MUT-30).
-The rule reaches superclasses and implemented or extended interfaces alike, and applies transitively.
-Annotating such a declaration `@fixed` has no effect (MUT-31).
+A class or interface is immutable when it `extends` an immutable type, transitively.
+A class that implements an immutable interface is not thereby immutable, and must declare `@readonly` only the methods it inherits from that interface (MUT-10).
+Annotating an immutable declaration `@fixed` has no effect (MUT-31).
 
 A class whose supertypes are all mutable may still be annotated `@fixed`, which is the frozen view of HIER-03.
 
-### HIER-02 - Default kind
+### HIER-02 - `Object`
 
 `Object` is mutable.
 Its `equals`, `hashCode`, and `toString` are annotated `@readonly`, and its `equals` parameter is `@fixed Object`, which every value may be assigned to (MUT-30).
-
-A class or interface that is not immutable by construction (MUT-11), is not annotated `@fixed`, and has no immutable supertype (HIER-01) is mutable.
 
 ### HIER-03 - Immutable subclass of a mutable ancestor is a frozen view
 
@@ -2308,7 +2304,7 @@ Combinations not listed are currently not supported and won't compile.
 
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
-| `@fixed` | `TYPE` | redundant on enum, record, and any class with an immutable supertype | Class or interface is immutable | MUT-10, HIER-01 |
+| `@fixed` | `TYPE` | redundant on enum, record, and any class extending an immutable type | Class or interface is immutable | MUT-10, HIER-01 |
 | `@fixed` | `LOCAL_VARIABLE` | redundant when the declared type is an immutable class | The local variable may not be used to modify the object (assignment is the separate `final` axis) | MUT-40 |
 | `@fixed` | `FIELD` | redundant in an immutable class and on a field of immutable type | The field may not be used to modify the object (assignment is MUT-22) | MUT-21 |
 | `@fixed` | `PARAMETER` | redundant when the type is an immutable class | Parameter receives a shared borrow instead of a mutable one, and its absence is reported when the body never mutates through it | MUT-41, MUT-70 |

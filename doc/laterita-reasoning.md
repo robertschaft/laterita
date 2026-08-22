@@ -150,10 +150,9 @@ The views also have to be ordered like the types they view, or a frozen `ArrayLi
 With that ordering `@fixed Object` falls out as the top type rather than being asserted.
 
 Calling `@fixed C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
-HIER-01 makes a class immutable when a type it names as a supertype is immutable, and `@fixed C` is immutable, so every class would inherit immutability from its own frozen view and the mutable kind would have no inhabitants.
+A supertype's kind would reach the subtype through HIER-01, and `@fixed C` is immutable, so every class would inherit immutability from its own frozen view and the mutable kind would have no inhabitants.
 An implemented interface is the shape that fits: it carries the members and the assignability, and it is what the frozen view actually is.
-HIER-01 names `@fixed C` as its one exception, so a class may implement a frozen view to restrict itself to a read-only surface without becoming immutable.
-The rule still holds unweakened for every other supertype.
+HIER-01 propagates immutability through `extends` alone, and a class cannot extend an interface, so a class may implement a frozen view to restrict itself to a read-only surface without becoming immutable.
 
 HIER-04 is the same relation read on declared class kinds, and it is what keeps MUT-15's check static.
 An immutable class satisfies `@fixed S` for each supertype `S` and not `S` itself, so a mutating method can never be reached through a widening or a cast on a value the program treats as frozen.
@@ -347,7 +346,8 @@ The alternative of an immutable default with a positive mutability opt-in is rej
 `Cell<T>` stays the interior-mutability escape hatch (MUT-16): an immutable class may hold a `Cell` field and mutate through it.
 The reference-counted handles depend on this, since `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so declare no mutating method of their own.
 
-Interfaces carry the marker for the same reason classes do, and it binds harder there: declaring an interface `@fixed` makes every implementor immutable (HIER-01), so it is written on interfaces whose contract is a value contract, and left off the ones meant to be implemented by mutable types.
+An interface carries the annotation for the same reason a class does: it declares that the interface's own methods are all `@readonly` (MUT-10).
+It does not bind the implementor's other methods, since immutability propagates through `extends` alone (HIER-01), so a mutable class may implement a value-contract interface and keep a mutable surface of its own.
 Every method of an immutable interface being `@readonly` lets MUT-15's static check use one uniform predicate over the receiver's static type, class or interface alike.
 
 ---
@@ -358,7 +358,8 @@ Every method of an immutable interface being `@readonly` lets MUT-15's static ch
 
 A subclass value fills a supertype slot, so it has to keep every guarantee the supertype published.
 Immutability is such a guarantee: a holder of a `@fixed` supertype relies on nothing reachable through it changing, and a mutable subclass reached through that slot would break the reliance.
-So immutability inherits, from a superclass and from any implemented interface alike, and a hierarchy is a run of mutable classes down to a frontier and immutable ones below it, with the transition happening once and never reversing.
+So immutability inherits through `extends`, and a hierarchy is a run of mutable classes down to a frontier and immutable ones below it, with the transition happening once and never reversing.
+It does not inherit through `implements`, where an immutable interface constrains only the methods it declares, which is what lets a class implement a frozen view without becoming immutable (MUT-30).
 Writing `@fixed` on a class that already inherits it is redundant rather than an error, matching how every other redundant `@fixed` is treated (MUT-31).
 
 Mutability is not a guarantee, so nothing has to inherit it and nothing does.
