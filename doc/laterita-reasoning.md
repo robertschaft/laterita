@@ -124,7 +124,7 @@ The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread lea
 
 ### Why `@fixed` is the single mutability marker (MUT-01)
 
-Referent mutability is a capability that subtracts freely and cannot be added.
+The right to modify an object is a capability that subtracts freely and cannot be added.
 Any variable can be handed on with the capability withdrawn, and no variable can acquire one the value never had, since nothing in a frozen class could honor it.
 A marker shaped like that capability is negative: it may be written in every position where mutability is otherwise present, it never has to fail, and its absence is the ordinary case.
 A positive marker has the opposite shape, an error case in every position and a redundant case in most, and it needs a negative companion anyway for the contexts where a default grants mutation.
@@ -135,7 +135,7 @@ The reader never computes which of two markers a position wants, and no position
 
 `final` is the model.
 Java already spells "this cannot change" with one word applied to the variable, absent by default, written where the author wants the restriction.
-Referent immutability is the same shape of property on the other axis, so it takes the same shape of marker, and `final @fixed` reads as the two locks it is.
+Immutability of the object is the same shape of property on the other axis, so it takes the same shape of marker, and `final @fixed` reads as the two locks it is.
 It also keeps ordinary-looking Java code meaning what a Java reader expects: a `class Point { int x; }` is mutable, and a `List<Item>` field handed to a method may be added to, exactly as in Java.
 
 The cost is that a read-only intent over a mutable class must be written.
@@ -1257,7 +1257,7 @@ Without a standard library primitive, every serious library falls back on `from_
 ### Why two surfaces and a record return (ARR-01, ARR-02)
 
 The `.java` and `.lat` surfaces differ on two features the array API depends on: anonymous functional interfaces (FN-01) exist only in `.lat`, and Java has no syntax for adding methods to `T[]`.
-The `.lat` surface uses both (ARR-01), the `.java` mirror substitutes static methods on `laterita.lang.Arrays` and named FIs (ARR-02, ARR-03).
+The `.lat` surface uses both (ARR-01), the `.java` mirror substitutes static methods on `laterita.lang.Arrays` and named functional interfaces (ARR-02, ARR-03).
 Migration tooling translates between them.
 
 For the two-way split, three shapes were considered, continuation-passing, pair return, multi-return language feature.

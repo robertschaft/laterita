@@ -450,9 +450,9 @@ The `BIND` and `MOVE` code groups, and the four-section structure of Variables, 
 The reorganization preserves every rule.
 The old codes are obsolete, and every cross-reference in the spec uses the new ones.
 
-A borrow slot on a field, a record component, or a generic type argument is spelled `@borrow`, where those positions once took `@bound`.
+A field, a record component, or a generic type argument that holds a borrow is spelled `@borrow`, where those positions once took `@bound`.
 `@bound` marks a borrowed value only where a source relationship is declared: on a parameter, whose source is that parameter, on a return, whose source is `this`, and on the variable that holds such a value.
-Separating the two tokens makes the structural role, that a slot holds a borrow whose source is fixed elsewhere, and the relational role, that a value is bound to a named source, legible where each is declared.
+Separating the two tokens makes the structural role, that a position holds a borrow whose source is fixed elsewhere, and the relational role, that a value is bound to a named source, legible where each is declared.
 A generic type argument names no source, so it is structural and takes `@borrow`.
 
 ## Resolved open questions
@@ -587,7 +587,7 @@ The same coordination patterns are expressible through three standard-library ty
 
 Resolved by MUT-18: a primitive type carries no mutable surface, so it is immutable, every primitive position is immutable (MUT-31), and the copy substitution of MUT-12 makes a primitive parameter, return, or field a value copy.
 `@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant rather than rejected, and a `@borrow` field of primitive type does not make its instance `@bound`.
-A bare `int x` parameter is therefore a copy and not an out-parameter.
+An unannotated `int x` parameter is therefore a copy and not an out-parameter.
 The dedicated primitive rule set is rejected, as recorded above.
 
 ### OQ-35 — Capturing a reassigned local variable against Java's effectively-final rule

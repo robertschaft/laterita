@@ -78,15 +78,15 @@ A condition variable bound to a `ReentrantLock` and created by `newCondition()`.
 The names and shapes match `java.util.concurrent.locks.Condition`, and the requirement that the caller holds the bound lock is checked at run time.
 See `STD-12`.
 
-### `@consuming` (annotation on methods)
-Declares that a method consumes its receiver: the body owns `this`, and the variable that held the receiver may not be used after the call.
-A modifier-position annotation, as `@readonly` is, and the two compose.
-See `OWN-15`.
-
 ### const expression
 An expression the compiler evaluates at compile time: a literal, a reference to another const-initialized static field, or a call to a constructor or method the compiler admits in that position.
 Every static field initializer is one.
 See `STAT-02`.
+
+### `@consuming` (annotation on methods)
+Declares that a method consumes its receiver: the body owns `this`, and the variable that held the receiver may not be used after the call.
+A modifier-position annotation, as `@readonly` is, and the two compose.
+See `OWN-15`.
 
 ### `@Delegate` (annotation on fields)
 Generates, for every `public` instance method of the field's declared type, a forwarding method on the owner that calls the same method on the field.
@@ -157,15 +157,15 @@ The raw allocation primitive, providing allocation, dereference, and release.
 Every operation on it requires an `@unsafe` method (`UNS-02`), and application code reaches it through a wrapper such as `Rc<T>` or `Arc<T>`.
 See `STD-06`.
 
-### `@internal` (annotation on methods)
-Declares that a method may be invoked only from compiler-emitted code.
-`onDrop()` is the only such method this specification introduces.
-See `DROP-06`.
-
 ### interior mutability
 Modifying an object's contents through an immutable variable, which `MUT-14` otherwise forbids.
 In safe code it is reachable only through `Cell<T>`.
 See `MUT-16`.
+
+### `@internal` (annotation on methods)
+Declares that a method may be invoked only from compiler-emitted code.
+`onDrop()` is the only such method this specification introduces.
+See `DROP-06`.
 
 ### `.lat` / `.java` (source file extensions)
 The two extensions `latc` accepts.
@@ -225,7 +225,7 @@ The result is a distinct nominal type with no implicit widening to the component
 
 ### nullable type
 A type admitting `null` in addition to the values of `T`, written `@Nullable T` on the Java-compatible surface and `T?` in `.lat`.
-A bare `T` in Laterita excludes `null`, unlike a Java reference type.
+An unannotated `T` in Laterita excludes `null`, unlike a Java reference type.
 See `NULL-02`, `LAT-01`.
 
 ### `@Operator` (annotation on methods)
@@ -238,6 +238,11 @@ See `LAT-07`.
 "Open question", a numbered entry in `doc/laterita-open-questions.md` recording an unresolved language-design decision.
 It is not part of the normative specification.
 
+### override variance
+The rules governing how an overriding method's annotations may differ from the inherited method's.
+One principle covers them: an override may demand less of its callers and guarantee more to them, never the reverse.
+See `HIER-05`.
+
 ### `@own` (annotation on type parameters)
 Declares that a type parameter rejects a borrowed type argument, so `class C<@own T>` accepts `C<Foo>` and not `C<@borrow Foo>`.
 The dual of `@borrow`, and the counterpart of a `'static` bound in Rust.
@@ -248,11 +253,6 @@ See `TARG-06`.
 The right and the obligation to drop a value.
 An owned variable may move the value to another variable, pass it to a `@take` parameter, or drop it at scope exit, and only one variable owns a value at a time.
 See `OWN-01`.
-
-### override variance
-The rules governing how an overriding method's annotations may differ from the inherited method's.
-One principle covers them: an override may demand less of its callers and guarantee more to them, never the reverse.
-See `HIER-05`.
 
 ### `Pair<L, R>`
 The general-purpose mutable class in `laterita.lang` carrying two values, whose components are `public final` fields.
@@ -267,6 +267,10 @@ See `OWN-13`, `MUT-41`.
 The state of a `Mutex<T>` whose `with` or `tryWith` closure propagated an exception out of the critical section.
 Every later acquisition throws `PoisonedException`, and the only recovery is to replace the mutex.
 See `THR-10`.
+
+### producer expression / naming initializer
+The two kinds of initializer OWN-02 distinguishes, which decide whether a local variable owns its value or borrows another variable's.
+See `OWN-02`.
 
 ### `Rc<T>`
 A reference-counted handle for shared ownership within one thread.
@@ -327,7 +331,7 @@ See `OBJ-01`, `OBJ-02`, `FN-03`.
 
 ### `@take` (annotation on parameters)
 Declares that a parameter receives ownership of its argument.
-At the call site a bare variable passed to such a parameter is consumed implicitly, and `give(variable)` states the same transfer explicitly.
+At the call site a variable passed to such a parameter is consumed implicitly, and `give(variable)` states the same transfer explicitly.
 Consumption of a receiver is the separate `@consuming` annotation.
 See `OWN-13`, `OWN-15`.
 
@@ -364,7 +368,7 @@ See `MUT-10`.
 
 ### `WeakReference<T>`
 A non-owning reference to a value held by `Rc<T>` or `Arc<T>`.
-It does not contribute to the count and does not keep the value alive, and `get()` returns a strong handle or `null`, rather than the bare referent `java.lang.ref.WeakReference.get()` returns.
+It does not contribute to the count and does not keep the value alive, and `get()` returns a strong handle or `null`, rather than the value itself, which `java.lang.ref.WeakReference.get()` returns.
 See `STD-03`.
 
 ---

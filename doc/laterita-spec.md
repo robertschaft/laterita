@@ -1921,7 +1921,7 @@ Provides:
 - `Rc<T>? get()` (or `Arc<T>? get()`, matching the source flavor): returns a strong handle if the value is still alive, otherwise `null`.
 Implementation must be race-free with respect to concurrent strong-count decrement (compare-and-swap per STD-04).
 
-`get()` returns a fresh strong handle rather than the referent itself, which `java.lang.ref.WeakReference.get()` returns.
+`get()` returns a fresh strong handle rather than the value itself, which `java.lang.ref.WeakReference.get()` returns.
 Once the caller drops the returned handle, the value may be reclaimed when the reference count next reaches zero.
 
 ### STD-04 — Race-safe `Arc<T>` upgrade
