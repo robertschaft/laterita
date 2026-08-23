@@ -21,10 +21,10 @@ Mutability, ownership, lifetimes, and cleanup are expressed entirely through ann
 The core language is annotated Java that `javac` parses unchanged.
 
 - **Immutability is explicit and transitive.**
-A single `@fixed` annotation covers classes, variables, fields, parameters, and returns, and everywhere it appears the object may not be modified.
-It aligns with `final`: mutable is the default, as in Java, and `@fixed` is written where the guarantee is wanted.
-Immutability propagates, so a `@fixed` variable reaches nothing mutable through it.
-A method states its own effect on its receiver with the companion annotation `@readonly`.
+`@fixed` marks a variable or a type immutable.
+Mutable is the default, as in Java, and `@fixed` is written where the guarantee is wanted.
+Methods can be annotated `@readonly` to restrict them to reading their receiver.
+Only those methods are represented in the `@fixed` interface of a class.
 
 - **Non-nullable by default.** A bare `T` excludes null and needs no null check; the nullable type accepts it. The compiler proves the rest and narrows automatically after an `if (x != null)` check.
 

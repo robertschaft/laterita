@@ -125,7 +125,7 @@ A modifier-position annotation on the method, parallel to `@readonly` (MUT-13), 
 See `OWN-15`.
 
 ### @fixed (annotation)
-Declares that the object may not be modified: through the annotated variable, or by any method of the annotated class or interface.
+Marks a variable or a type immutable.
 See *mutable / immutable*, `MUT-01`, `MUT-10`.
 
 ### contravariantly
@@ -281,7 +281,7 @@ A **variable** is mutable unless it is annotated `@fixed` or its declared type i
 A **class or interface** is mutable unless it is annotated `@fixed` (`MUT-10`).
 A **method** is mutating unless it is annotated `@readonly` (`MUT-13`).
 
-An immutable class declares no mutating method and its fields are `final` and `@fixed`, so its instances cannot be modified through any variable.
+An immutable class declares no mutating method and its fields are `final` and `@fixed`.
 `String`, `Number`, and every `record`, `enum`, and primitive are immutable.
 The stricter notion of a *value class* is reserved (see below).
 
@@ -399,8 +399,9 @@ The "caller must hold the bound lock" precondition is a runtime check: laterita 
 See `STD-12`.
 
 ### @readonly (annotation)
-A method annotated `@readonly` does not modify its receiver, and may be called on any receiver.
+A method annotated `@readonly` reads its receiver and may be called on any receiver.
 A method not so annotated may be called only on a mutable receiver.
+Only `@readonly` methods are represented in the `@fixed` interface of a class.
 On an inner class it makes the enclosing borrow shared.
 See *mutable / immutable*, `MUT-13`, `MUT-50`.
 
