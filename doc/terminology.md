@@ -125,10 +125,8 @@ A modifier-position annotation on the method, parallel to `@readonly` (MUT-13), 
 See `OWN-15`.
 
 ### @fixed (annotation)
-Declares that a variable may not be used to modify the object it refers to.
-On a class or interface it declares an *immutable class*, and on a type it names the *frozen view* `@fixed C`.
-The companion annotation on a method is `@readonly`.
-See `MUT-01`, `MUT-10`, `MUT-30`, `TARG-03`.
+Declares that the object may not be modified: through the annotated variable, or by any method of the annotated class or interface.
+See *mutable / immutable*, `MUT-01`, `MUT-10`.
 
 ### contravariantly
 An overriding method may **require less** of its parameters than the base method.
@@ -174,16 +172,10 @@ A mutable local variable with no *mutating use*.
 It borrows its source as a shared borrow, so several such variables over one value may coexist.
 See `MUT-60`.
 
-### fixed (static method on `laterita.lang.Intrinsics`)
-`fixed(x)` returns a `@fixed @bound` borrow of `x`, applying the `MUT-31` conversion to an expression.
-`x` remains usable and several such borrows may coexist.
-See `MUT-42`.
-
 ### frozen view
 `@fixed C`, the interface containing only the `@readonly` methods of `C`.
 A value of type `C` may be assigned to a variable of type `@fixed C` and not the reverse.
-An immutable class declared under a mutable ancestor is the declaration-site form of the same thing.
-See `MUT-30`, `HIER-03`, `HIER-04`.
+See `MUT-30`.
 
 ### erased parameter types
 A signature's parameter types with generic type arguments removed, as under Java's erasure.
@@ -198,7 +190,6 @@ See `OWN-03`.
 ### field (in a struct/class)
 A named member variable of a class.
 A field has the same two axes as a local variable (`MUT-21`, `MUT-22`): it may be assigned unless `final`, and only through a mutable variable, and the object it refers to may be modified unless it is annotated `@fixed`.
-Every field of an immutable class is `final` and `@fixed` (`MUT-22`).
 Every field is initialized exactly once in a constructor (`OWN-11`) and follows ownership rules like a variable.
 See `OWN-09`, `MUT-21`, `MUT-22`.
 
@@ -234,14 +225,6 @@ Rarely used by application code, typically wrapped by smart pointers like `Rc<T>
 An annotation marking that a method may only be called by compiler-emitted code, never by user code.
 Used exclusively for `onDrop()`.
 See `DROP-06`.
-
-### immutable class
-A class or interface annotated `@fixed` (`MUT-10`).
-Its fields are `final` and `@fixed` and every method it declares is `@readonly`, so its instances cannot be modified through any variable.
-It may inherit mutable members from a mutable ancestor, present but not callable on it, and may still hold `Cell<T>` interior-mutable state.
-`String`, `Number`, and every `record` and `enum` are immutable.
-The stricter notion of a *value class* is reserved (see below).
-See `MUT-10`.
 
 ### interior mutability
 The ability to mutate an object's contents through a `@fixed` (immutable) variable.
@@ -291,22 +274,22 @@ A use of a local variable that requires mutation.
 A local variable with one borrows its source as a mutable borrow, one with none is *effectively fixed*.
 See `MUT-60`.
 
+### mutable / immutable
+*Mutable* means the object may be modified: a mutating method called on it, or one of its fields assigned.
+
+A **variable** is mutable unless it is annotated `@fixed` or its declared type is immutable (`MUT-01`).
+A **class or interface** is mutable unless it is annotated `@fixed` (`MUT-10`).
+A **method** is mutating unless it is annotated `@readonly` (`MUT-13`).
+
+An immutable class declares no mutating method and its fields are `final` and `@fixed`, so its instances cannot be modified through any variable.
+`String`, `Number`, and every `record`, `enum`, and primitive are immutable.
+The stricter notion of a *value class* is reserved (see below).
+
 ### mutable borrow / mut borrow
 A borrow that grants read and write access through the borrowed value.
 Only one mutable borrow may be active at a time, and no other borrow may coexist with it.
 A mutable borrow requires the source variable to be mutable, or the borrow to occur within a mutating method of the same object.
-A borrow of a value of an immutable class is always shared (`MUT-14`).
 See `OWN-03`, `OWN-13`.
-
-### mutable class
-A class or interface that is not annotated `@fixed`, the default kind.
-It may declare mutating methods, and fields that may be assigned or modified through.
-See `MUT-10`, `HIER-02`.
-
-### mutable variable / immutable variable
-A variable is *immutable* if it is annotated `@fixed` or its declared type is immutable, and *mutable* otherwise.
-A mutable variable may not be assigned an immutable value.
-See `MUT-31`, `MUT-01`.
 
 ### Mutex<T>
 A mutual-exclusion primitive wrapping an owned value.
@@ -418,9 +401,8 @@ See `STD-12`.
 ### @readonly (annotation)
 A method annotated `@readonly` does not modify its receiver, and may be called on any receiver.
 A method not so annotated may be called only on a mutable receiver.
-`@fixed` states what a variable may do, `@readonly` what a method does to its receiver.
 On an inner class it makes the enclosing borrow shared.
-See `MUT-13`, `MUT-15`, `MUT-17`, `MUT-50`.
+See *mutable / immutable*, `MUT-13`, `MUT-50`.
 
 ### receiver mode (of a method)
 How a method accesses its receiver (`this`): read-only (declared by `@readonly` on the method, MUT-13), mutating (bare), or consuming (declared by `@consuming` on the method, OWN-15).
@@ -442,7 +424,7 @@ See `FN-01`.
 ### shared borrow / immutable borrow
 A borrow that grants read-only access to a borrowed value.
 Any number of shared borrows may coexist.
-A shared borrow does not require the source variable to be `mut`.
+A shared borrow does not require the source variable to be mutable.
 See `OWN-02`, `OWN-03`.
 
 ### slice (of a String or array)
