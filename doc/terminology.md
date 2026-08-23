@@ -1,4 +1,4 @@
-# Laterita — Terminology and Abbreviations
+# Laterita Terminology and Abbreviations
 
 This document defines the terms the Laterita specification uses that the Java Language Specification does not.
 It assumes a reader fluent in Java and does not restate what the JLS already defines.

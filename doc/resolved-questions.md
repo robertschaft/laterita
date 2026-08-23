@@ -1,4 +1,4 @@
-# Laterita — Resolved Questions and Settled Decisions
+# Laterita Resolved Questions and Settled Decisions
 
 This document is the registry of closed decisions.
 It has two parts.
@@ -460,88 +460,88 @@ A generic type argument names no source, so it is structural and takes `@borrow`
 A tombstone names the question, summarizes its resolution, and points at the spec codes and the reasoning that record the decision.
 The original wording of each question is in this file's git history.
 
-### OQ-01 — Panic safety and lock poisoning
+### OQ-01 Panic safety and lock poisoning
 
 Resolved by the closure-scoped API of `Mutex<T>` (STD-09) and by THR-10.
 A mutex whose critical-section closure throws is poisoned, every later acquirer gets a `PoisonedException`, and there is no bypass.
 
-### OQ-02 — Exception ergonomics beyond what ownership forces
+### OQ-02 Exception ergonomics beyond what ownership forces
 
 Resolved by EXC-01, which preserves Java's `try`, `catch`, `finally`, and `Throwable` hierarchy unchanged, and by EXC-05, which drops the checked and unchecked distinction and leaves `throws` documentary.
 The narrower question of restoring checked exceptions is reopened as OQ-22.
 
-### OQ-03 — Reflection model
+### OQ-03 Reflection model
 
 Resolved as none: the language and its standard library provide no runtime reflection.
 
-### OQ-04 — Cross-thread safety marker
+### OQ-04 Cross-thread safety marker
 
 Resolved as `@local` (STD-07).
 
-### OQ-05 — Closure interface names
+### OQ-05 Closure interface names
 
 Dissolved by the anonymous functional interface (FN-01): there are no closure-interface names to fix, because there are no closure interfaces.
 
-### OQ-07 — Method-level `mut` syntax
+### OQ-07 Method-level `mut` syntax
 
 Resolved by MUT-01 and MUT-13: a method mutates its receiver unless it is annotated `@readonly`.
 Laterita introduces no keyword for it (RESV).
 
-### OQ-08 — Owned and borrowed strings, one type or two
+### OQ-08 Owned and borrowed strings, one type or two
 
 Resolved as one type.
 The compiler tracks per variable whether a `String` is owned or borrowed (STR-02), and `clone()` (OBJ-02) resolves any mismatch between the two.
 The two-type model is rejected, as recorded above.
 
-### OQ-09 — `Iterator.remove` and `ConcurrentModificationException`
+### OQ-09 `Iterator.remove` and `ConcurrentModificationException`
 
 Resolved by STD-08: borrow-checked iteration reuses Java's `Iterator` and `ListIterator`.
 OWN-03 makes concurrent modification a compile-time error, so `ConcurrentModificationException` and the `modCount` guard leave the language.
 
-### OQ-12 — Doubly-linked structures and graph data
+### OQ-12 Doubly-linked structures and graph data
 
 Resolved by `Rc<T>` and `Arc<T>` on the forward edges together with `WeakReference<T>` (STD-03) on the back edges.
 No dedicated graph type is added.
 
-### OQ-13 — User-invoked `close()` and early cleanup
+### OQ-13 User-invoked `close()` and early cleanup
 
 Resolved by DROP-06: `onDrop()` is `@internal` and never invoked by user code, and a user-declared `close()` survives migration as an ordinary method, distinct from `onDrop()`.
 No early-cleanup statement is specified, as recorded above.
 The number OQ-13 tracked the rule that `onDrop()` must not block before it was reused for this question, and that rule is THR-05 and THR-06.
 
-### OQ-14 — Ownership of strings
+### OQ-14 Ownership of strings
 
 Resolved by STR-06 for the literal borrow, STR-07 for the absence of mutating `String` methods, and STR-08 for the borrowing receiver.
 The remaining question of buffer splitting was tracked under OQ-17.
 
-### OQ-16 — Mutable `String`, and which methods belong where
+### OQ-16 Mutable `String`, and which methods belong where
 
 Resolved by STR-07: `String` declares no mutating method at all, and bulk construction stays on `StringBuilder`.
 
-### OQ-17 — Buffer splitting for `String`
+### OQ-17 Buffer splitting for `String`
 
 Resolved by STR-07.
 A `@bound String` is read-only, so a substring view is an ordinary shared borrow under OWN-03.
 Splitting a mutable array is resolved under OQ-19 by ARR-01.
 
-### OQ-18 — `onDrop()` reaching already-dropped subclass state through virtual dispatch
+### OQ-18 `onDrop()` reaching already-dropped subclass state through virtual dispatch
 
 Resolved by DROP-09: an `onDrop()` body may be declared only on a `final` class, so no dispatch into released subclass storage can occur.
 
-### OQ-19 — Ownership splitting of mutable arrays
+### OQ-19 Ownership splitting of mutable arrays
 
 Resolved by ARR-01, ARR-03, and ARR-04: methods on `T[]` and on `laterita.lang.Arrays`, with `MutableConsumer` for the `.java` surface, and the result carried by the general-purpose `Pair<L, R>`.
 The substitution rule of TARG-01 makes a dedicated bound-pair type unnecessary.
 The cross-thread case is resolved separately under OQ-21.
 
-### OQ-21 — Cross-thread ownership of split mutable slices
+### OQ-21 Cross-thread ownership of split mutable slices
 
 Resolved by ARR-01, ARR-02, and ARR-04.
 `T[].splitOff(int)` consumes the receiver and returns two owning halves, backed by one reference-counted allocation and carried in a `Pair<T[], T[]>` for extraction field by field.
 `Arrays.stream(@bound T[])` produces a JDK `Stream<T>` bound to the source array by the parameter form of OWN-17, and its `.parallel()` form covers read-only data-parallel processing through the standard `Spliterator`.
 Parallel mutation in place stays on the `splitOff` path.
 
-### OQ-24 — Operator overloading for arithmetic value types
+### OQ-24 Operator overloading for arithmetic value types
 
 Resolved by LAT-07 as bounded operator sugar.
 In `.lat`, `+ - * /` and unary `-` desugar to an instance method annotated `@Operator(op)`, whose name is free, so `BigDecimal.add`, `Instant.plus`, `Instant.minus`, and `Duration.negated` are eligible unchanged.
@@ -551,18 +551,18 @@ Eligibility is opt-in, by `@Operator` for arithmetic and by implementing `Compar
 Arithmetic resolution follows the left operand, falls back to the built-in numeric operators, and inserts no implicit conversion and no reflected form.
 The unbounded and the interface-based forms are rejected, as recorded above.
 
-### OQ-26 — Newtype wrappers as zero-cost value classes
+### OQ-26 Newtype wrappers as zero-cost value classes
 
 Resolved by composition of three rules: GEN-01, where `@Delegate` on the sole record component generates the forwarding surface, NABI-01, where a single-field aggregate has the size, alignment, and calling convention of its component with no dependency on Valhalla, and COMP-08, where inlining collapses the forwarders to direct calls.
 No dedicated construct is introduced, and the newtype idiom emerges from applying these three rules to an ordinary `record`.
 The field-less subclass is rejected, because widening to the superclass silently loses the distinct type, as recorded above.
 
-### OQ-28 — A dedicated method annotation for receiver consumption
+### OQ-28 A dedicated method annotation for receiver consumption
 
 Resolved by `@consuming` (OWN-15): receiver consumption is declared in modifier position, parallel to `@readonly` (MUT-13), and the two compose.
 An explicit `this` parameter is not used for receiver consumption.
 
-### OQ-29 — Spelling call mode in the anonymous functional-interface form
+### OQ-29 Spelling call mode in the anonymous functional-interface form
 
 Resolved by the optional prefix of FN-01: `@readonly (P) -> R` is shared-call, an unprefixed `(P) -> R` is mut-call, and `@consuming (P) -> R` is once-call.
 The prefixes are the same `@readonly` (MUT-13) and `@consuming` (OWN-15) that a method declaration carries, attached to the single abstract method the type expression denotes.
@@ -570,27 +570,27 @@ Call mode is part of the identity of an anonymous functional interface (FN-02), 
 Override variance lives in HIER-05's table, where call mode is covariant in strength, and the variable-mode annotations on such a parameter follow that table directly.
 The mapping to Rust is direct: `Fn`, `FnMut`, and `FnOnce`.
 
-### OQ-31 — Optional `<>` on constructor calls in `.lat`
+### OQ-31 Optional `<>` on constructor calls in `.lat`
 
 Resolved by LAT-06: the diamond may be omitted from a parameterized constructor call in `.lat`.
 Raw types are not a `.lat` surface form, so the diamond carries no information there.
 The `.java` mirror inserts the diamond, since `.java` must remain parseable by `javac` (COMP-06) and the diamond-less form there is the raw-type constructor.
 
-### OQ-32 — Status of `synchronized` and `Object.wait` / `notify` / `notifyAll`
+### OQ-32 Status of `synchronized` and `Object.wait` / `notify` / `notifyAll`
 
 Resolved as not supported.
 Those constructs rest on per-object run-time checks, `IllegalMonitorStateException` and dynamic lock resolution among them, that the compiler cannot lift to a static guarantee, and a `.java` Laterita source is not required to compile every Java construct.
 The same coordination patterns are expressible through three standard-library types: `Mutex<T>` (STD-09) where the lock owns the data, `ReentrantLock` with `LockGuard` (STD-10, STD-11) where it does not, and `Condition` (STD-12) paired with a `ReentrantLock`.
 `LockGuard.onDrop()` removes the missing-unlock error that motivates the Java keyword in the first place.
 
-### OQ-33 — Primitive types in the ownership and mutability rules
+### OQ-33 Primitive types in the ownership and mutability rules
 
 Resolved by MUT-18: a primitive type carries no mutable surface, so it is immutable, every primitive position is immutable (MUT-31), and the copy substitution of MUT-12 makes a primitive parameter, return, or field a value copy.
 `@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant rather than rejected, and a `@borrow` field of primitive type does not make its instance `@bound`.
 An unannotated `int x` parameter is therefore a copy and not an out-parameter.
 The dedicated primitive rule set is rejected, as recorded above.
 
-### OQ-35 — Capturing a reassigned local variable against Java's effectively-final rule
+### OQ-35 Capturing a reassigned local variable against Java's effectively-final rule
 
 Resolved by CLO-01: a captured local variable must be effectively final, exactly as `javac` requires of a lambda (JLS 15.27.2), so a closure cannot assign a captured variable on either surface, and a mutate closure modifies the object through a mutable capture instead.
 The `.lat`-only generated-holder desugaring is rejected, as recorded above.

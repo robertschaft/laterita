@@ -1,4 +1,4 @@
-# Laterita — Design Reasoning
+# Laterita Design Reasoning
 
 This document explains the reasoning behind each decision in the language specification.
 It is intended for readers who want to understand *why* Laterita is shaped the way it is, not just *what* the rules are.
@@ -23,7 +23,7 @@ The tagline writes itself: *the rich soil Java grew from.*
 
 ---
 
-## Surface Syntax — annotations and static methods (RESV)
+## Surface Syntax: annotations and static methods (RESV)
 
 Every ownership, lifetime, mutability, cleanup, and visibility concept Laterita introduces uses existing Java syntax: annotations on declarations, static method calls in expression and statement positions.
 The language adds no new keywords.

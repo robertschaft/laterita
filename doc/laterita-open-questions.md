@@ -1,4 +1,4 @@
-# Laterita — Open Questions
+# Laterita Open Questions
 
 This document records unresolved **language-design** questions.
 Each entry references the spec code(s) it relates to, where applicable.
@@ -14,7 +14,7 @@ Non-language-design items (tooling, migration, and roadmap work) are tracked as 
 - JavaBean migration story: [#15](https://github.com/robertschaft/laterita/issues/15)
 - Bean scopes beyond singleton: [#16](https://github.com/robertschaft/laterita/issues/16)
 
-## OQ-20 — Pattern matching and destructuring under ownership
+## OQ-20 Pattern matching and destructuring under ownership
 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record deconstruction patterns, JEP 440) leaves move-vs-borrow implicit.
 
@@ -43,7 +43,7 @@ Without a clear ownership story for patterns, `switch` becomes a borrow-checker 
 
 **Related codes:** OWN-02, OWN-13, OWN-06, MUT-40, MUT-60, DES, DROP-04.
 
-## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
+## OQ-22 Restoring checked exceptions for compiler-enforced error totality
 
 **Surfaced when:** revisiting EXC-05 (all exceptions unchecked) against the observation that Rust's `Result<T, E>` + `?` is functionally checked exceptions (values whose handling the compiler enforces) and that Laterita's natural Java-shaped equivalent is `throws` + `try`/`catch` rather than a parallel `Result` machinery.
 
@@ -79,7 +79,7 @@ If FN-01 cannot, the restoration is back to the original Java ergonomic dead-end
 
 **Related codes:** EXC-01, EXC-05, FN-01, THR-08, COMP-06.
 
-## OQ-23 — Channels and message-passing for inter-thread communication
+## OQ-23 Channels and message-passing for inter-thread communication
 
 **Surfaced when:** observing that the `THR` topic specifies threads, interruption, joining, and `Mutex<T>`, but no channel primitive, yet Rust's primary thread-communication idiom is `std::sync::mpsc` / `crossbeam` channels with move-on-send.
 
@@ -100,7 +100,7 @@ Does dropping the last `Sender` close the channel (analog of Rust's `RecvError`)
 
 **Related codes:** STD-07, STD-09, THR-01, THR-04, OWN-13.
 
-## OQ-27 — `From`/`Into`-style conversions and implicit-coercion control
+## OQ-27 `From`/`Into`-style conversions and implicit-coercion control
 
 **Surfaced when:** noting that Rust's `From<T>`/`Into<U>` traits provide an ergonomic but controlled conversion surface (`let s: String = my_str.into();`), used heavily for error conversion in conjunction with the `?` operator.
 
@@ -117,7 +117,7 @@ With it, library composition tightens substantially.
 
 **Related codes:** OWN-13, OQ-22.
 
-## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
+## OQ-30 Runtime-initialized statics (lazy / once-init primitive)
 
 **Surfaced when:** STAT-02 restricted static initializers to const expressions and pointed runtime-initialized static fields at a once-init wrapper held in the static field, without specifying the wrapper.
 
@@ -144,7 +144,7 @@ The shape of the standard library carrier is what's open.
 
 ---
 
-## OQ-34 — `val` and `var` as first-class aliases
+## OQ-34 `val` and `var` as first-class aliases
 
 **Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a Laterita spelling.
 
@@ -161,7 +161,7 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 
 **Related codes:** MUT-40, MUT-20, GEN-14, LAT-00.
 
-## OQ-36 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
+## OQ-36 Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
 
 **Surfaced when:** specifying MUT-17 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
@@ -184,7 +184,7 @@ Compile-time mode predicates let a library author write one generic body that ad
 
 **Related codes:** OWN-01, OWN-03, MUT-01, MUT-17, OQ-37.
 
-## OQ-37 — Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
+## OQ-37 Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
 
 **Surfaced when:** observing that the OQ-36 mode predicates yield compile-time constants, and that Laterita removes runtime reflection (README), so any reflective capability has to be resolved at compile time.
 
@@ -208,7 +208,7 @@ A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogram
 
 ---
 
-## OQ-38 — The surface name of `@fixed`
+## OQ-38 The surface name of `@fixed`
 
 **Surfaced when:** settling MUT-01 on a single negative annotation, which fixes the shape of the word but not the word itself.
 
@@ -246,7 +246,7 @@ The name is the most-read token of the mutability system, and it is cheap to cha
 
 ---
 
-## OQ-39 — Per-field lifetime granularity for a `@bound` instance
+## OQ-39 Per-field lifetime granularity for a `@bound` instance
 
 **Surfaced when:** comparing the `@bound` model against Rust's struct lifetime parameters, where a struct holding two borrows can return a value tied to one of them alone.
 
