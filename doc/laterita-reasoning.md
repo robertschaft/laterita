@@ -1022,7 +1022,7 @@ The annotations are not new vocabulary: `@readonly` (MUT-13) and `@consuming` (O
 The anonymous form simply attaches them to the SAM that the type expression denotes, and the desugaring (LAT-05) places them on the synthesized SAM declaration unchanged.
 No new annotation, no new keyword, and the `.java` mirror (a nominal interface with the same annotation on its SAM) reads identically.
 
-The Rust correspondence is direct: `@readonly (P) -> R` is `Fn`, an unprefixed `(P) -> R` is `FnMut`, `@consuming (P) -> R` is `FnOnce`, and CLO-04's containment carries the `Fn ⊆ FnMut ⊆ FnOnce` ordering across both surfaces.
+The Rust correspondence is direct: `@readonly (P) -> R` is `Fn`, an unprefixed `(P) -> R` is `FnMut`, `@consuming (P) -> R` is `FnOnce`, and CLO-03's ordering carries `Fn ⊆ FnMut ⊆ FnOnce` across both surfaces.
 Java developers reading the form learn one rule ("the prefix is the SAM's receiver mode") and the rest follows from receiver-mode rules they already know.
 
 Alternatives evaluated and rejected:
