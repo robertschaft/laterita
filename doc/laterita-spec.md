@@ -80,7 +80,7 @@ The owner is frozen until the borrow ends.
 
 A mutable borrow may write through the value.
 It requires the source to be mutable (MUT-01), or the borrow to occur in a mutating method of the same object.
-A borrow of a value also borrows the variable that holds it, the source its initializer names (OWN-02), so reassigning `x` while any borrow of `x` is live is excluded.
+A borrow of a value also borrows the variable that holds it, so reassigning `x` while any borrow of `x` is live is excluded.
 This exclusivity is subject to the disjoint-borrow exceptions of OWN-04 and OWN-05.
 It is a compile-time error to violate this.
 
@@ -407,7 +407,7 @@ Where the lifetime constraints are the same, the compiler may replace a borrow w
 A method may modify its receiver: assign the receiver's non-`final` fields, modify the objects the receiver's fields refer to, and call other mutating methods on `this`.
 A method annotated `@readonly` may do none of these.
 
-`@readonly` is a method modifier and may be combined with `@consuming` (OWN-15).
+`@readonly` is a method modifier.
 Its element `value` has type `InheritFrom` and defaults to `InheritFrom.NONE`, the form specified here.
 On an immutable class `@readonly` has no effect (MUT-10).
 
@@ -467,7 +467,7 @@ A constructor is exempt.
 In a constructor, mutating methods may be called on `this` and inherited non-`final` fields may be assigned, whatever the kind of the class.
 The class becomes immutable when the constructor returns.
 
-An `onDrop()` body (DROP-05) is exempt in the same way.
+An `onDrop()` body (DROP-05) is exempt.
 Its receiver is mutable whatever the kind of the class.
 
 ```java
@@ -479,8 +479,7 @@ c2.inc();                   // OK: Counter is a mutable class, so is c2 (MUT-01)
 
 ### MUT-16 — Interior mutability requires `Cell<T>`
 
-A class that must modify its contents through an immutable receiver holds those contents in a `Cell<T>`.
-This is the only mechanism that MUT-14 does not cover.
+A class that must modify its contents through an immutable receiver holds those contents in a `Cell<T>`, the only exception to MUT-14.
 `Cell<T>` is an unsafe primitive (UNS-02).
 
 ### MUT-20 — `final` variables
@@ -494,7 +493,7 @@ config = loadConfig();                   // ERROR: config is final
 ```
 
 A parameter is always `final` and may not be assigned in the body (OWN-13).
-A `@take` parameter may still be moved with `give` (OWN-07), which consumes the value and does not assign the parameter.
+A `@take` parameter may be moved with `give` (OWN-07).
 
 Assigning a variable that owns its value drops the previous value first (DROP-01).
 
@@ -677,7 +676,7 @@ class Counter {
 ### HIER-02 — `Object`
 
 `Object` is mutable.
-Its `equals`, `hashCode`, and `toString` are annotated `@readonly`, and its `equals` parameter is `@fixed Object`, which every value may be assigned to (MUT-30).
+Its `equals`, `hashCode`, and `toString` are annotated `@readonly`, and its `equals` parameter is `@fixed Object` (MUT-30).
 
 ### HIER-03 — Immutable subclass of a mutable ancestor is a frozen view
 
@@ -764,7 +763,7 @@ class BadReader implements Reader {
 
 `@borrow` may appear inside a generic type argument.
 It declares that the values substituted for that type parameter are borrows, the same role `@borrow` plays on a field (OWN-09).
-When a `@borrow`-substituted argument is stored in a field, that field becomes a `@borrow` field, so the instance can only be produced as a `@bound` value bound to the sources of the borrowed arguments (OWN-09, LIFE-03).
+When a `@borrow`-substituted argument is stored in a field, that field becomes a `@borrow` field (OWN-09).
 
 ```java
 // laterita.lang.Pair<L, R> (ARR-04)
@@ -785,7 +784,7 @@ Ownership of a generic structure's contents is carried by the structure's own va
 ### TARG-03 — Type parameters and `@fixed`
 
 The bound determines which type arguments a type parameter accepts, by ordinary subtyping (MUT-30, HIER-04).
-The implicit bound is `@fixed Object`, the top type, so an unbounded `class Foo<T>` accepts mutable and immutable type arguments alike.
+The implicit bound is `@fixed Object`, the top type.
 A bound that is a mutable class accepts only mutable type arguments.
 
 A use of a type parameter, as a field, parameter, return, local variable, or nested type argument, is a variable whose declared type is the type argument substituted for it.
@@ -794,7 +793,6 @@ The method body is checked once against the bound: it may call the bound's mutat
 Checking a body requires the bound alone, and checking a use site requires the declaration alone (OWN-00).
 
 A type parameter annotated `@fixed` annotates every use of it in the body.
-`class Foo<@fixed T extends B>` leaves the bound `B` unchanged, and with it the type arguments the parameter accepts.
 A single use may be annotated instead (`@fixed T field`, `List<@fixed T> xs`, a `@fixed T` parameter, return, or local variable), leaving the others to follow the type argument.
 `@fixed` requires nothing of the type argument.
 
@@ -886,8 +884,8 @@ list.add(config);                                     // element source: `config
 A generic `@take T` parameter monomorphized with a borrowed type argument becomes `@take @borrow T` for an exclusive element, or `@take @fixed @borrow T` for a shared one.
 `@take` transfers the value by value into the parameter.
 `@take @borrow` keeps the reference itself, not the value it points at, which stays owned where it was.
-The cost follows copyability: a shared borrow is copied, so the caller keeps its own, and an exclusive borrow is moved, so the caller loses access.
-The transferred borrow keeps its original source (LIFE-01), so the enclosing value is `@bound` (OWN-09).
+A shared borrow is copied, and an exclusive borrow is moved.
+The transferred borrow keeps its original source (LIFE-01).
 A method that stores its argument declares `@take` for every element mode.
 Written directly on a non-generic parameter, `@take @borrow` is the retained-borrow form of OWN-21, applying the same caller-side cap.
 
@@ -917,8 +915,7 @@ Mutex<@borrow Config> bad = /* … */;                     // ERROR (TARG-06): b
 
 A method declared with an unannotated, and therefore owned, `T` return, monomorphized with a borrowed type argument, returns a `@bound` value instead of an owned one.
 For an owned type argument the return is owned (OWN-16).
-For a borrowed one the return is the borrow, bound to the receiver (OWN-18), whose lifetime already intersects every element source (LIFE-03).
-This is the return-side counterpart of TARG-05.
+For a borrowed one the return is the borrow, bound to the receiver (OWN-18).
 
 ```java
 class List<T> { T remove(int i); }
@@ -978,7 +975,6 @@ No syntactic opt-in is required at the call site.
 ### DROP-02 — Reverse declaration order
 
 Within a scope, variables are dropped in the reverse of their declaration order.
-Equivalently, when several locals leave scope at the same point, the shortest-living is dropped first.
 
 ### DROP-03 — Cleanup on all exit paths
 
@@ -1005,7 +1001,7 @@ Fields that are `null` (NULL-09) or `@borrow` (OWN-09) are skipped in steps 2 an
 Each surviving owned field is dropped recursively by this same procedure.
 The step-1 body runs before any field teardown of that class.
 It may read every owned field visible to it, and mutates under MUT-15.
-A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06), which replaces the object with its independent fields (DROP-04) rather than dropping it as a unit, so no field is moved-out here.
+A value reaches this sequence only as a whole: moving a field out is destruction (OWN-06, DROP-04).
 
 ```java
 final class TimerScope {                  // final: required to implement onDrop (DROP-09)
@@ -1033,7 +1029,7 @@ It is not a general-purpose access-control level.
 
 ### DROP-07 — Exceptions from `onDrop()` terminate the body, not the drop sequence
 
-An exception propagating out of an `onDrop()` body terminates that body, but the rest of the value's drop sequence (its remaining fields and superclass fields (DROP-05 steps 2–3) and the storage release (step 4)) still runs.
+An exception propagating out of an `onDrop()` body terminates that body, and the rest of the drop sequence still runs (DROP-05).
 The exception then leaves the compiler-emitted call site through the same path a Java `finally`-block exception leaves, joining the normal exception flow at the variable's scope exit.
 
 If multiple invocations along a drop path throw (sibling variables (DROP-02), nested field drops, the body and a field of the same value, or any of these during an exception unwind (EXC-02)) the first thrown exception is the propagating one.
@@ -1171,7 +1167,6 @@ It may only be taken further apart, one remaining field at a time:
 2. its fields may not be assigned.
 3. it cannot be returned, stored, or passed whole.
 
-Its remaining fields, including further record components, may still be moved out.
 
 ```java
 var s = makeSplit();
@@ -1307,7 +1302,7 @@ if (maybeName != null) {
 
 ### NULL-08 — Field default is non-nullable
 
-Fields obey NULL-01: a field declared `T` is non-nullable, and OWN-11's "assigned exactly once in every constructor" requirement guarantees no observable `null`.
+A field declared `T` is non-nullable (NULL-01), and OWN-11 guarantees no observable `null`.
 A nullable field is declared `T?`.
 
 ```java
@@ -1321,7 +1316,6 @@ class User {
 
 When a variable of type `T?` leaves scope, the compiler-inserted `onDrop()` call is conditional.
 If the value is `null` no call is made, otherwise `onDrop()` is invoked on the contained value.
-This composes with DROP-04's drop-flag treatment.
 
 ### NULL-10 — Move and borrow on `T?`
 
@@ -1369,7 +1363,7 @@ The list is not enforced: declaring `throws X` does not commit the method to thr
 
 ## FN — Functional Interfaces
 
-Laterita extends Java's *functional interface* concept (an interface with one abstract method) to admit an **anonymous, structural form**: the SAM signature can be written directly inline as a type expression, without declaring a named interface.
+Laterita extends Java's functional interfaces with an **anonymous, structural form**: the SAM signature is written inline as a type expression, with no interface declared.
 
 ### FN-01 — Anonymous functional interface syntax
 
@@ -1404,8 +1398,7 @@ void submit(@take @consuming (@take Result) -> void onComplete) { … }
 
 Mapping to Rust: `@readonly` is `Fn`, unannotated is `FnMut`, and `@consuming` is `FnOnce`.
 CLO-04 carries the containment ordering.
-A nominal functional interface (a regular interface declared with one abstract method) remains available unchanged from Java.
-The anonymous form is an addition, accepted only in `.lat` sources (LAT-05).
+The anonymous form is an addition to the nominal one, accepted only in `.lat` sources (LAT-05).
 
 ### FN-02 — Assignability
 
@@ -1428,7 +1421,6 @@ It is HIER-05's override variance applied to the SAM, reading `B` as the base de
 ```
 
 A lambda literal is checked against the expected functional-interface type by CLO-04.
-The same variance applies to it as to an already-typed functional-interface value.
 
 ### FN-03 — Anonymous synthesis per construction
 
@@ -1450,7 +1442,7 @@ interface $Anon<T> {
 }
 ```
 
-The synthesized interface is mutable (HIER-02), which MUT-10 requires whenever the SAM is not `@readonly`.
+The synthesized interface is mutable (HIER-02).
 
 ### FN-04 — Allowed positions
 
@@ -1464,7 +1456,7 @@ An anonymous functional-interface type expression (FN-01) may be written as:
 It may not be written as:
 
 - the declared type of a field (FN-03)
-- the declared type of a local variable, though `var` inference still holds an anonymous functional-interface value when the initializer produces one
+- the declared type of a local variable
 
 The restrictions govern the written type expression, not value flow: a `var` local variable may hold an anonymous functional-interface value whose type is inferred, such as the result of a closure-returning call.
 
@@ -1488,9 +1480,8 @@ Closure may be invoked any number of times sequentially but not concurrently.
 - **Consume**: captured variables include a moved value.
 Closure may be invoked exactly once.
 
-A captured local variable must be effectively final (MUT-61): neither the closure body nor the enclosing method may reassign it.
-This is Java's own lambda-capture rule (JLS 15.27.2).
-A closure that modifies captured state captures a mutable local variable and modifies the object through it, the checked form of Java's holder idiom.
+A captured local variable must be effectively final (MUT-61).
+A closure that modifies captured state captures a mutable local variable and modifies the object through it.
 Such a closure is a mut-call value (CLO-04), invocable only through a mutable variable (CLO-03).
 
 ### CLO-02 — Capture mode is inferred
@@ -1550,7 +1541,6 @@ interface F<T, R> { R apply(@take T); }   // call mode mut-call; SAM parameter @
 void process(F<Job, Done> fn) { /* … */ }      // unannotated: the variable is mutable
 ```
 
-The variable annotations on a functional-interface return type follow MUT-01 and OWN-18 unchanged.
 A once-call functional-interface value cannot be a `@bound` source: the call that would produce the return consumes it.
 
 ```java
@@ -1612,7 +1602,7 @@ Doubler pure     = (x) -> x * 2;                           // read lambda → sh
 A functional-interface parameter has two annotation axes, the *call-mode prefix* on the functional-interface type (FN-01: `@readonly`, unannotated, or `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@fixed`, `@bound`).
 Both follow HIER-05's unified override-variance table.
 
-On the call-mode axis an override may *strengthen* the parameter's call mode (`@readonly` to unannotated to `@consuming`), so it continues to accept every closure the inherited declaration accepted (CLO-04).
+On the call-mode axis an override may *strengthen* the parameter's call mode, from `@readonly` to unannotated to `@consuming` (CLO-04).
 
 The variable-mode annotations on such a parameter (`@take`, `@fixed`, `@bound`) follow HIER-05 directly: they govern how the override's variable holds the functional-interface value, not which closures fit the parameter.
 
@@ -1634,8 +1624,7 @@ class Narrowing<T> implements MutSource<T> {
 }
 ```
 
-The SAM *type itself* is invariant under override in the sense that the SAM's underlying parameter and return *types* must agree (FN-02): annotation variance applies, type substitution does not.
-A nominal SAM declared as a regular interface follows HIER-05 on its own method signatures unchanged.
+The SAM's underlying parameter and return *types* must agree (FN-02): annotation variance applies, type substitution does not.
 
 ### CLO-06 — Capture lifetimes propagate
 
@@ -1650,9 +1639,8 @@ When the closure escapes through a return, its captured parameters are the `@bou
 
 ### STR-07 — `String` is immutable
 
-`String` is an immutable class (MUT-10), so every method it declares is `@readonly`.
-`@fixed` on a `String` is redundant (MUT-31).
-Bulk text construction belongs in `StringBuilder`, which is mutable.
+`String` is an immutable class (MUT-10).
+Bulk text construction belongs in `StringBuilder`.
 
 ### STR-02 — Strings are tracked as owned or borrowed per variable
 
@@ -1692,7 +1680,7 @@ void store(@take String s);             // requires `.clone()` on a literal
 ### STR-08 — Default receiver mode of `String` methods is borrow
 
 Methods declared on `String` borrow the receiver unless the signature marks otherwise.
-Methods that consume the receiver (`@consuming`) are rare and explicitly marked, per STR-07, no mutating methods exist.
+Methods that consume the receiver are marked `@consuming`.
 
 ---
 
@@ -1719,7 +1707,7 @@ class T[] {
 ```
 
 `splitAt` re-borrows the receiver (MUT-15), and the returned pair is `@bound` to the receiver's source (LIFE-02).
-Over a mutable receiver the halves lend mutably, and over a `@fixed` or shared receiver they lend read-only (MUT-17), so one declaration serves both the in-place-update and the read split.
+Over a mutable receiver the halves lend mutably, and over a `@fixed` or shared receiver they lend read-only (MUT-17).
 `forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
 Each chunk passed to `body` is a mutable slice of the receiver whose borrow expires when the call returns, so successive chunks are pairwise disjoint by construction.
 Fold-style reductions express by capturing a mutable accumulator in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
@@ -1727,7 +1715,7 @@ Fold-style reductions express by capturing a mutable accumulator in the body lam
 `splitOff` consumes the receiver (OWN-15) and returns two owning `T[]` halves spanning `[0, mid)` and `[mid, length)`, sharing the underlying allocation through an internal reference count (freed when the last half drops).
 Each half is a regular `T[]` supporting the full ARR-01 surface.
 
-**Example: long-lived workers.** Each half is pre-extracted by destruction (OWN-06) before spawning, so each thread captures and consumes its own owning variable.
+**Example: long-lived workers.** Each half is extracted by destruction (OWN-06) before the threads are spawned.
 
 ```java
 var arr   = readInput();
@@ -1775,13 +1763,13 @@ public final class Arrays {
 The split appears under two names.
 `splitAt` takes a shared borrow and lends read-only halves, `splitMutableAt` takes a mutable borrow and lends mutable ones.
 Both bind their return to the `@bound` parameter rather than to a receiver (OWN-17).
-Distinct names rather than an overloaded pair are required by OWN-13, which keeps the mutability annotations out of the overload signature.
+Distinct names rather than an overloaded pair are required by OWN-14.
 
 ARR-01's single `splitAt` is sugar over this pair (LAT-00): it desugars to `splitMutableAt` on a mutable receiver and to `splitAt` on a `@fixed` or shared one, which are the two monomorphizations MUT-17 produces.
 
 `stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter rather than to a receiver (OWN-17, OWN-18).
 Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`, and callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)`.
-Parallel terminal operations require Read-mode closures (CLO-01), so a mutable capture is rejected at compile time.
+Parallel terminal operations require a read closure (CLO-01).
 In-place parallel *mutation* of the receiver is not a stream operation and stays on the `splitOff` path or the in-thread `forEachChunk` family (ARR-01).
 
 ### ARR-03 — `MutableConsumer<T>`
@@ -1802,7 +1790,7 @@ public interface MutableConsumer<T> {
 
 General-purpose class carrying two values.
 A single declaration covers owned, borrow, and mixed cases: the mode is driven by what is substituted for `L` and `R` (TARG-01).
-It is mutable (HIER-02), so a variable of this type is mutable, and `@fixed` gives the frozen view (MUT-31).
+It is mutable (HIER-02).
 
 ```java
 package laterita.lang;
@@ -1815,8 +1803,7 @@ public class Pair<L, R> {
 }
 ```
 
-The components are `public final` fields rather than record components, so the pair destructs by direct field access on both surfaces (OWN-06) and needs no `.lat`-only spelling (LAT-08).
-Their mutability is the type-parameter rule of TARG-03, not a field declaration (MUT-21).
+The components are `public final` fields rather than record components, so the pair destructs by direct field access on both surfaces (OWN-06).
 
 Instantiations encountered in this spec:
 
@@ -1830,7 +1817,7 @@ Heterogeneous (`L ≠ R`) instantiations are permitted.
 
 ### ARR-05 — Array indexing is always bounds-checked
 
-Every array index expression `a[i]`, read or write, is bounds-checked, and an out-of-range index throws `ArrayIndexOutOfBoundsException` as in Java.
+Every array index expression `a[i]`, read or write, is bounds-checked, and an out-of-range index throws `ArrayIndexOutOfBoundsException`.
 There is no unchecked-indexing form and no annotation that suppresses the check (UNS-02, UNS-04).
 A compiler may elide a check it proves redundant.
 
@@ -1911,7 +1898,7 @@ Programs that may form cycles must use `WeakReference<T>` (STD-03) for the back-
 The cross-thread analog of `Rc<T>`, with atomic reference-count operations.
 The copy constructor `new Arc<T>(Arc<T> other)` bumps the reference count atomically.
 `Arc<T>` may be moved or borrowed across thread boundaries (STD-07).
-The type parameter is `@own` (TARG-06): `Arc<@own T>` owns its contents, so a borrowed type argument is rejected.
+The type parameter is `@own` (TARG-06).
 
 ### STD-03 — `WeakReference<T>`
 
@@ -1969,25 +1956,25 @@ Standard-library types declaring `@local(false)` include `Arc<T>` (STD-02), `Mut
 
 Each of the following is a compile-time error:
 - A cross-thread closure capture (CLO-01) of a variable whose type is `@local`.
-- A move (OWN-07) of a `@local` value across a thread boundary outside an `@unsafe` method (UNS-02 already gates this).
+- A move (OWN-07) of a `@local` value across a thread boundary outside an `@unsafe` method (UNS-02).
 
 ### STD-08 — Borrow-checked iteration
 
 Iteration reuses Java's `Iterator<T>` and `ListIterator<T>` by name.
-`Iterable<T>.iterator()` is `@readonly(InheritFrom.RECEIVER)` (MUT-17), so the cursor it returns inherits the collection's mutability.
+`Iterable<T>.iterator()` is `@readonly(InheritFrom.RECEIVER)` (MUT-17).
 Over a mutable collection the cursor holds an exclusive borrow and `next()` yields `@bound T`, so elements may be modified in place.
-Over a `@fixed` collection it holds a shared borrow and `next()` yields `@fixed @bound T`, so several cursors coexist and nested reads are admitted (OWN-03).
+Over a `@fixed` collection it holds a shared borrow and `next()` yields `@fixed @bound T`.
 There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`, not separate methods.
 
 The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-40).
-A loop body with no mutating use of the loop variable leaves the receiver effectively fixed (MUT-60, MUT-17), so nested reads over one mutable list need no annotation, and `fixed(source)` states the shared borrow where the body does mutate but the outer read must continue.
+A loop body with no mutating use of the loop variable leaves the receiver effectively fixed (MUT-60, MUT-17).
 
 Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `listIterator()`, which always holds an exclusive borrow rather than an inherited one.
 An enhanced-for never reaches `ListIterator`.
 `ListIterator<T>.remove()` returns the removed element owned rather than `void` (OWN-07).
-`Collection<T>.removeIf(Predicate<T> p)` remains the bulk-removal form, same name and meaning as `java.util.Collection.removeIf` (Java 8+).
-`Iterator<T>.remove()` exists for source compatibility with `java.util.Iterator` but is `broken()` by default (UNR-01), so calling it through a read cursor is a compile-time error, while `ListIterator<T>` overrides it with the working form.
+`Collection<T>.removeIf(Predicate<T> p)` is unchanged from `java.util.Collection.removeIf`.
+`Iterator<T>.remove()` is `broken()` by default (UNR-01), and `ListIterator<T>` overrides it with the working form.
 
 Holding a cursor borrows the collection per OWN-03: an inherited-mutable cursor or a `ListIterator` is an exclusive borrow, a `@fixed` cursor a shared one.
 Concurrent modification through any other path is rejected at compile time, so `ConcurrentModificationException` is not part of Laterita's runtime semantics and `modCount`-style guards are not required.
@@ -1997,7 +1984,7 @@ Implementations are permitted to use `private @unsafe` (UNS-01) for the internal
 
 A mutual-exclusion primitive wrapping an owned value.
 Access to the protected value is scoped to a closure call rather than mediated by a separately held guard.
-The type parameter is `@own` (TARG-06): `Mutex<@own T>` owns its protected value, so a borrowed type argument is rejected.
+The type parameter is `@own` (TARG-06).
 
 **Constructor.** `new Mutex<T>(@take T value)`: wraps `value`, initially unlocked and unpoisoned.
 
@@ -2010,7 +1997,7 @@ There is no `unlock()` method, no externally held guard, and no way to extend th
 **Acquisition can throw.** `with` throws `PoisonedException` (THR-10) on a poisoned mutex and `InterruptedException` (THR-04) if the calling thread is interrupted while blocked acquiring the lock.
 `tryWith` throws `PoisonedException` only.
 
-**Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally: by LIFE-01 no `with` / `tryWith` call can be in flight when the mutex itself is dropped, so cleanup is independent of lock or poison state.
+**Drop semantics.** `Mutex<T>.onDrop()` runs `T.onDrop()` on the protected value unconditionally, whatever the lock or poison state.
 
 **Inspection.** `isPoisoned()` reads the poison flag without acquiring the lock.
 
@@ -2295,9 +2282,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@StandardException` | `TYPE` | `Throwable` subclass | Generate the four standard exception constructors | GEN-15 |
 
 An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a complete SAM signature, so it carries both method-target annotations (`@readonly` / `@consuming`, applied to the synthesized `apply`) and type-use-target annotations (`@fixed` / `@take` / `@bound`, on the SAM's parameter and return positions).
-These are the same annotations the table lists.
-The spelling introduces no annotation placement that is not already a `METHOD` or a parameter/return position on the nominal SAM the form desugars to (LAT-05).
-It needs no separate `TYPE_USE` registration.
+These are the same annotations the table lists, and the form needs no separate `TYPE_USE` registration.
 
 The annotations are declared in `laterita.lang.annotation`.
 Standard-library static methods that carry Laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier:
@@ -2310,7 +2295,6 @@ Standard-library static methods that carry Laterita-specific semantics live on `
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls, the Laterita compiler attaches the additional semantics specified in the rules above.
 
-Type inference uses Java's `var` keyword, which changes neither mutability axis (MUT-40, MUT-20).
 
 Java's `synchronized` keyword is not supported: there is no per-object intrinsic monitor, no `synchronized` method modifier, and no `synchronized(obj) { ... }` block.
 Mutual exclusion is provided exclusively through `Mutex<T>` (STD-09) for data-bound locking and `ReentrantLock` + `Condition` (STD-10, STD-12) for the data-less / multi-condition cases.
@@ -2415,8 +2399,7 @@ Comparison desugars through `java.lang.Comparable`:
 | `-a` | `a.negate()` | `@Operator(NEGATE)`, no parameters |
 | `a < b` (and `<=`, `>`, `>=`) | `a.compareTo(b) < 0` (resp. `<= > >=`) | implements `Comparable<S>`, `b` assignable to `S` |
 
-The method name is unconstrained.
-`@Operator` names the operator, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged.
+The method name is unconstrained, so `BigDecimal.add`, `Instant.plus` / `minus`, and `Duration.negated` qualify unchanged.
 `@Operator` is rejected on a `static` method or where arity does not match.
 An operator parameter should be a `@fixed` borrow (`@take` discouraged).
 Implementing `Comparable` is the opt-in for comparison, which carries no annotation.
@@ -2445,9 +2428,8 @@ var h = give(s.head);     // head is a public component field, moved out
 var t = give(s.tail);     // tail moved out; s fully destructed
 ```
 
-A canonical accessor (`s.head()`) returns a borrow bound to the record (OWN-18), so it can never be the subject of a move.
-Destruction always reads the component as a field.
-A record declared in a `.java` source keeps javac's private components, so the `give(s.head)` spelling is `.lat`-only.
+Destruction reads the component as a field, never through the canonical accessor, which returns a borrow (OWN-18).
+A record declared in a `.java` source keeps private components, so the spelling is `.lat`-only.
 
 The `give`-of-a-component spelling is pure sugar (LAT-00).
 It desugars through a companion POJO and a `@consuming` method the compiler generates beside the record.
@@ -2460,8 +2442,8 @@ For a record `Record(T left, S right)` destructed by a `.lat` source the generat
 @consuming Record$AsClass intoClass() { return new Record$AsClass(give(this.left), give(this.right)); }
 ```
 
-`intoClass()` is a `@consuming` method (OWN-15) running inside the record's own body, where the components are accessible, so it may move each one out into the companion (OWN-06).
-The companion is a POJO whose component fields are `public`, so it destructs field by field on the plain `.java` surface (DES-01).
+`intoClass()` is `@consuming` (OWN-15) and runs inside the record's own body, where the components are accessible (OWN-06).
+The companion's fields are `public`, so it destructs on the plain `.java` surface (DES-01).
 A destruction site rewrites accordingly:
 
 ```java
@@ -2496,9 +2478,8 @@ The compiler generates the members at compile time, and generated members are vi
 A generator supplies the Laterita annotation a generated member implies (e.g. `setX(@take X x)` when x is owned).
 It also deduces the Laterita class-level annotations: a class annotated with `@Value` is automatically also `@fixed` (MUT-10).
 
-An explicitly declared member with the same name and erased parameter types shadows the generated one, so a generator never conflicts with hand-written code.
+An explicitly declared member with the same name and erased parameter types shadows the generated one.
 Annotations and attributes not listed in this section pass through to downstream annotation processors unchanged.
-Several generators duplicate what a `record` or immutable class already provides.
 
 ### GEN-01 — `@Delegate`
 
@@ -2567,9 +2548,8 @@ The lifetime of a `Shipment` instance is bound to the `Carrier` it borrows (LIFE
 
 ### GEN-06 — `@Data` and `@Value`
 
-`@Data` bundles `@Getter`, `@Setter`, `@ToString`, `@EqualsAndHashCode`, and `@RequiredArgsConstructor`, so a `@Data` class must be mutable (GEN-02).
-`@Value` is the immutable bundle: `@Getter`, `@ToString`, `@EqualsAndHashCode`, `@AllArgsConstructor`, with all fields final, the class final, and the class `@fixed` (MUT-10).
-A `@Value` class is immutable (MUT-10), for which a `record` is the idiomatic equivalent.
+`@Data` bundles `@Getter`, `@Setter`, `@ToString`, `@EqualsAndHashCode`, and `@RequiredArgsConstructor`, and requires a mutable class (GEN-02).
+`@Value` bundles `@Getter`, `@ToString`, `@EqualsAndHashCode`, and `@AllArgsConstructor`, with all fields final, the class final, and the class `@fixed` (MUT-10).
 
 ### GEN-07 — `@Builder`
 
@@ -2604,12 +2584,11 @@ If OQ-22 restores checked exceptions, it regains its Lombok role of throwing a c
 
 `@Synchronized` wraps the method body in a generated `private final ReentrantLock $lock` (or `private static final ReentrantLock $LOCK` for a static method), acquired through a `LockGuard` (STD-11) so the lock releases on scope exit.
 `@Synchronized("name")` uses the named lock field instead.
-This reproduces Lombok's per-instance private-lock semantics through the existing concurrency primitives (STD-10) without the `synchronized` keyword, which Laterita does not provide.
 
 ### GEN-12 — `@Cleanup`
 
 `@Cleanup` runs a cleanup method (default `close()`) at the end of the local's block.
-`@Cleanup("method")` selects a different method, which the compiler calls at scope exit.
+`@Cleanup("method")` selects a different method.
 
 ### GEN-13 — `@Log` family
 
@@ -2618,9 +2597,8 @@ This reproduces Lombok's per-instance private-lock semantics through the existin
 ### GEN-14 — `val` and `var`
 
 `val` is unsupported in Laterita.
-Lombok's `val` declares an immutable inferred local variable, which Laterita spells `final var` (MUT-40, MUT-20).
-Lombok's `var` maps to Laterita's `var` unchanged: both declare a reassignable inferred local variable (MUT-20).
-Whether such a local variable is mutable follows from its initializer (MUT-40), a distinction Lombok does not make.
+Lombok's `val` is spelled `final var` in Laterita (MUT-40, MUT-20).
+Lombok's `var` maps to Laterita's `var` unchanged.
 See OQ-34.
 
 ### GEN-15 — `@StandardException`
