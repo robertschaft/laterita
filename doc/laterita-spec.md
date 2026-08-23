@@ -407,7 +407,6 @@ Where the lifetime constraints are the same, the compiler may replace a borrow w
 
 A method may modify its receiver: assign the receiver's non-`final` fields, modify the objects the receiver's fields refer to, and call other mutating methods on `this`.
 A method annotated `@readonly` may do none of these.
-It may call other `@readonly` methods on `this`.
 
 `@readonly` is a method modifier and may be combined with `@consuming` (OWN-15).
 Its element `value` has type `InheritFrom` and defaults to `InheritFrom.NONE`, the form specified here.
@@ -471,8 +470,6 @@ The class becomes immutable when the constructor returns.
 
 An `onDrop()` body (DROP-05) is exempt in the same way.
 Its receiver is mutable whatever the kind of the class.
-In a mutable class the body may assign non-`final` fields, modify the objects the fields refer to, and call mutating methods on `this`.
-In an immutable class the fields remain immutable and the body may not modify them.
 
 ```java
 @fixed var frozen = new Counter();
@@ -562,23 +559,12 @@ A `@fixed` annotation that has no effect is permitted wherever `@fixed` is appli
 For a `var` declaration the declared type, including `@fixed`, is the type of the initializer (MUT-01).
 A later assignment does not change it.
 
-`C` names a mutable class and `F` an immutable class (MUT-10) in the forms below.
-
-| Form | May modify the object |
-|---|---|
-| `C x = e` | yes |
-| `@fixed C x = e` | no |
-| `F x = e` | no |
-| `var x = e` | as the initializer |
-
 ```java
 var sb = new StringBuilder();   // the initializer is a StringBuilder, a mutable class
 sb.append("x");                 // OK
 
 @fixed var frozen = sb;         // frozen is annotated @fixed
 frozen.append("y");             // ERROR: frozen is immutable (MUT-15)
-
-var name = t.name();            // the initializer is a String, an immutable class
 ```
 
 ### MUT-41 - Parameters
@@ -587,19 +573,8 @@ A parameter whose declared type is a mutable class receives a mutable borrow (OW
 Annotated `@fixed`, it receives a shared borrow.
 With `@take` it receives ownership, and `@fixed` makes that ownership immutable.
 
-`C` names a mutable class (MUT-10) in the forms below.
-
-| Form | Meaning |
-|---|---|
-| `C name` | receives a mutable borrow |
-| `@fixed C name` | receives a shared borrow |
-| `@take C name` | receives ownership and may modify the object |
-| `@take @fixed C name` | receives ownership and may not modify the object |
-
 A mutable borrow is exclusive (OWN-03).
 It is a compile-time error for one variable to fill two mutable-borrow parameters of the same call, or to fill one while it is borrowed elsewhere.
-A temporary may fill either form.
-A parameter whose declared type is an immutable class receives a shared borrow, with or without `@fixed` (MUT-31).
 
 ### MUT-42 - The `fixed` method
 
@@ -614,16 +589,10 @@ It returns a `@fixed @bound` borrow of `in` (OWN-17).
 ### MUT-50 - A non-static inner class borrows its enclosing instance
 
 A non-static inner class holds an implicit borrow of the instance that created it.
-That borrow is a synthetic `final @borrow` field naming the enclosing instance, and it is mutable.
-By OWN-09 an inner instance is `@bound` to its enclosing instance.
-The inner-class declaration fixes the mode of that borrow (OWN-00).
-
+That borrow is a synthetic `final @borrow` field naming the enclosing instance, and it is mutable (OWN-09).
 An inner class annotated `@readonly` holds `final @fixed @borrow` instead, a shared borrow of the enclosing instance.
-`@readonly` states of the class what it states of a method (MUT-13): it does not modify its enclosing instance.
-An inner class with a mutable enclosing borrow may be declared only inside a mutable class (MUT-10).
-
-`@fixed` and `@readonly` on an inner-class declaration are independent.
-`@fixed` makes the inner class immutable (MUT-10), `@readonly` makes its enclosing borrow shared.
+Such a class may be declared inside a mutable class only (MUT-10).
+`@fixed` on the same declaration is independent of `@readonly` and makes the inner class itself immutable (MUT-10).
 
 A field of an outer level may be assigned only if no inner class between the assignment and that level is `@readonly`.
 The first `@readonly` level holds the level above it as a shared borrow, and it is a compile-time error to assign through that borrow (MUT-14).
@@ -631,17 +600,6 @@ The first `@readonly` level holds the level above it as a shared borrow, and it 
 ```java
 class Document {
     int revision;
-
-    class Section {
-        int ordinal;
-
-        class Paragraph {
-            void renumber() {
-                ordinal  = 2;   // OK: Paragraph holds Section as a mutable borrow
-                revision = 3;   // OK: no level is @readonly
-            }
-        }
-    }
 
     @readonly class Appendix {
         int page;
@@ -670,7 +628,6 @@ A call to a `@readonly(InheritFrom.RECEIVER)` method (MUT-17) is a mutating use 
 An effectively fixed local variable borrows its source as a shared borrow.
 A local variable with a mutating use borrows its source as a mutable borrow (OWN-02, OWN-03).
 The classification applies to the whole variable.
-It is a compile-time error for an immutable local variable to have a mutating use (MUT-15).
 
 ```java
 Node l = t.left;                // a borrow of one field (OWN-04)
