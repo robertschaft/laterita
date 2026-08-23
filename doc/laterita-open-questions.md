@@ -19,19 +19,19 @@ Non-language-design items (tooling, migration, and roadmap work) are tracked as 
 **Surfaced when:** noting that Rust's `match` exhaustively destructures sum types and binds each field with a move, while Java's pattern switch (sealed types + record deconstruction patterns, JEP 440) leaves move-vs-borrow implicit.
 
 **The issue.** Laterita inherits Java's pattern `switch` and record patterns.
-But the borrow checker has to attribute each variable produced by a record pattern: is `case Point(var x, var y)` moving `x` and `y` out of the scrutinee, borrowing them for the case body, or destructing (DROP-04 / OWN-06)?
-Sealed hierarchies (Rust-style ADTs) make this acute: the natural Rust idiom is to consume the scrutinee and rebind owned fields per arm.
+But the borrow checker has to attribute each variable produced by a record pattern: does `case Point(var x, var y)` move `x` and `y` out of the selector expression's value, borrow them for the case body, or destruct it (DROP-04, OWN-06)?
+A sealed hierarchy, which is where a Rust program uses an enum, makes this acute: the natural Rust idiom is to consume the matched value and bind owned fields per case.
 
 **The question.**
 - Do record-pattern variables default to borrow (consistent with OWN-02) or to move (consistent with the Rust idiom)?
 - Is there an opt-in `@take` form on a pattern variable to switch arms between borrow and consume?
-- How does exhaustiveness interact with destruction: if one arm moves a field and another does not, is the scrutinee considered moved after the `switch`?
-- For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once.
+- How does exhaustiveness interact with destruction: if one arm moves a field and another does not, is the matched value considered moved after the `switch`?
+- For a matched value whose class implements `onDrop()`, DROP-08 forbids moving any field out, so a pattern that binds by move must either be rejected or consume the whole value at once.
 Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 - What mutability does a pattern variable carry?
-MUT-40 reads a local's mutability off its declared type, and for `var` off the RHS of the first assignment, but a pattern variable has neither a written type nor an assignment.
-The candidates are the component's declared type, the scrutinee's mutability, and an explicit `@fixed` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
+MUT-40 reads a local variable's mutability off its declared type, and for `var` off its initializer, but a pattern variable has neither a written type nor an initializer.
+The candidates are the component's declared type, the mutability of the matched value, and an explicit `@fixed` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
 
 **Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
 A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
@@ -62,7 +62,7 @@ This does not narrow the lever, because the throws-polymorphic use cases are exa
 
 **The question.**
 - Is EXC-05 reversed: does Laterita restore Java's distinction between checked and unchecked exceptions, with `throws` declarations required on method signatures for checked exceptions?
-- Does FN-01 admit a structural throws clause (`(P1, …, Pn) -> R throws E1, E2`), and is the throws set part of FI subtype identity?
+- Does FN-01 admit a structural throws clause (`(P1, …, Pn) -> R throws E1, E2`), and is the throws set part of functional-interface subtype identity?
 Without this, restoring checked exceptions reintroduces the Java pain that motivated EXC-05.
 - A structural throws clause must attach to the functional-interface *semantics* (FN-01), so that the `.java` surface carries it via a nominal interface whose SAM declares `throws`: not only to the inline `.lat` spelling (LAT-05).
 If it attached to the spelling alone, `.java` and `.lat` sources would type-check throwing lambdas differently, violating LAT-00 (the `.lat` layer adds no semantics).
@@ -71,7 +71,7 @@ If it attached to the spelling alone, `.java` and `.lat` sources would type-chec
 A principled rule is needed.
 - How does the restoration interact with EXC-01 (Java exception syntax preserved) and Java interop: imported Java methods declaring `throws IOException` would, under restored semantics, propagate the checked obligation into Laterita callers, restoring exactly the burden EXC-05 erased.
 Is that acceptable, or does the boundary auto-unchecks?
-- Is OQ-22's original `Result<T, E>` proposal then dropped entirely, or kept as a non-stdlib idiom for the cases where errors-as-data is genuinely preferable (parser combinators, validation pipelines)?
+- Is OQ-22's original `Result<T, E>` proposal then dropped entirely, or kept as an idiom outside the standard library for the cases where errors-as-data is genuinely preferable (parser combinators, validation pipelines)?
 
 **Why it matters.** Compile-time totality for recoverable failures is one of the central reasons Java developers reach for Rust.
 The Java-shaped delivery is checked exceptions, not a parallel `Result` type: provided FN-01 absorbs the throws clause so that generic functional APIs survive.
@@ -88,10 +88,10 @@ Message-passing concurrency (sender moves a `@take` value into the channel, rece
 The ownership model maps to channels especially cleanly: `Sender<T>.send(@take T)` and `Receiver<T>.recv() → T` are simply moves across a queue, with `@local` (STD-07) gating which `T` may be sent.
 
 **The question.**
-- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required stdlib (`STD`, Reserved Names `RESV`) or a third-party library?
+- Is `Channel<T>` (or `Sender<T>` / `Receiver<T>` pair) part of the required standard library (`STD`, Reserved Names `RESV`) or a third-party library?
 - Bounded vs unbounded?
 SPSC vs MPSC vs MPMC?
-Does the stdlib commit to a single shape, or expose a hierarchy?
+Does the standard library commit to a single shape, or expose a hierarchy?
 - Is `send` an interruption point (THR-04)?
 Does dropping the last `Sender` close the channel (analog of Rust's `RecvError`)?
 - How does back-pressure surface: `BlockingQueue`-style `put`/`offer`, or a structured `trySend` returning the value back on full?
@@ -105,7 +105,7 @@ Does dropping the last `Sender` close the channel (analog of Rust's `RecvError`)
 **Surfaced when:** noting that Rust's `From<T>`/`Into<U>` traits provide an ergonomic but controlled conversion surface (`let s: String = my_str.into();`), used heavily for error conversion in conjunction with the `?` operator.
 
 **The issue.** Java relies on explicit constructors and static factory methods (`String.valueOf`, `Integer.parseInt`) plus a fixed set of compiler-blessed primitive widenings.
-There is no extension point for "this type converts to that one in one well-defined step." Combined with OQ-22 (`Result`-style errors), the lack of `From` means error-type composition across libraries requires hand-written boilerplate per call site.
+There is no extension point for "this type converts to that one in one well-defined step." Combined with OQ-22 (`Result`-style errors), the lack of `From` means error-type composition across libraries requires hand-written conversion code at every call site.
 
 **The question.**
 - Does Laterita introduce a `Conversion<F, T>` interface (or `@from` annotation on a constructor / static method) that the compiler may invoke implicitly in specific positions: at minimum on `?`-style propagation of `Result<_, E1>` into a function returning `Result<_, E2>`?
@@ -119,7 +119,7 @@ With it, library composition tightens substantially.
 
 ## OQ-30 — Runtime-initialized statics (lazy / once-init primitive)
 
-**Surfaced when:** STAT-02 restricted static initializers to const expressions and pointed runtime-initialized statics at "a once-init wrapper held in the static slot," without specifying the wrapper.
+**Surfaced when:** STAT-02 restricted static initializers to const expressions and pointed runtime-initialized static fields at a once-init wrapper held in the static field, without specifying the wrapper.
 
 **The issue.** Const-only static initialization keeps the AOT story (COMP-01) honest, no classloader, no static-init-order fiasco, no observable initialization race.
 But it leaves a real case unspecified: statics whose value genuinely requires runtime work, a compiled regex, a config loaded from disk, a precomputed table, a service registry.
@@ -127,10 +127,10 @@ Java handles these in `static {}` blocks under the classloader's per-class init 
 Laterita has neither yet, so every such case must hand-roll a `Mutex<T?>` and a first-access check at every read site.
 
 **The question.**
-- Does the stdlib provide a `Lazy<T>` (eager-first-access initialization with a supplier captured at construction), an `OnceLock<T>` (settable once at any later time, observed via `get()` returning `T?`), or both?
-- Is the first-access work serialized by an internal `Mutex<T>`, by double-checked-locking over an atomic slot, or by a one-time CAS?
+- Does the standard library provide a `Lazy<T>` (eager-first-access initialization with a supplier captured at construction), an `OnceLock<T>` (settable once at any later time, observed via `get()` returning `T?`), or both?
+- Is the first-access work serialized by an internal `Mutex<T>`, by double-checked locking over an atomic field, or by a one-time CAS?
 The choice determines whether two threads racing on first access both run the supplier or whether the loser blocks.
-- Does the supplier's exception poison the slot (subsequent `get()` re-throws, mirroring THR-10), retry on the next call (Rust's `LazyLock` behavior), or terminate the program?
+- Does an exception from the supplier poison the field (subsequent `get()` re-throws, mirroring THR-10), retry on the next call (Rust's `LazyLock` behavior), or terminate the program?
 - Is the supplier captured as a `@take () -> T` closure (consumed on success, dropped) or held for retry?
 Falls out of the previous answer.
 - How does this compose with `@local` (STAT-03)?
@@ -138,7 +138,7 @@ A `static Lazy<L>` where `L` is `@local` puts the `L` cross-thread on first acce
 
 **Why it matters.** Without a runtime-init primitive, every Laterita program that needs a compiled regex, a parsed config, or any other not-quite-const startup value hand-rolls the same `Mutex<T?>` + first-access check at every read site.
 The pattern is universal.
-The shape of the stdlib carrier is what's open.
+The shape of the standard library carrier is what's open.
 
 **Related codes:** STAT-02, STAT-03, STD-09, THR-10, COMP-01.
 
@@ -146,11 +146,11 @@ The shape of the stdlib carrier is what's open.
 
 ## OQ-34 — `val` and `var` as first-class aliases
 
-**Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a laterita spelling.
+**Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a Laterita spelling.
 
 **The issue.**
-Under MUT-20 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
-The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
+Under MUT-20 a Laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
+The remaining gap is `val`: Lombok's immutable inferred local is Laterita's `final var`, two tokens where Lombok writes one.
 Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
 The tension is that `val` is not a Java keyword.
 Lombok makes `val x = ...` compile by shipping `val` as an importable type that `javac` resolves, so a `.java`-surface `val` would need the same importable-type trick, while a `.lat`-only form is plain LAT-topic sugar for `final var`.
@@ -174,7 +174,7 @@ Laterita currently offers no way to ask in source whether a value is mutable, fi
 
 - Is there a standard set of predicates over a variable: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
 - Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
-- Do they observe only the static mode of the binding, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
+- Do they observe only the declared mode of the variable, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
 What is the result for a generic `T` whose mode is itself inherited (MUT-17)?
 - Do they compose with monomorphization, so a MUT-17 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
@@ -195,7 +195,7 @@ Some computations are fully determined at compile time and could be forced to ev
 **The question.**
 
 - Is there a `@Macro` scope marking a method whose result the compiler must compute at compile time (the `constexpr` and `comptime` analog), and a `@Runtime` scope marking a method the compiler must not compile-time-evaluate?
-- Is calling a `@Runtime` method, directly or transitively, from a `@Macro` context a compile error, and how is the transitive purity of a `@Macro` call graph enforced?
+- Is calling a `@Runtime` method, directly or transitively, from a `@Macro` context a compile-time error, and how is the transitive purity of a `@Macro` call graph enforced?
 - Are the OQ-36 predicates declared `@Macro`, so they fold to constants and can drive `@Macro`-level branching and code generation?
 - What is the reflection surface reachable from `@Macro` code: type structure, fields, annotations, ownership modes?
 Does it subsume the build-time annotation processing that already replaces serializers, ORM mappers, and DI wiring (README, GH #14)?
@@ -234,7 +234,7 @@ Candidates carry different trade-offs.
 **The question.**
 
 - Which name does the annotation carry across all eight positions?
-- Is one name for every position the right call, or does the class declaration want a different word from the binding positions, at the cost of MUT-01's single-word property?
+- Is one name for every position the right call, or does the class declaration want a different word from the variable positions, at the cost of MUT-01's single-word property?
 - Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that a method is annotated `@readonly` (MUT-13)?
   A variable annotation built from the same root, `@ro` against `@readonly`, would let a reader carry one idea across both.
   The two are distinct (MUT-01, MUT-13), and a shared root must not become a shared meaning.
