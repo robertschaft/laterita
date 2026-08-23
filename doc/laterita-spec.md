@@ -1301,7 +1301,7 @@ void submit(@take @consuming (@take Result) -> void onComplete) { … }
 ```
 
 Mapping to Rust: `@readonly` is `Fn`, unannotated is `FnMut`, and `@consuming` is `FnOnce`.
-CLO-04 carries the containment ordering.
+CLO-03 carries the call-mode ordering.
 The anonymous form is an addition to the nominal one, accepted only in `.lat` sources (LAT-05).
 
 ### FN-02 Assignability
@@ -1386,7 +1386,7 @@ Closure may be invoked exactly once.
 
 A captured local variable must be effectively final (MUT-61).
 A closure that modifies captured state captures a mutable local variable and modifies the object through it.
-Such a closure is a mut-call value (CLO-04), invocable only through a mutable variable (CLO-03).
+Such a closure is a mut-call value (CLO-03).
 
 ### CLO-02 Capture mode is inferred
 
@@ -1395,17 +1395,16 @@ The user does not declare it.
 
 ### CLO-03 Call mode and variable mode
 
-A functional-interface value has two independent properties.
+A functional-interface value has two independent properties: the **call mode** of its type, and the **variable mode** of the variable that holds it.
 
-**Call mode** is a property of the *type*.
-The single abstract method of a functional interface carries a receiver mode, declared exactly as on any method (MUT-13, OWN-15).
-That receiver mode is the interface's call mode:
+Call mode is the receiver mode of the single abstract method, declared exactly as on any method (MUT-13, OWN-15), and is ordered `shared-call < mut-call < once-call`.
+A lambda fits a parameter whose call mode is at least its own (CLO-04), and invoking the SAM requires the variable holding the value to support the SAM's receiver mode.
 
-| SAM receiver mode | Call mode | Invocation |
-|---|---|---|
-| `@readonly` | **shared-call** | through a shared borrow, repeatedly, concurrently (subject to STD-07) |
-| unannotated | **mut-call** | through a mutable variable, repeatedly but sequentially |
-| `@consuming` | **once-call** | once, and the call consumes the value |
+| Call mode | SAM receiver | Lambda that fits | Invocable through | Guarantee to the holder |
+|---|---|---|---|---|
+| shared-call | `@readonly` | read | any variable | never mutates captures, invocable repeatedly and concurrently (STD-07) |
+| mut-call | unannotated | read, mutate | a mutable variable | may mutate captures, invoked sequentially |
+| once-call | `@consuming` | read, mutate, consume | a variable owning the value, which the call consumes | may consume captures, invoked at most once |
 
 ```java
 interface MissResolver<T> { @readonly T resolve(String key); }      // shared-call
@@ -1413,24 +1412,9 @@ interface HitListener       { void onHit(String key); }             // mut-call
 interface Finalizer         { @consuming void run(); }              // once-call
 ```
 
-**Variable mode** is a property of the *variable* that holds the value.
-A functional-interface variable follows the ordinary variable rules with no special case: a field owns its value by default (OWN-08).
-A parameter receives ownership with `@take` or a borrow otherwise (OWN-13).
-`@fixed` makes the variable immutable (MUT-01).
-`@borrow` marks a borrowed field (OWN-09).
-`@bound` marks a borrowed return (OWN-17, OWN-18), and a local variable follows its initializer (OWN-02).
-
-Invoking the SAM is an ordinary method call on the functional-interface value and obeys mutability transitivity (MUT-15, OWN-15): invoking a mut-call SAM requires the variable to be mutable.
-Invoking a once-call SAM requires the variable to own the value, and the call consumes it (a destruction per OWN-06 when the variable is a field).
-Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, independently of the call mode: a value may be held in a variable from which its SAM cannot be invoked.
-
-A functional-interface type used as a parameter or return combines modifiers from three layers, each governed independently:
-
-| Layer | Modifiers | Governed by |
-|---|---|---|
-| Inside the type: the SAM's parameters and return | `@take`, `@fixed`, `@bound` | OWN-13, OWN-17, OWN-18 |
-| The SAM's receiver: the type's call mode | `@readonly`, unannotated, or `@consuming` | this rule |
-| The variable holding the value | `@fixed`, `@take`, `@bound`, ownership | MUT-40, MUT-41, MUT-21, OWN-13, OWN-17, OWN-18 |
+Variable mode follows the ordinary variable rules with no special case (OWN-02, OWN-08, OWN-09, OWN-13, OWN-17, OWN-18, MUT-01), and the SAM's own parameters and return follow OWN-13, OWN-17, and OWN-18.
+Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, so a value may be held in a variable from which its SAM cannot be invoked.
+Consuming a once-call value held in a field is a destruction (OWN-06).
 
 A once-call functional-interface value cannot be a `@bound` source: the call that would produce the return consumes it.
 
@@ -1458,24 +1442,10 @@ A lambda literal `(p1, p2, …) -> body` is a value whose type is a functional i
 - inference from the body together with any explicit parameter annotations otherwise.
 
 The lambda's capture mode (CLO-01) fixes the receiver mode of its synthesized SAM (FN-03), and therefore its call mode (CLO-03): read → shared-call, mutate → mut-call, consume → once-call.
-A lambda is a value of a functional-interface type of call mode `M` if and only if its own call mode is `≤ M` under `shared-call < mut-call < once-call`, the `Fn ⊆ FnMut ⊆ FnOnce` containment expressed through the SAM's receiver mode.
-
-| Lambda capture mode | Lambda call mode | shared-call type | mut-call type | once-call type |
-|---|---|:---:|:---:|:---:|
-| Read    | shared-call | accept | accept | accept |
-| Mutate  | mut-call    | reject | accept | accept |
-| Consume | once-call   | reject | reject | accept |
-
-Inverted, this is what each parameter guarantees to the method holding the closure:
-
-| Parameter call mode | The lambda author must ensure | The holder is guaranteed |
-|---|---|---|
-| shared-call | closure works read-only on captures | closure never mutates captures, and may be invoked any number of times, concurrently (subject to STD-07) |
-| mut-call | mutate captures only if needed, and the closure remains re-callable | closure may mutate captures, and must be invoked sequentially, never concurrently |
-| once-call | closure may consume captures | closure may be invoked at most once |
+A lambda is a value of a functional-interface type of call mode `M` if and only if its own call mode is `≤ M` (CLO-03).
 
 Assignability concerns the value only.
-Whether the variable that receives the value can invoke its SAM is the separate question settled by CLO-03 (variable mode versus call mode).
+Whether the variable that receives the value can invoke its SAM is the separate question settled by CLO-03.
 
 ```java
 interface Doubler { int apply(int x); }   // mut-call
@@ -1881,7 +1851,7 @@ The type parameter is `@own` (TARG-06).
 
 **Scoped acquisition.** `<R> R with((T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result.
 `<R> Optional<R> tryWith((T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped.
-The action parameter is mut-call (FN-01, with no prefix) so the closure may capture state by mutable borrow, the typical critical-section shape, CLO-04's containment also admits read-only closures.
+The action parameter is mut-call (FN-01, with no prefix), so the closure may capture state by mutable borrow, and a read closure fits as well (CLO-03).
 The protected `T` is reachable only as the parameter of `action`.
 There is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
