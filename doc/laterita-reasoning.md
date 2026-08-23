@@ -150,9 +150,9 @@ The views also have to be ordered like the types they view, or a frozen `ArrayLi
 With that ordering `@fixed Object` falls out as the top type rather than being asserted.
 
 Calling `@fixed C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
-A supertype's kind would reach the subtype through HIER-01, and `@fixed C` is immutable, so every class would inherit immutability from its own frozen view and the mutable kind would have no inhabitants.
+A supertype whose kind reached the subtype would make every class immutable through its own frozen view, and the mutable kind would have no inhabitants.
 An implemented interface is the shape that fits: it carries the members and the assignability, and it is what the frozen view actually is.
-HIER-01 propagates immutability through `extends` alone, and a class cannot extend an interface, so a class may implement a frozen view to restrict itself to a read-only surface without becoming immutable.
+A class takes its kind from its own declaration (MUT-10), so implementing a frozen view restricts it to a read-only surface without making it immutable.
 
 HIER-04 is the same relation read on declared class kinds, and it is what keeps MUT-15's check static.
 An immutable class satisfies `@fixed S` for each supertype `S` and not `S` itself, so a mutating method can never be reached through a widening or a cast on a value the program treats as frozen.
@@ -347,20 +347,19 @@ The alternative of an immutable default with a positive mutability opt-in is rej
 The reference-counted handles depend on this, since `Rc<T>` and `Arc<T>` mutate a refcount through `Cell` and so declare no mutating method of their own.
 
 An interface carries the annotation for the same reason a class does: it declares that the interface's own methods are all `@readonly` (MUT-10).
-It does not bind the implementor's other methods, since immutability propagates through `extends` alone (HIER-01), so a mutable class may implement a value-contract interface and keep a mutable surface of its own.
+It does not bind the implementor's other methods, so a mutable class may implement a value-contract interface and keep a mutable surface of its own.
 Every method of an immutable interface being `@readonly` lets MUT-15's static check use one uniform predicate over the receiver's static type, class or interface alike.
 
 ---
 
-## Class Hierarchy and Override (HIER-01 through HIER-05)
+## Class Hierarchy and Override (HIER-02 through HIER-05)
 
-### Why immutability is inherited and the default is mutable (HIER-01, HIER-02)
+### Why the kind is declared and the default is mutable (MUT-10, HIER-02)
 
-A subclass value fills a supertype slot, so it has to keep every guarantee the supertype published.
-Immutability is such a guarantee: a holder of a `@fixed` supertype relies on nothing reachable through it changing, and a mutable subclass reached through that slot would break the reliance.
-So immutability inherits through `extends`, and a hierarchy is a run of mutable classes down to a frontier and immutable ones below it, with the transition happening once and never reversing.
-It does not inherit through `implements`, where an immutable interface constrains only the methods it declares, which is what lets a class implement a frozen view without becoming immutable (MUT-30).
-Writing `@fixed` on a class that already inherits it is redundant rather than an error, matching how every other redundant `@fixed` is treated (MUT-31).
+`@fixed` on a declaration says one thing: every method there is `@readonly`.
+It is a claim about the type's own surface, not about the objects that flow through it, and nothing else needs to be inferred from it.
+An inherited kind was tried and dropped: a subclass that could not add a mutating method made `@fixed` a hierarchy-wide commitment, and it left the frozen view of MUT-30 needing an exception, since a class implementing one would have inherited immutability from it.
+What a holder of an immutable type actually relies on is delivered elsewhere: the variable is immutable (MUT-01), so it reaches only `@readonly` methods, and HIER-05 stops an override taking `@readonly` away.
 
 Mutability is not a guarantee, so nothing has to inherit it and nothing does.
 An unmarked class is mutable because that is what "published no immutability promise" means, and `Object`, which publishes none, is an ordinary mutable class.

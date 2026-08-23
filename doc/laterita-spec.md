@@ -386,11 +386,10 @@ Whether a variable is mutable is independent of whether it may be assigned (MUT-
 ### MUT-10 - Mutable and immutable classes
 
 A class, abstract class, or interface is *mutable* or *immutable*.
-A class or interface annotated `@fixed` (`@fixed class C`, `@fixed abstract class C`, `@fixed interface I`) is immutable.
-One that is not annotated `@fixed` takes its kind from the type it extends (HIER-01).
+A class or interface annotated `@fixed` (`@fixed class C`, `@fixed abstract class C`, `@fixed interface I`) is immutable, and one that is not is mutable.
 
 A mutable class may declare methods that are not `@readonly` (MUT-13), and fields that may be assigned or modified through (MUT-21, MUT-22).
-Every method of an immutable class or interface is `@readonly`, including one inherited from a mutable superclass (HIER-03).
+Every method of an immutable class or interface is `@readonly`, including an inherited one (HIER-03).
 
 ### MUT-11 - `record` and `enum` are immutable
 
@@ -402,7 +401,7 @@ Every primitive type (e.g. `boolean`, `int`, `double`) is immutable.
 
 ### MUT-12 - A borrow of an immutable instance may be a copy
 
-Where the lifetime constraints are the same, the compiler may replace a borrow of a variable whose declared type is an immutable class with a copy of the instance, or a copy with a borrow.
+Where the lifetime constraints are the same, the compiler may replace a borrow with a copy of the instance, or a copy with a borrow, when the declared type is a `final` immutable class, a record, an enum, or a primitive.
 
 ### MUT-13 - `@readonly` methods
 
@@ -514,7 +513,7 @@ The declared type of the field is not restricted.
 
 A field may be assigned only through a mutable variable (MUT-13, MUT-15).
 
-Every field of an immutable class is `final` and `@fixed`, including one inherited from a mutable superclass (HIER-03).
+Every field of an immutable class is `final` and `@fixed`, including an inherited one (HIER-03).
 
 ```java
 class User {
@@ -719,14 +718,6 @@ class Counter {
 
 ## HIER — Class Hierarchy and Override
 
-### HIER-01 - Immutability is inherited through `extends`
-
-A class or interface is immutable when it `extends` an immutable type, transitively.
-A class that implements an immutable interface is not thereby immutable, and must declare `@readonly` only the methods it inherits from that interface (MUT-10).
-Annotating an immutable declaration `@fixed` has no effect (MUT-31).
-
-A class whose supertypes are all mutable may still be annotated `@fixed`, which is the frozen view of HIER-03.
-
 ### HIER-02 - `Object`
 
 `Object` is mutable.
@@ -758,7 +749,7 @@ fc.inc();       // ERROR: inc mutates, FrozenCounter is immutable
 
 An immutable class implements `@fixed S` for each of its supertypes `S` and is not a subtype of `S` itself (MUT-30).
 Widening an immutable instance to a mutable supertype, class or interface, therefore yields the frozen view.
-It is a compile-time error to cast `v` to `S` when `S` is mutable and `v` is immutable (MUT-31).
+A variable narrowed by a cast or by a pattern is immutable when the variable it is narrowed from is immutable.
 
 An instance is mutable only from the construction of a mutable class.
 It stays mutable only through variables, parameters, returns, and fields that are not annotated `@fixed`.
@@ -1703,7 +1694,7 @@ When the closure escapes through a return, its captured parameters are the `@bou
 
 ### STR-07 — `String` is immutable
 
-`String` is an immutable class (MUT-10): no mutating method exists or can be added by extension (HIER-01).
+`String` is an immutable class (MUT-10), so every method it declares is `@readonly`.
 `@fixed` on a `String` is redundant (MUT-31).
 Bulk text construction belongs in `StringBuilder`, which is mutable.
 
@@ -2304,7 +2295,7 @@ Combinations not listed are currently not supported and won't compile.
 
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
-| `@fixed` | `TYPE` | redundant on enum, record, and any class extending an immutable type | Class or interface is immutable | MUT-10, HIER-01 |
+| `@fixed` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-10 |
 | `@fixed` | `LOCAL_VARIABLE` | redundant when the declared type is an immutable class | The local variable may not be used to modify the object (assignment is the separate `final` axis) | MUT-40 |
 | `@fixed` | `FIELD` | redundant in an immutable class and on a field of immutable type | The field may not be used to modify the object (assignment is MUT-22) | MUT-21 |
 | `@fixed` | `PARAMETER` | redundant when the type is an immutable class | Parameter receives a shared borrow instead of a mutable one, and its absence is reported when the body never mutates through it | MUT-41, MUT-70 |
@@ -2535,7 +2526,7 @@ The record keeps its `record` identity in the `.java` mirror.
 
 ### NABI-01 — Single-field aggregate layout and calling convention
 
-An immutable class (MUT-10) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register(s) as a bare value of the field's type.
+A `final` immutable class (MUT-10) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register(s) as a bare value of the field's type.
 
 ---
 
