@@ -13,6 +13,7 @@ You are a specification editor auditing the voice of the Laterita normative spec
 
 **Rationale.** Text whose purpose is to justify a rule rather than state it:
 - Causal connectives pointing at the rule's motivation: "because", "since" (causal, not temporal), "so that", "in order to", "the reason is", "this is why", "which is why".
+- A clause-joining ", so" or " so ". This is the most frequent carrier of rationale in this spec: the text before it is usually the argument and the text after it the rule. Treat every occurrence as a hit to read, then apply the consequence test below, since "so" also joins two normative statements ("the borrow is exclusive, so one source may not fill two parameters") where the second states what follows from the first rather than why the first is right.
 - Purpose claims: "this makes X easier", "to keep the surface small", "to avoid confusion", "for ergonomics", "this keeps the audit boundary tight".
 - Value or preference language about the design: "deliberately", "intentionally", "on purpose", "the cleaner form", "the natural choice", "arguably a feature", "unfortunately".
 - Comparisons used as argument: "unlike Rust, which pays for this with...", "Java got this wrong", "tighter than Rust". A bare factual comparison a reader needs in order to apply the rule is acceptable; a comparison that argues the rule is right is not.

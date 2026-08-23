@@ -15,7 +15,7 @@
  * accompanied this code).
  *
  * Laterita fork: ownership, borrow, and mutability annotations added on top of
- * the OpenJDK source. See doc/laterita-spec.md (STD-08, MUT-13).
+ * the OpenJDK source. See doc/laterita-spec.md (STD-08, MUT-17).
  */
 package java.util;
 
@@ -27,14 +27,14 @@ import static laterita.lang.Intrinsics.broken;
  * A read-or-update cursor over a collection.
  * The distinction between a read cursor and an in-place-update cursor is not
  * two types: it is which mutability this instance inherited from the
- * {@link Iterable#iterator()} receiver that produced it (MUT-13).
+ * {@link Iterable#iterator()} receiver that produced it (MUT-17).
  * Structural {@code set} and {@code add} live on {@link ListIterator}.
  * {@code remove()} is declared here for source compatibility with
  * {@code java.util.Iterator} but is {@code broken()} by default.
  *
  * @param <T> the element type
  */
-@mut public interface Iterator<T> {
+public interface Iterator<T> {
 
     /** Returns {@code true} if the iteration has more elements. */
     boolean hasNext();
@@ -43,13 +43,13 @@ import static laterita.lang.Intrinsics.broken;
      * Advances and returns the next element as a borrow bound to the
      * collection.
      *
-     * <p>{@code @mutating} advances this cursor.
-     * The returned {@code @bound T}'s mutability was fixed when the cursor was
-     * created: {@code @mut @bound T} for a cursor built from a {@code @mut}
-     * collection, {@code @fix @bound T} for one built from a {@code @fix}
+     * <p>Not {@code @readonly}: it advances this cursor.
+     * The returned {@code @bound T}'s mutability was settled when the cursor
+     * was created: {@code @bound T} for a cursor built from a mutable
+     * collection, {@code @fixed @bound T} for one built from a {@code @fixed}
      * collection.
      */
-    @mutating @bound T next();
+    @bound T next();
 
     /**
      * Removes the last element returned by {@link #next()}, present for source
@@ -58,7 +58,7 @@ import static laterita.lang.Intrinsics.broken;
      * (STD-08): calling it is a compile error unless overridden, as
      * {@link ListIterator} does with the working form.
      */
-    default @mutating T remove() {
+    default T remove() {
         broken("Iterator.remove: obtain a ListIterator to remove elements");
     }
 }

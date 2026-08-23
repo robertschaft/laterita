@@ -14,15 +14,21 @@ Java has a mature ecosystem, a huge developer base, and a syntax those developer
 
 ## Highlights
 
-- **Ownership and borrowing instead of GC.** Every value has a single owner; references are tracked borrows; cleanup is deterministic. When a binding leaves scope the compiler runs its `onDrop()` — no tracing collector, no finalizer surprises, no pauses.
+- **Ownership and borrowing instead of GC.** Every value has a single owner; references are tracked borrows; cleanup is deterministic. When a variable leaves scope the compiler runs its `onDrop()` — no tracing collector, no finalizer surprises, no pauses.
 
-- **No new keywords.** Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@mut`, `@take`, `@bound`, `@local`, …) and two intrinsics (`give(x)`, `broken()`). The core language is annotated Java that `javac` parses unchanged.
+- **No new keywords.**
+Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@fixed`, `@readonly`, `@take`, `@bound`, `@local`, …) and the `laterita.lang.Intrinsics` static methods (`give(x)`, `fixed(x)`, `broken()`).
+The core language is annotated Java that `javac` parses unchanged.
 
-- **Mutability is explicit and transitive.** A single `@mut` marker covers bindings, fields, methods, and parameters, and it must be present at *every* level of an access path to mutate. Immutability is the default everywhere.
+- **Immutability is explicit and transitive.**
+`@fixed` marks a variable or a type immutable.
+Mutable is the default, as in Java, and `@fixed` is written where the guarantee is wanted.
+Methods can be annotated `@readonly` to restrict them to reading their receiver.
+Only those methods are represented in the `@fixed` interface of a class.
 
-- **Non-nullable by default.** A bare `T` excludes null and needs no null check; the nullable type admits it. The compiler proves the rest and narrows automatically after an `if (x != null)` check.
+- **Non-nullable by default.** A bare `T` excludes null and needs no null check; the nullable type accepts it. The compiler proves the rest and narrows automatically after an `if (x != null)` check.
 
-- **Moves are visible.** Plain assignment borrows; `give(x)` transfers ownership and ends the source binding. A parameter declares in its signature whether it borrows or consumes (`@take`), so every ownership transfer is readable.
+- **Moves are visible.** Plain assignment borrows; `give(x)` transfers ownership and ends the source variable. A parameter declares in its signature whether it borrows or consumes (`@take`), so every ownership transfer is readable.
 
 - **No data races by construction.** Thread-affine types are marked `@local` and cannot cross thread boundaries. Shared mutable state goes through `Mutex<T>`, which owns the data it protects and hands it out only inside a scoped closure — there is no separate lock guard to leak or forget.
 
@@ -56,7 +62,7 @@ String  forced    = maybeName!!;   // NullPointerException if maybeName is null
 Write a single-abstract-method signature directly as a method-parameter type — with full ownership modes — instead of declaring a named interface for the callback.
 
 ```java
-<R> Stream<R> map(@mut (@take T) -> R fn);
+<R> Stream<R> map((@take T) -> R fn);
 void          forEach((@bound Record) -> void action);
 ```
 

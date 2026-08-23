@@ -29,6 +29,9 @@ Sealed hierarchies (Rust-style ADTs) make this acute: the natural Rust idiom is 
 - For a scrutinee whose class implements `onDrop()`, DROP-08 forbids moving any field out, so move-binding patterns on it must either be rejected or consume the whole scrutinee at once.
 Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
+- What mutability does a pattern variable carry?
+MUT-40 reads a local's mutability off its declared type, and for `var` off the RHS of the first assignment, but a pattern variable has neither a written type nor an assignment.
+The candidates are the component's declared type, the scrutinee's mutability, and an explicit `@fixed` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
 
 **Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
 A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
@@ -38,7 +41,7 @@ Keeping the two terms separate is why the move-based take-apart operation was re
 **Why it matters.** Sealed-type dispatch is the Java-shaped replacement for Rust enums.
 Without a clear ownership story for patterns, `switch` becomes a borrow-checker hole.
 
-**Related codes:** OWN-02, OWN-13, OWN-06, DES, DROP-04.
+**Related codes:** OWN-02, OWN-13, OWN-06, MUT-40, MUT-60, DES, DROP-04.
 
 ## OQ-22 — Restoring checked exceptions for compiler-enforced error totality
 
@@ -146,7 +149,7 @@ The shape of the stdlib carrier is what's open.
 **Surfaced when:** GEN-14 noted that Lombok's `val` (immutable inferred local) and `var` (reassignable inferred local) want a laterita spelling.
 
 **The issue.**
-Under MUT-02 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
+Under MUT-20 a laterita `var` is already reassignable, exactly like Java's `var` and Lombok's `var`, so no divergence remains on the reassignment axis and a Lombok-using source keeps its `var` locals unchanged.
 The remaining gap is `val`: Lombok's immutable inferred local is laterita's `final var`, two tokens where Lombok writes one.
 Accepting `val` as sugar for `final var` would let Lombok sources migrate without rewriting `val` declarations.
 The tension is that `val` is not a Java keyword.
@@ -156,68 +159,30 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 - Should `val` be accepted as sugar for `final var` (immutable inferred local)?
 - If so, only in `.lat` files (a LAT-topic form), or in `.java` too through an importable `val` type the compiler special-cases?
 
-**Related codes:** MUT-02, MUT-03, GEN-14, LAT-00.
-
-## OQ-33 — Primitives in the ownership and mutability system
-
-**Surfaced when:** thinking through the `OWN` framing of variables as Java-variable slots carrying an ownership discipline.
-The framing maps cleanly onto reference types (each slot points at a heap value, with one owner among the slots) but is awkward for `int`, `long`, `double`, `boolean`, etc.
-Primitives have no heap identity: there is nothing to point at, nothing to drop, and a "borrow" of an `int` has no observable difference from a copy.
-
-**The issue.**
-A `@mut int x` parameter in Laterita can be made to behave like Rust's `&mut i32`, the compiler passes a pointer to the caller's int slot and the callee mutates through it.
-This is implementable (Laterita compiles natively per COMP-01) but unusual.
-The Rust idiom for shared mutation of primitives is *not* `&mut i32` but `AtomicI32` with interior mutability.
-`&mut <primitive>` is rare even in Rust stdlib (it shows up generically through `mem::swap` / `mem::replace`, not as a deliberate out-parameter).
-The C analog (`int *`) is used in libc (`waitpid(int *wstatus, ...)`) but is the minority pattern, struct and array out-pointers dominate.
-Java itself has no equivalent: primitives are pass-by-value.
-
-If primitives sit outside the borrow system entirely, follow-on rules need to be specified.
-
-**Partly settled.**
-MUT-02 makes a local's referent mutability inherited from its initializer, and a primitive has no mutating surface, so a primitive local is never mutate-through and a primitive-returning method needs no `@mut` for `var n = computeCount();` to compile.
-The local-and-return mutability concern is therefore closed, and what remains open is the ownership and borrow treatment of primitives.
-
-**The question.**
-
-- *Are `@mut` parameters of primitive type rejected?*
-  The proposal: yes, since a primitive cannot be borrowed in a way distinguishable from a copy, and the few cases that genuinely want pass-by-pointer (shared counters, atomic flags) are served better by `AtomicInt` / `AtomicBoolean` (STD-04 territory) or by `Cell<int>` (STD-05).
-- *What about `@bound` on primitive returns and `@borrow` on primitive fields?*
-  The proposal: both rejected for the same reason, there is no storage to bind a lifetime to.
-  A primitive field is always its own owner (the enclosing instance holds the bits inline).
-- *Does any of this carry across `Nullable` (NULL-02)?*
-  An `int?` is encoded as a tagged union, not a primitive pointer.
-  Borrow rules might apply to the storage of the nullable wrapper even when the underlying type is primitive.
-
-**Why it matters.**
-The `OWN` model of variables-as-ownership-disciplined-slots only holds for reference types.
-Without explicit rules excluding primitives from the borrow surface, every reader has to derive separately whether `@mut int x`, `@bound int foo()`, and `@borrow int x;` make sense.
-The natural answer for all three is "no, primitives are pass-by-value", but the spec should say so once rather than leave it implicit.
-
-**Related codes:** OWN-01, OWN-13, OWN-16, MUT-02, MUT-04, MUT-07a, MUT-07b, STD-04, STD-05.
+**Related codes:** MUT-40, MUT-20, GEN-14, LAT-00.
 
 ## OQ-36 — Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
 
-**Surfaced when:** specifying MUT-13 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
+**Surfaced when:** specifying MUT-17 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
 **The issue.**
-Ownership, borrow, and mutability are compile-time properties of a binding (OWN-01, OWN-03, MUT-01).
-Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-13-style inherited path explicitly.
+Ownership, borrow, and mutability are compile-time properties of a variable (OWN-01, OWN-03, MUT-01).
+Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-17-style inherited path explicitly.
 Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
 
 **The question.**
 
-- Is there a standard set of predicates over a binding: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
+- Is there a standard set of predicates over a variable: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
 - Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the static mode of the binding, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
-What is the result for a generic `T` whose mode is itself inherited (MUT-13)?
-- Do they compose with monomorphization, so a MUT-13 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
+What is the result for a generic `T` whose mode is itself inherited (MUT-17)?
+- Do they compose with monomorphization, so a MUT-17 `InheritFrom.RECEIVER` body could read `isMutable(this)` and specialize per instantiation?
 
 **Why it matters.**
-Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-13's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
+Compile-time mode predicates let a library author write one generic body that adapts to the caller's ownership, the manual counterpart to MUT-17's automatic inheritance, and they are the natural building block for the compile-time reflection of OQ-37.
 
-**Related codes:** OWN-01, OWN-03, MUT-01, MUT-13, OQ-37.
+**Related codes:** OWN-01, OWN-03, MUT-01, MUT-17, OQ-37.
 
 ## OQ-37 — Compile-time evaluation scopes (`@Macro`, `@Runtime`) and compile-time reflection
 
@@ -240,3 +205,83 @@ Does it subsume the build-time annotation processing that already replaces seria
 A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogramming layer to replace the runtime reflection it drops, folds the OQ-36 predicates into zero-cost constants, and provides the substrate for the build-time code generation the language already relies on.
 
 **Related codes:** COMP-02, RESV, OQ-36, GH #14.
+
+---
+
+## OQ-38 — The surface name of `@fixed`
+
+**Surfaced when:** settling MUT-01 on a single negative annotation, which fixes the shape of the word but not the word itself.
+
+**The issue.**
+`@fixed` reads well against `final` on a local (`final @fixed List<Item> items` is two locks named by two words) and it is short.
+It is less good elsewhere.
+On a class declaration `@fixed class Money` says "this class cannot change" where the intended reading is "instances of this class expose no mutation", and a reader coming from Java hears `fixed` as the assignment property `final` already owns.
+On a parameter, `void render(@fixed Scene s)` states a read-only lend, which is the meaning most call sites care about, and `fixed` names it only indirectly.
+The annotation appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
+
+Candidates carry different trade-offs.
+
+- `@ro` / `@readonly` names the capability directly and matches what C# (`readonly`), C++ (`const`), and D (`const`) call it.
+  It is the least ambiguous on parameters and fields.
+  `@readonly class Money` is still odd, and `@ro` is terse to the point of being unguessable.
+  `@readonly` is also taken: MUT-13 uses it as a method modifier, where it forbids receiver mutation.
+  One word for both would state two different things in the same token, what a variable may do and what a method does to its receiver.
+- `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-10 does not.
+  It reads poorly on a parameter, where the point is the lend mode, not the value-ness.
+- `@frozen` matches the "frozen view" term the spec already uses (MUT-30, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
+- `@const` is the C++/D spelling and would be immediately understood, but `const` is a reserved Java keyword, so `@const` and the keyword sit confusingly close.
+
+**The question.**
+
+- Which name does the annotation carry across all eight positions?
+- Is one name for every position the right call, or does the class declaration want a different word from the binding positions, at the cost of MUT-01's single-word property?
+- Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that a method is annotated `@readonly` (MUT-13)?
+  A variable annotation built from the same root, `@ro` against `@readonly`, would let a reader carry one idea across both.
+  The two are distinct (MUT-01, MUT-13), and a shared root must not become a shared meaning.
+
+**Why it matters.**
+The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
+
+**Related codes:** MUT-01, MUT-13, MUT-30, MUT-10, TARG-03, HIER-03.
+
+---
+
+## OQ-39 — Per-field lifetime granularity for a `@bound` instance
+
+**Surfaced when:** comparing the `@bound` model against Rust's struct lifetime parameters, where a struct holding two borrows can return a value tied to one of them alone.
+
+**The issue.**
+A `@borrow` field is unconditionally a source of its instance (OWN-09), the sources intersect (LIFE-03), and a returned borrow binds to `this` (OWN-18) or to a marked parameter (OWN-17), never to a field.
+An instance holding two borrows therefore carries one lifetime, the intersection, and every borrow it lends is capped at that intersection even when it reaches only one of the fields.
+
+```java
+class Parser {
+    @borrow String input;
+    @borrow Config config;
+    @bound String token() { return input.substring(0, 3); }   // bound to this
+}
+
+var input  = readFile();
+var config = loadConfig();
+var p      = new Parser(input, config);
+var t      = p.token();
+give(config);      // p is now unusable, and so is t
+use(t);            // rejected, though t reaches only input
+```
+
+LIFE-02 lets an author tighten a return by removing a `@bound` marker from a parameter that does not contribute.
+No such control exists on the field side: OWN-09 admits no per-field opt-out, and OWN-21 states that a retained parameter's source becomes a source of `this` rather than of the field it lands in.
+
+**The question.**
+
+- Can a return name a `@borrow` field as its source, rather than `this`?
+- Does reading a `@borrow` field directly (OWN-04) yield a borrow of that field's original source or of the enclosing instance?
+The answer decides whether direct field access is already a partial escape.
+- Is the intersection the right default even with a per-field form available, so that `@bound` on a return keeps meaning "the whole instance"?
+- Does a per-field form reintroduce the naming problem that `@bound` exists to avoid, given that a field already has a name to refer to?
+
+**Why it matters.**
+Every long-lived structure that holds borrows of different lifetimes is capped at its shortest one, so a parser holding a long-lived buffer and a short-lived config cannot lend anything that survives the config.
+The workaround is to split the structure, which is the design pressure Rust's struct lifetime parameters exist to remove.
+
+**Related codes:** OWN-09, OWN-17, OWN-18, OWN-21, LIFE-02, LIFE-03, LIFE-04, OWN-04.
