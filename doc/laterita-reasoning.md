@@ -120,7 +120,7 @@ The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread lea
 
 ---
 
-## Mutability (MUT-01 through MUT-70)
+## Mutability (MUT-01 through MUT-71)
 
 ### Why `@fixed` is the single mutability marker (MUT-01)
 
@@ -514,7 +514,7 @@ The call-mode row inverts the surface direction for the same underlying principl
 
 ---
 
-## Lifetimes (LIFE-01 through LIFE-04)
+## Lifetimes (LIFE-01 through LIFE-05)
 
 ### Why mark-borrow on returns (OWN-16, OWN-17, OWN-18)
 
@@ -1456,7 +1456,7 @@ This is what keeps unsafe code reviewable: even unsafe code is mostly checked by
 
 ---
 
-## Standard Library (STD-01 through STD-09)
+## Standard Library (STD-01 through STD-12)
 
 ### Why `Rc` and `Arc` are split
 
@@ -1725,7 +1725,7 @@ The unique combination is consistent with the rest of the language.
 
 ---
 
-## Compilation Model (COMP-01 through COMP-05)
+## Compilation Model (COMP-01 through COMP-08)
 
 ### Why AOT and no GC (COMP-01)
 

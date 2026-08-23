@@ -363,7 +363,7 @@ See `MUT-10`.
 `@bound` on a parameter or a return (`OWN-17`, `OWN-18`).
 `@borrow` on a field, a record component, a generic type argument, and a parameter carrying `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
 `@fixed` on a local variable, a field, a parameter, a return, a type argument, a type-parameter declaration, and a class or interface declaration (`MUT-01`, `TARG-03`).
-`@take` on a parameter (`OWN-10`, `TARG-02`).
+`@take` on a parameter (`OWN-13`), and nowhere else (`OWN-10`, `TARG-02`).
 `@own` on a type-parameter declaration (`TARG-06`).
 
 ### `WeakReference<T>`

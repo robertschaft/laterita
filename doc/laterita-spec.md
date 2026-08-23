@@ -888,8 +888,7 @@ A generic `@take T` parameter monomorphized with a borrowed type argument become
 `@take @borrow` keeps the reference itself, not the value it points at, which stays owned where it was.
 The cost follows copyability: a shared borrow is copied, so the caller keeps its own, and an exclusive borrow is moved, so the caller loses access.
 The transferred borrow keeps its original source (LIFE-01), so the enclosing value is `@bound` (OWN-09).
-An unannotated borrow parameter is scoped to the call (OWN-14) and cannot be stored, so a method that stores its argument keeps `@take` for every element mode.
-`@take` therefore needs no degradation for borrows.
+A method that stores its argument declares `@take` for every element mode.
 Written directly on a non-generic parameter, `@take @borrow` is the retained-borrow form of OWN-21, applying the same caller-side cap.
 
 ```java
@@ -935,7 +934,8 @@ List<@borrow Foo> b;  // remove(int): returns @bound Foo, bound to the list
 ### STAT-01 — Static fields are immutable
 
 A field declared `static` is initialized once at program start and cannot be reassigned.
-Every static field is `final` and `@fixed` whatever its declaration writes, so `static final` and `@fixed static` are accepted for Java compatibility and are redundant (MUT-31).
+Every static field is `final` and `@fixed` whatever its declaration writes.
+`static final` and `@fixed static` are accepted and are redundant (MUT-31).
 
 ### STAT-02 — Const initializer or once-init wrapper
 
@@ -1078,7 +1078,7 @@ An `onDrop()` body may access a `@borrow` field (OWN-09), its own or an inherite
 Accessing a `@borrow` field otherwise is a compile-time error.
 The diagnostic names the field and points to `@borrowCapped`.
 
-A field whose static type is a type parameter counts as a `@borrow` field for this rule unless the parameter is `@own` (TARG-06), since an unconstrained `T` may be substituted with a `@borrow` argument (TARG-01).
+A field whose static type is a type parameter counts as a `@borrow` field for this rule unless the parameter is `@own` (TARG-06).
 
 ```java
 final class Logger {
@@ -1771,7 +1771,8 @@ public final class Arrays {
 }
 ```
 
-The split appears under two names because a static method has no receiver to inherit from, so `@readonly(InheritFrom.RECEIVER)` cannot be spelled here (MUT-17).
+`@readonly(InheritFrom.RECEIVER)` may not be written on a static method, which has no receiver (MUT-17).
+The split appears under two names.
 `splitAt` takes a shared borrow and lends read-only halves, `splitMutableAt` takes a mutable borrow and lends mutable ones.
 Both bind their return to the `@bound` parameter rather than to a receiver (OWN-17).
 Distinct names rather than an overloaded pair are required by OWN-13, which keeps the mutability annotations out of the overload signature.
@@ -2515,7 +2516,8 @@ Two optional attributes mirror Lombok: `types` restricts forwarding to the metho
 Both attributes accept generic types directly, and a generic method forwards with its concrete instantiated signature (COMP-02).
 The generics limitations Lombok documents for `@Delegate` do not apply.
 
-A single-component record carrying `@Delegate` is the *newtype idiom*: NABI-01 gives it the component's layout and COMP-08 inlines the forwarders, so it is a distinct nominal type that exposes the wrapped interface at zero runtime overhead.
+A single-component record carrying `@Delegate` is the *newtype idiom*, a distinct nominal type exposing the wrapped surface.
+NABI-01 gives it the component's layout, and COMP-08 admits its forwarders for inlining.
 The component accessor is the only path back to the wrapped value, and no implicit widening exists.
 
 ### GEN-02 — `@Getter` and `@Setter`
