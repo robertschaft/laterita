@@ -1618,19 +1618,19 @@ The variable-mode annotations on such a parameter (`@take`, `@fixed`, `@bound`) 
 
 ```java
 interface Source<T> {
-    void forEach((T) -> void fn);                                 // base: shared-call parameter
+    void forEach(@readonly (T) -> void fn);                       // base: shared-call parameter
 }
 
 class Tracing<T> implements Source<T> {
-    @Override void forEach((T) -> void fn) { ... }      // OK: shared-call → mut-call accepts strictly more
+    @Override void forEach((T) -> void fn) { ... }                // OK: shared-call to mut-call accepts strictly more
 }
 
 interface MutSource<T> {
     void forEach((T) -> void fn);                                 // base: mut-call parameter
 }
 
-class Bare<T> implements MutSource<T> {
-    @Override void forEach((T) -> void fn) { ... }                // ERROR: mut-call → shared-call rejects mutate closures
+class Narrowing<T> implements MutSource<T> {
+    @Override void forEach(@readonly (T) -> void fn) { ... }      // ERROR: mut-call to shared-call rejects mutate closures
 }
 ```
 
