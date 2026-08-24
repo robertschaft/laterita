@@ -1612,7 +1612,7 @@ Distinct names rather than an overloaded pair are required by OWN-14.
 
 ARR-01's single `splitAt` is sugar over this pair (LAT-00): it desugars to `splitMutableAt` on a mutable receiver and to `splitAt` on a `@fixed` or shared one, which are the two monomorphizations MUT-17 produces.
 
-`stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter rather than to a receiver (OWN-17, OWN-18).
+`stream` exposes the elements of the borrowed source array through the JDK `Stream<T>` type, with the return bound to the `@bound` parameter (OWN-17).
 Standard terminal operations (including `.parallel().forEach(...)`, `.reduce`, `.collect`) drive multithreading through the stream's underlying `Spliterator`, and callers needing a specific executor drive the stream with `ForkJoinPool.submit(...)`.
 Parallel terminal operations require a read closure (CLO-01).
 In-place parallel *mutation* of the receiver is not a stream operation and stays on the `splitOff` path or the in-thread `forEachChunk` family (ARR-01).
