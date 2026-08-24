@@ -442,7 +442,7 @@ A class that must modify its contents through an immutable receiver holds those 
 `final` does not affect whether a variable is mutable (MUT-01).
 
 A parameter is always `final` and may not be assigned in the body (OWN-13).
-A `@take` parameter may be moved with `give` (OWN-07).
+A `@take` parameter may be moved with `give` (OWN-07), which consumes the value rather than assigning the parameter.
 
 Assigning a variable that owns its value drops the previous value first (DROP-01).
 
@@ -1818,6 +1818,12 @@ There is one cursor type and one factory: the read and update forms are the two 
 The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-40).
 A loop body with no mutating use of the loop variable leaves the receiver effectively fixed (MUT-60, MUT-17).
+
+```java
+for (var x : fixed(list)) {   // shared borrow, so a nested read of `list` still compiles
+    ...
+}
+```
 
 Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `listIterator()`, which always holds an exclusive borrow rather than an inherited one.
 `ListIterator<T>.remove()` returns the removed element owned rather than `void` (OWN-07).
