@@ -116,9 +116,9 @@ Nor can the receiver take the mutable default the way a parameter does: every me
 A marker on an explicit `this` forces every mutating method to spell out a `(Self this)` parameter.
 The receiver takes the mutable default like a parameter, and `@readonly` withdraws it.
 
-Where: MUT-41, MUT-13, reasoning "Why an unannotated parameter lends mutably while an unannotated receiver does not", reasoning "Why methods declare their receiver effect in the signature"
+Where: MUT-41, MUT-13, reasoning "Why a bare parameter lends mutably while a bare receiver does not", reasoning "Why methods declare their receiver effect in the signature"
 
-### One three-valued mode annotation on a functional-interface variable (`@fixed`, unannotated, `@take`)
+### One three-valued mode annotation on a functional-interface variable (`@fixed`, bare, `@take`)
 
 Rejected.
 Combining ownership of the functional-interface value with the right to invoke its single abstract method makes "owns a callback and invokes it many times" inexpressible.
@@ -343,7 +343,7 @@ Where: MUT-17, STD-08, reasoning "Why the receiver mode can be inherited"
 ### Immutable classes by default, with a positive mutability annotation on the declaration
 
 Rejected.
-It reverses the meaning of every unannotated Java class, so ordinary-looking Java source would mean something else in Laterita.
+It reverses the meaning of every bare Java class, so ordinary-looking Java source would mean something else in Laterita.
 It still needs a negative companion for the contexts where a default grants mutation, leaving two words on an axis that one word covers.
 It also puts the annotation on builders, collections, counters, and streams, which are the classes most often written by hand.
 Mutable is the default kind, and `@fixed` is the only annotation.
@@ -353,8 +353,8 @@ Where: MUT-01, MUT-10, HIER-02, reasoning "Why `@fixed` is the single mutability
 ### A positive receiver-mutation annotation on methods (`@mutating`)
 
 Rejected.
-It leaves one position in the language where an unannotated declaration is restricted rather than unrestricted, against `final`, `@fixed`, `@readonly`, and `@local`, which all withdraw.
-It also separates the receiver from the parameter beside it, since an unannotated parameter lends mutably while an unannotated receiver would not.
+It leaves one position in the language where a bare declaration is restricted rather than unrestricted, against `final`, `@fixed`, `@readonly`, and `@local`, which all withdraw.
+It also separates the receiver from the parameter beside it, since a bare parameter lends mutably while a bare receiver would not.
 The receiver takes the mutable default and `@readonly` withdraws it, at the cost of a marker on an ordinary accessor, which MUT-71 reports.
 
 Where: MUT-13, MUT-41, MUT-71, HIER-05, reasoning "Why methods declare their receiver effect in the signature"
@@ -382,7 +382,7 @@ Rejected.
 OWN-00 requires every fact needed to use a class to sit on its declaration, and all three are published contract: inferring them would make a caller's obligations depend on a body it cannot see, and would change a published signature whenever an unrelated line of that body changed.
 A local variable's borrow mode is classified from its uses precisely because it is not published and the compiler already sees every one of them.
 
-Where: OWN-00, MUT-60, MUT-41, MUT-21, reasoning "Why a local's borrow mode follows its uses", reasoning "Why an unannotated parameter lends mutably while an unannotated receiver does not"
+Where: OWN-00, MUT-60, MUT-41, MUT-21, reasoning "Why a local's borrow mode follows its uses", reasoning "Why a bare parameter lends mutably while a bare receiver does not"
 
 ### `@fixed C` as a supertype of `C`, carrying the immutable kind down to it
 
@@ -587,7 +587,7 @@ The same coordination patterns are expressible through three standard-library ty
 
 Resolved by MUT-18: a primitive type carries no mutable surface, so it is immutable, every primitive position is immutable (MUT-31), and the copy substitution of MUT-12 makes a primitive parameter, return, or field a value copy.
 `@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant rather than rejected, and a `@borrow` field of primitive type does not make its instance `@bound`.
-An unannotated `int x` parameter is therefore a copy and not an out-parameter.
+A bare `int x` parameter is therefore a copy and not an out-parameter.
 The dedicated primitive rule set is rejected, as recorded above.
 
 ### OQ-35 Capturing a reassigned local variable against Java's effectively-final rule

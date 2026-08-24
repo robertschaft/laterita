@@ -164,7 +164,7 @@ A variable carries two capabilities that Java keeps apart: assigning it another 
 Laterita keeps them apart.
 `final` forbids assignment, exactly its Java meaning, so a Java local variable that is reassigned keeps working with no annotation and a Java `final` keeps its force.
 `@fixed` forbids modification.
-Folding both onto one marker would make the common "mutable object, assigned once" pattern, `private final List<Item> items`, inexpressible without one marker undoing half of the other, and would put an annotation on every reassigned but unmodified local variable that Java writes unannotated.
+Folding both onto one marker would make the common "mutable object, assigned once" pattern, `private final List<Item> items`, inexpressible without one marker undoing half of the other, and would put an annotation on every reassigned but unmodified local variable that Java writes bare.
 Keeping them separate lines each axis up with the word that already means it, and every combination is spellable with none redundant.
 
 Assigning a variable modifies no object, so it needs no guard, and a variable that is never assigned after its initializer is treated as effectively final for borrow analysis (MUT-61).
@@ -201,12 +201,12 @@ Assigning it inside the body discards the link to what the caller passed, which 
 Laterita makes every parameter `final` rather than offer a per-parameter opt-in, because the body has no reason the caller can see to point the name elsewhere: it reads the argument, modifies the object through it, or moves it onward when `@take`.
 Moving a `@take` parameter onward with `give` consumes the value and does not assign the parameter, so the restriction takes nothing the ownership model wanted.
 
-### Why an unannotated parameter lends mutably while an unannotated receiver does not (MUT-41, MUT-13)
+### Why a bare parameter lends mutably while a bare receiver does not (MUT-41, MUT-13)
 
 A parameter's mode is part of the published signature, so OWN-00 forbids inferring it the way a local's is inferred, and with a single negative marker the only available default is mutable.
 That is also the Java reading of a signature: a method handed a `List` may add to it, and a caller who wants a promise otherwise now has one to read, `@fixed`.
 Two consequences follow and are accepted.
-A read-only parameter whose type is a mutable class is written `@fixed`, and an unannotated parameter takes an exclusive borrow, so one variable cannot fill two unannotated parameters of the same call.
+A read-only parameter whose type is a mutable class is written `@fixed`, and a bare parameter takes an exclusive borrow, so one variable cannot fill two bare parameters of the same call.
 Both are bounded by MUT-14: a borrow of an immutable class is always shared, so `String`, records, enums, and every other immutable type are untouched, and the exclusivity is felt only where a mutable surface actually exists.
 
 The receiver takes the same default, and pays a price for it.
@@ -253,7 +253,7 @@ That is why the mode is written on the declaration instead of inferred.
 
 The mode carries the same default as every other position, mutable unless `@fixed` withdraws it (MUT-01).
 Marking the mutable case instead would be a positive mutability marker, the one shape this language spells nowhere else, and it would read as a grant on a declaration where every other annotation withdraws.
-The cost is that an inner class which only reads its enclosing instance locks it until `@fixed` is written, the same cost an unannotated parameter carries (MUT-41) and the same diagnostic points at it (MUT-70).
+The cost is that an inner class which only reads its enclosing instance locks it until `@fixed` is written, the same cost a bare parameter carries (MUT-41) and the same diagnostic points at it (MUT-70).
 
 The mechanism is deliberately not new.
 The implicit enclosing reference is one of the ordinary field forms of MUT-22, `final @borrow` by default and `final @fixed @borrow` under `@fixed`, so `@bound` instances (OWN-09), exclusivity (OWN-03), and transitive reach all fall out of rules already in force.
@@ -262,7 +262,7 @@ A write to an outer level travels the chain of enclosing references, and MUT-14 
 Folding the enclosing borrow onto the class's own `@fixed` costs one combination: a mutable inner class that always shares its enclosing instance.
 That shape is reached by constructing the inner instance from a shared receiver, either through `fixed(outer)` (MUT-42) or through the inherited form (MUT-51), so no separate marker is minted for it.
 
-The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@fixed Outer` or unannotated `Outer`, is rejected.
+The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@fixed Outer` or bare `Outer`, is rejected.
 It expresses the same borrow more heavily and discards the direct-field access that is the reason to write an inner class at all.
 Declaring the borrow on the class keeps both the access and the OWN-00 guarantee.
 
@@ -316,7 +316,7 @@ That case is served where it is served in Rust, by `AtomicInt` and `Cell<int>` (
 
 ### Why an over-demanding parameter is a warning, not an error (MUT-70)
 
-An unannotated parameter lends exclusively, so an author who writes `void render(Scene s)` for a body that only reads publishes a signature that works, compiles, and locks the caller's `Scene` for the call.
+A bare parameter lends exclusively, so an author who writes `void render(Scene s)` for a body that only reads publishes a signature that works, compiles, and locks the caller's `Scene` for the call.
 The cost lands outside the file where the mistake was made, which is the worst place for it, and no inference can fix it: a parameter is published contract, and deriving it from the body would make a caller's obligations depend on a body it cannot see (OWN-00).
 
 What the compiler can do is say so.
@@ -341,7 +341,7 @@ Immutability is the promise, mutability the absence of one, and a promise is wha
 An unmarked class publishes none of that and is an ordinary Java class.
 
 This runs with the Valhalla value-class proposal rather than against it, where the identity class is the unmarked default and `value class` is the opt-in, and it keeps a Laterita class declaration meaning what the same line means in Java.
-The alternative of an immutable default with a positive mutability opt-in is rejected: it reverses the meaning of every unannotated Java class, needs a second marker for the contexts where a default grants mutation anyway, and puts the annotation on builders, collections, counters, and streams, which are the types most often written by hand.
+The alternative of an immutable default with a positive mutability opt-in is rejected: it reverses the meaning of every bare Java class, needs a second marker for the contexts where a default grants mutation anyway, and puts the annotation on builders, collections, counters, and streams, which are the types most often written by hand.
 
 `Cell<T>` stays the interior-mutability escape hatch (MUT-16): an immutable class may hold a `Cell` field and mutate through it.
 The reference-counted handles depend on this, since `Rc<T>` and `Arc<T>` modify a reference count through `Cell` and so declare no mutating method of their own.
@@ -489,7 +489,7 @@ That is the idiom Laterita inherits, just without Rust's "type signature is the 
 
 #### Recommendation: mutability and `@take` are caller-side work
 
-When a method's body needs mutable access to a parameter or needs to consume it, the signature should leave the parameter unannotated or declare `@take`, and the caller does the work of providing it, by holding a mutable variable, by surrendering ownership with `give(...)`, or by cloning before the call.
+When a method's body needs mutable access to a parameter or needs to consume it, the signature should leave the parameter bare or declare `@take`, and the caller does the work of providing it, by holding a mutable variable, by surrendering ownership with `give(...)`, or by cloning before the call.
 A method whose signature is `f(@fixed K)` should not internally clone to do something the signature didn't ask for.
 If the body needs mutability or ownership, the signature should say so.
 
@@ -510,7 +510,7 @@ On the guarantee side, `@bound` on the return is covariant in strength: an overr
 Owned is a stronger guarantee: a value the caller may freely move or hold past the receiver's lifetime.
 Callers using the inherited type continue treating the result as receiver-bound and remain sound.
 The reverse (returning a receiver-bound value where the base promised owned) would silently constrain a value the caller intended to move or store.
-The call-mode row inverts the surface direction for the same underlying principle: strengthening a functional-interface parameter (`@readonly` to unannotated to `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted, since the annotation governs which closures are accepted rather than what the parameter variable may do.
+The call-mode row inverts the surface direction for the same underlying principle: strengthening a functional-interface parameter (`@readonly` to bare to `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted, since the annotation governs which closures are accepted rather than what the parameter variable may do.
 
 ---
 
@@ -518,7 +518,7 @@ The call-mode row inverts the surface direction for the same underlying principl
 
 ### Why mark-borrow on returns (OWN-16, OWN-17, OWN-18)
 
-An unannotated return type means owned.
+A bare return type means owned.
 Borrowed returns are explicitly declared with `@bound`.
 The inverse (owned-marked, borrowed-default) would mark the common case: constructors, factories, computed values, query results all return owned values, so marking owned adds visual noise to most signatures.
 `@bound` carves out the case where production is actually a view into an input.
@@ -767,7 +767,7 @@ DROP-11 is the field-level face of LIFE-04.
 It is the check the compiler performs at the `onDrop()` body, where LIFE-04 is the obligation that check places on every instance's scope exit.
 Gating the read at the body rather than at the call site keeps the diagnostic where the programmer wrote the borrow read, and lets the call-site lifetime check stay ordinary.
 
-A field whose type is an unannotated type parameter is treated as a borrow unless the parameter is `@own`, because an unconstrained `T` can be monomorphized to a `@borrow` argument (TARG-01) and the `onDrop()` body is checked once, against the most permissive substitution.
+A field whose type is a bare type parameter is treated as a borrow unless the parameter is `@own`, because an unconstrained `T` can be monomorphized to a `@borrow` argument (TARG-01) and the `onDrop()` body is checked once, against the most permissive substitution.
 Reading such a field could therefore read a borrow whose source has already died, the exact hazard `@borrowCapped` exists to prevent.
 `@own` (TARG-06) removes that possibility at the type parameter, so an `@own T` field is owned under every substitution and reads at drop like any other owned field.
 The conservative direction is the safe one: a spurious "needs `@borrowCapped`" is a visible annotation the author adds, whereas a spurious "owned" would be a use-after-free.
@@ -1100,10 +1100,10 @@ Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the t
 ### Why call-mode override variance is covariant in strength (CLO-05)
 
 HIER-05 makes the mutability marker contravariant for ordinary parameters: an override may *add* `@fixed` because the override demands less of the caller.
-CLO-05 carries the same principle to the call-mode axis of a functional-interface parameter, but in the *opposite syntactic direction*: an override may *strengthen* the call mode, from `@readonly` to unannotated to `@consuming`, and never weaken it.
+CLO-05 carries the same principle to the call-mode axis of a functional-interface parameter, but in the *opposite syntactic direction*: an override may *strengthen* the call mode, from `@readonly` to bare to `@consuming`, and never weaken it.
 Both rules are the same principle (*an override must continue to accept every value the inherited declaration accepted*) applied to two different axes.
 
-For an ordinary parameter `Buf b`, the unannotated form names a capability the method reserves over the caller's value.
+For an ordinary parameter `Buf b`, the bare form names a capability the method reserves over the caller's value.
 Adding `@fixed` reduces what the function will do, and callers continue to work because a mutable borrow degrades to a shared one on demand.
 Contravariance is sound.
 
@@ -1278,7 +1278,7 @@ For per-chunk iteration the trade-off inverts: the chunk's natural lifetime *is*
 Successive chunks are disjoint by construction because each chunk's bound expires at its call's return, no explicit tracking needed.
 
 A dedicated `reduceChunks` was considered and rejected.
-Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, mutating through the mutable capture) and the unannotated body parameter accepts mutating closures (FN-01).
+Every in-place reduce expressible as `reduceChunks(buf, n, init, (acc, c) -> ...)` is also expressible as `R acc = init; forEachChunk(buf, n, c -> ...)`, where the closure captures `acc` as a Mutate-mode variable (CLO-01, mutating through the mutable capture) and the bare body parameter accepts mutating closures (FN-01).
 The only case `reduceChunks` covers uniquely is "an immutable accumulator type threaded through mutable chunks", which is rare in Java-flavored code and does not appear in the surveyed Rust array idioms.
 Dropping it kept the surface at three methods instead of four.
 Callers needing a read-only fold over chunks would want a different API shape (`@bound T[]` arr, `@bound T[]` chunks) that the current spec doesn't yet need.
@@ -1330,7 +1330,7 @@ That is why an unconstrained `Box<T>` can lend a mutable `Counter` while its own
 `@fixed` at the declaration is then a pure abbreviation, mirroring how `@own` (TARG-06) is a pure restriction: `class Foo<@fixed T extends B>` writes `@fixed T` at each usage and leaves `B` alone, so a value-only container states its intent once instead of at ten usages.
 Keeping the two orthogonal is what makes all six combinations of "what is admitted" and "what a usage may do" spellable, including the two a welded marker loses: a bound that admits both kinds with usages following the argument, and a mutable bound with every usage frozen.
 Folding a bound widening into the same marker would tie a body-side abbreviation to a caller-side admission rule, leaving "admits only mutable arguments, usages frozen" unspellable and making `class Foo<@fixed T>` admit arguments a reader deduced from the bound.
-Because `@fixed` only withdraws a capability, it requires nothing of its holder, the opposite of the unannotated form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-15).
+Because `@fixed` only withdraws a capability, it requires nothing of its holder, the opposite of the bare form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-15).
 
 That leaves nothing for a third marker to do.
 A positive marker on a bound (`T extends @mut Counter`) restates what a mutable bound already means, and a third "either kind" marker (`<@fixable T extends Counter>`) asks the argument's own mutability to reach the body, which the check-once discipline forbids: a body proved sound against one bound cannot also be proved sound against a stronger reading of the same parameter.
@@ -1345,7 +1345,7 @@ Underneath, `@take` transfers by value and makes no claim on the value the borro
 Transferring a value costs a copy when the value is freely copyable and a move otherwise, the same copy-versus-move split the language applies everywhere.
 A shared borrow is copyable, so `@take` of one copies it and the caller keeps its own.
 An exclusive borrow is not, so `@take` moves it and the caller loses access.
-Degrading `@take` to an unannotated parameter for borrows fails on storage: an unannotated borrow parameter is scoped to the call (OWN-14) and cannot be kept, yet a container's `add` must store its element.
+Degrading `@take` to a bare parameter for borrows fails on storage: a bare borrow parameter is scoped to the call (OWN-14) and cannot be kept, yet a container's `add` must store its element.
 So `@take` stays for every element mode, and `@take @borrow` is the ordinary monomorphization rather than a contradiction.
 
 ### Why `@own` rather than reusing `@take` or a bound (TARG-06)
@@ -1356,9 +1356,9 @@ Reusing `@take` is rejected: `@take` is a call-site transfer mode, and giving it
 A marker-interface bound such as `T extends Owned` is rejected: ownership is not a supertype or method relationship, so a synthetic bound that every owned type would satisfy carries no real interface.
 `@own` is the analog of a `'static` bound in Rust, applied to the owning containers `Arc` and `Mutex`.
 
-### Why an unannotated borrow return binds to its container (TARG-07)
+### Why a bare borrow return binds to its container (TARG-07)
 
-An unannotated `T` return means owned (OWN-16), but a borrowed type argument turns it into a borrow with no declared source, which OWN-19 and OWN-20 reject.
+A bare `T` return means owned (OWN-16), but a borrowed type argument turns it into a borrow with no declared source, which OWN-19 and OWN-20 reject.
 The return must therefore name a source.
 Binding it to the container, rather than to the removed element's own origin, is sound because the container's lifetime already intersects every element source (LIFE-03), and it avoids per-element source tracking.
 The cost is precision: a value pulled out cannot be kept past the container, where Rust's element-typed lifetime would allow it.
@@ -1366,7 +1366,7 @@ That is the same collapse tradeoff TARG-04 accepts, and the rare cases that need
 
 ### Why `T[]` is the canonical contiguous mutable backing
 
-A Java array element is writable through any variable that refers to the array, so an unannotated `@bound T[]` permits in-place element mutation without `Cell<T>` and without propagating `@unsafe`.
+A Java array element is writable through any variable that refers to the array, so a bare `@bound T[]` permits in-place element mutation without `Cell<T>` and without propagating `@unsafe`.
 `ArrayList`, `HashMap` buckets, and the array-backed standard library fit naturally.
 `Cell<T>` is needed only for non-array layouts (linked-list nodes, tree nodes) where the element lives behind an object field.
 
@@ -1516,7 +1516,7 @@ The unsafe surface is small, concentrated, and auditable.
 ### Why `@local`, not `Send` (STD-07)
 
 Rust uses two positive auto-traits (`Send` + `Sync`), Laterita inverts to one negative marker (`@local`).
-The inversion makes the common case (ordinary user classes are safe to cross threads) the unannotated default, which is what Java programmers expect.
+The inversion makes the common case (ordinary user classes are safe to cross threads) the bare default, which is what Java programmers expect.
 The `Send`/`Sync` split is collapsed because `Send`-but-not-`Sync` requires fine-grained borrow reasoning Java programmers don't expect.
 
 A class with `@local` fields must explicitly choose `@local` (inherit thread-affinity) or `@local(false)` (encapsulate).

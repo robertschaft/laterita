@@ -119,7 +119,7 @@ if (changedMyMind()) { give(worker); }   // worker consumed; returned value drop
 
 ### OWN-08 Fields are owned by default
 
-An unannotated field declaration `T x;` declares storage that owns its value.
+A bare field declaration `T x;` declares storage that owns its value.
 The field is dropped with the enclosing instance (DROP-05).
 
 ### OWN-09 A `@borrow` field holds a borrow, and its instance is `@bound`
@@ -155,13 +155,13 @@ A parameter declares whether it receives a borrow or takes ownership.
 
 ### OWN-14 Call-site argument forms
 
-An argument that is the name of a variable fills an unannotated parameter with a borrow for the duration of the call, mutable or shared per MUT-41.
+An argument that is the name of a variable fills a bare parameter with a borrow for the duration of the call, mutable or shared per MUT-41.
 It fills a `@take` parameter with an implicit transfer of ownership, and `give(arg)` states that transfer explicitly.
 An argument that is a temporary expression, a method invocation, a class instance creation, or a literal, is owned at the call site and fills either form of parameter.
 
 Illegal cases:
 
-- `give(arg)` passed to an unannotated parameter.
+- `give(arg)` passed to a bare parameter.
 - A variable holding only a borrow passed to a `@take` parameter whose type is owned.
 A `@take @borrow` parameter instead expects the borrow itself (OWN-21, TARG-05).
 
@@ -669,7 +669,7 @@ An override may give more.
 | `@bound` | return | ✓ | ✗ |
 | `@fixed` | return | ✓ | ✗ |
 | `@readonly` | method | ✗ | ✓ |
-| `@consuming` | method | ✓ (to `@readonly` or unannotated) | ✗ |
+| `@consuming` | method | ✓ (to `@readonly` or bare) | ✗ |
 | `@fixed` | class | ✗ | ✓ (immutable subclass of a mutable parent, HIER-03) |
 | Call mode | functional-interface parameter | ✗ | ✓ (strengthen, CLO-05) |
 
@@ -847,9 +847,9 @@ Mutex<Config>         ok  = new Mutex<>(loadConfig());   // owned argument
 Mutex<@borrow Config> bad = /* … */;                     // ERROR (TARG-06): borrowed argument
 ```
 
-### TARG-07 An unannotated `T` return monomorphized to a borrow binds to its container
+### TARG-07 A bare `T` return monomorphized to a borrow binds to its container
 
-A method declared with an unannotated, and therefore owned, `T` return, monomorphized with a borrowed type argument, returns a `@bound` value instead of an owned one.
+A method declared with a bare, and therefore owned, `T` return, monomorphized with a borrowed type argument, returns a `@bound` value instead of an owned one.
 For an owned type argument the return is owned (OWN-16).
 For a borrowed one the return is the borrow, bound to the receiver (OWN-18).
 
@@ -1277,7 +1277,7 @@ An anonymous functional interface is written
 [ @readonly | @consuming ] (P1, P2, …, Pn) -> R
 ```
 
-where each `Pi` follows OWN-13 / MUT-41 parameter form (unannotated `T`, `@fixed T`, or `@take T`, with an optional `@bound` per OWN-17 or OWN-18), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03).
+where each `Pi` follows OWN-13 / MUT-41 parameter form (bare `T`, `@fixed T`, or `@take T`, with an optional `@bound` per OWN-17 or OWN-18), `R` is the return type, and the optional prefix declares the SAM's call mode (CLO-03).
 The two prefixes are mutually exclusive: a SAM that is both `@readonly` and `@consuming` must use a nominal interface.
 The single abstract method is named `apply` and invoked as `f.apply(a1, …, an)`, and there is no call-on-variable syntax.
 
@@ -1289,7 +1289,7 @@ void fold(int seed, @readonly (int, int) -> int reducer) { … }
 
 void buildAll((StringBuilder) -> void appender) { … }
 // mut-call: invoked sequentially; lambda may mutate captures
-// (the unannotated variable is mutable, which is what lets buildAll invoke a mut-call SAM, per CLO-03)
+// (the bare variable is mutable, which is what lets buildAll invoke a mut-call SAM, per CLO-03)
 
 void submit(@take @consuming (@take Result) -> void onComplete) { … }
 // once-call: invoked at most once; lambda may consume captures and the Result argument
@@ -1300,7 +1300,7 @@ void submit(@take @consuming (@take Result) -> void onComplete) { … }
 // project from rec (e.g. rec -> rec.name), not allocate a fresh Field
 ```
 
-Mapping to Rust: `@readonly` is `Fn`, unannotated is `FnMut`, and `@consuming` is `FnOnce`.
+Mapping to Rust: `@readonly` is `Fn`, bare is `FnMut`, and `@consuming` is `FnOnce`.
 CLO-03 carries the call-mode ordering.
 The anonymous form is an addition to the nominal one, accepted only in `.lat` sources (LAT-05).
 
@@ -1403,7 +1403,7 @@ A lambda fits a parameter whose call mode is at least its own (CLO-04), and invo
 | Call mode | SAM receiver | Lambda that fits | Invocable through | Guarantee to the holder |
 |---|---|---|---|---|
 | shared-call | `@readonly` | read | any variable | never mutates captures, invocable repeatedly and concurrently (STD-07) |
-| mut-call | unannotated | read, mutate | a mutable variable | may mutate captures, invoked sequentially |
+| mut-call | bare | read, mutate | a mutable variable | may mutate captures, invoked sequentially |
 | once-call | `@consuming` | read, mutate, consume | a variable owning the value, which the call consumes | may consume captures, invoked at most once |
 
 ```java
@@ -1460,10 +1460,10 @@ Doubler pure     = (x) -> x * 2;                           // read lambda → sh
 
 ### CLO-05 Override variance for functional-interface parameters
 
-A functional-interface parameter has two annotation axes, the *call-mode prefix* on the functional-interface type (FN-01: `@readonly`, unannotated, or `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@fixed`, `@bound`).
+A functional-interface parameter has two annotation axes, the *call-mode prefix* on the functional-interface type (FN-01: `@readonly`, bare, or `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@fixed`, `@bound`).
 Both follow HIER-05's unified override-variance table.
 
-On the call-mode axis an override may *strengthen* the parameter's call mode, from `@readonly` to unannotated to `@consuming` (CLO-04).
+On the call-mode axis an override may *strengthen* the parameter's call mode, from `@readonly` to bare to `@consuming` (CLO-04).
 
 The variable-mode annotations on such a parameter (`@take`, `@fixed`, `@bound`) follow HIER-05 directly: they govern how the override's variable holds the functional-interface value, not which closures fit the parameter.
 
@@ -2384,7 +2384,7 @@ public void setBorrowed(@take @borrow S value);   // stores the borrow into this
 `@AllArgsConstructor` generates a constructor containing every field.
 `@NoArgsConstructor` generates one with no parameters.
 `@RequiredArgsConstructor` generates a constructor with a parameter, in declaration order, for every field that carries no initializer (OWN-11).
-In all three, an owned field's parameter is marked `@take` and a `@borrow` field's parameter is unannotated, and therefore borrows (OWN-13).
+In all three, an owned field's parameter is marked `@take` and a `@borrow` field's parameter is bare, and therefore borrows (OWN-13).
 `@RequiredArgsConstructor` and `@NoArgsConstructor` treat `@Nullable` fields as initialized and set them to `null`, satisfying OWN-11 without an explicit initializer.
 `@NoArgsConstructor` therefore requires every non-`@Nullable` field to carry an initializer.
 
@@ -2405,7 +2405,7 @@ The `@bound` return annotation is generated when any other field of `X` is `@bor
 The parameter annotations are generated conditionally:
 
 - `@take` when the field is owned,
-- unannotated when the field is `@borrow`: the result's lifetime is also bound to `value`,
+- bare when the field is `@borrow`: the result's lifetime is also bound to `value`,
 - `@fixed` when the field is `@fixed`.
 
 Internally, other owned fields are `clone()`d from `this` (OBJ-02).

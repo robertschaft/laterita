@@ -17,6 +17,9 @@ The cross-thread counterpart of `Rc<T>`.
 A new handle is produced by `share()`, and the value is freed when the last handle is dropped.
 See `STD-02`.
 
+### bare
+Carrying none of the annotations under discussion, rather than carrying no annotation at all.
+
 ### bitwise copy
 A field-for-field copy of a value's representation, running no user-written code.
 The synthesized copy constructor copies primitive fields this way and clones object fields instead (`OBJ-01`).
@@ -52,7 +55,7 @@ See `ARR-01`, `ARR-02`, `ARR-04`.
 
 ### call mode
 The receiver mode of a functional interface's single abstract method, and therefore a property of the type.
-**Shared-call** is a `@readonly` method, **mut-call** an unannotated one, and **once-call** a `@consuming` one.
+**Shared-call** is a `@readonly` method, **mut-call** a bare one, and **once-call** a `@consuming` one.
 It is the `Fn` / `FnMut` / `FnOnce` distinction of Rust, carried on the method rather than on the type name.
 Distinct from the mode of the variable that holds the value.
 See `CLO-03`.
@@ -225,7 +228,7 @@ The result is a distinct nominal type with no implicit widening to the component
 
 ### nullable type
 A type admitting `null` in addition to the values of `T`, written `@Nullable T` on the Java-compatible surface and `T?` in `.lat`.
-An unannotated `T` in Laterita excludes `null`, unlike a Java reference type.
+A bare `T` in Laterita excludes `null`, unlike a Java reference type.
 See `NULL-02`, `LAT-01`.
 
 ### `@Operator` (annotation on methods)
@@ -260,7 +263,7 @@ One declaration covers the owned, the borrowed, and the mixed case, driven by wh
 See `ARR-04`.
 
 ### parameter mode
-How a parameter receives its argument: unannotated borrows it mutably, `@fixed` borrows it shared, `@take` receives ownership, and `@take @fixed` receives ownership frozen.
+How a parameter receives its argument: bare borrows it mutably, `@fixed` borrows it shared, `@take` receives ownership, and `@take @fixed` receives ownership frozen.
 See `OWN-13`, `MUT-41`.
 
 ### poisoned
@@ -279,12 +282,12 @@ See `STD-01`.
 
 ### `@readonly` (annotation on methods and inner classes)
 Declares that a method does not modify its receiver, so it may be called on any receiver.
-An unannotated method may be called only on a mutable receiver, and only `@readonly` methods appear in the frozen view of a class.
+A bare method may be called only on a mutable receiver, and only `@readonly` methods appear in the frozen view of a class.
 On a non-static inner class it makes the enclosing borrow shared.
 See `MUT-13`, `MUT-50`.
 
 ### receiver mode
-How a method accesses `this`: read-only under `@readonly`, mutating when unannotated, and consuming under `@consuming`.
+How a method accesses `this`: read-only under `@readonly`, mutating when bare, and consuming under `@consuming`.
 The receiver variable's own mode must support it, so a `@fixed` variable cannot call a mutating method.
 See `MUT-13`, `MUT-15`, `OWN-15`.
 
