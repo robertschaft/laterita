@@ -343,7 +343,7 @@ Whether a variable is mutable is independent of whether it may be assigned (MUT-
 
 `@fixed` is admitted in these positions:
 
-| Position | Unannotated | `@fixed` |
+| Position | Bare | `@fixed` |
 |---|---|---|
 | local variable (MUT-40) | takes the mutability of its initializer's type | immutable |
 | field (MUT-21) | the object may be modified through the field | may not |
@@ -711,9 +711,6 @@ Pair<@borrow String, @borrow Integer> view = new Pair<>(name, count);   // view 
 ### TARG-02 `@take` rejected in a type argument
 
 `@take` may not appear inside a generic type argument.
-It is a parameter mode that describes how a call site transfers ownership into a parameter.
-It is not an attribute a value carries.
-As a type argument there is no object for it to describe.
 `Pair<@take K, @take V>` is a compile-time error.
 Ownership of a generic structure's contents is carried by the structure's own variable (owned vs. `@bound`).
 
@@ -1162,7 +1159,7 @@ class SecretKey {
 ### OBJ-02 Auto-generated `clone()` method
 
 Every class has a public `Self clone()` method, synthesized as `return new Self(this);` when not provided by the user.
-The call dispatches virtually to the actual class's `clone()`, so `clone()` is the duplication API for code that does not statically know the concrete class.
+The call dispatches virtually to the actual class's `clone()`.
 
 A class opts out of copying by overriding `clone()` with a body that reaches `broken()`, as in `SecretKey` above.
 
@@ -1312,7 +1309,7 @@ A nominal functional interface and an anonymous one are never identical, even wh
 
 *Assignability* governs when a value of functional-interface type `A` may be assigned to a variable of functional-interface type `B`.
 It is HIER-05's override variance applied to the SAM, reading `B` as the base declaration and `A` as the override.
-`A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s, its call mode is `≤` `B`'s (CLO-04), and the underlying parameter and return types agree.
+`A` is assignable to `B` exactly when `A`'s SAM could legally override `B`'s, its call mode is `≤` `B`'s (CLO-03), and the underlying parameter and return types agree.
 
 ```java
 (Job)         -> String        // type α, the target
@@ -2272,7 +2269,6 @@ Resolution never dispatches on the right operand and never inserts implicit conv
 Desugaring preserves Java operator precedence.
 So `a + b * c` is `a.add(b.multiply(c))` and `a + b < c` is `a.add(b).compareTo(c) < 0`.
 The desugared call then obeys the Java-compatible surface unchanged.
-`javac` rejects these operators on such types, so the operator spelling is `.lat`-only.
 
 ### LAT-08 Record components are public in `.lat`
 
@@ -2288,7 +2284,7 @@ var t = give(s.tail);     // tail moved out; s fully destructed
 ```
 
 Destruction reads the component as a field, never through the canonical accessor, which returns a borrow (OWN-18).
-A record declared in a `.java` source keeps private components, so the spelling is `.lat`-only.
+A record declared in a `.java` source keeps private components (DES-01).
 
 The `give`-of-a-component spelling is pure sugar (LAT-00).
 It desugars through a companion POJO and a `@consuming` method the compiler generates beside the record.

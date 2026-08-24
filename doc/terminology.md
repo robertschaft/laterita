@@ -18,7 +18,7 @@ A new handle is produced by `share()`, and the value is freed when the last hand
 See `STD-02`.
 
 ### bare
-Carrying none of the annotations under discussion, rather than carrying no annotation at all.
+Carrying none of the annotations under discussion, rather than carrying no annotation at all, so a parameter that is bare on one axis may still be annotated on another.
 
 ### bitwise copy
 A field-for-field copy of a value's representation, running no user-written code.
