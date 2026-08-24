@@ -40,7 +40,6 @@ print(b);                   // OK
 
 Reassigning a non-`final` local variable (MUT-20) re-applies this rule to the new right-hand side.
 The variable's owned-or-borrowed status, and for a borrow its source, are taken from the most recent assignment and checked flow-sensitively (LIFE-01).
-A `var` local variable's declared type is fixed by the first assignment (MUT-40).
 
 ### OWN-03 Borrow exclusivity
 
@@ -1612,7 +1611,6 @@ public final class Arrays {
 
 `@readonly(InheritFrom.RECEIVER)` may not be written on a static method, which has no receiver (MUT-17).
 The split appears under two names.
-`splitAt` takes a shared borrow and lends read-only halves, `splitMutableAt` takes a mutable borrow and lends mutable ones.
 Both bind their return to the `@bound` parameter rather than to a receiver (OWN-17).
 Distinct names rather than an overloaded pair are required by OWN-14.
 
@@ -1734,7 +1732,6 @@ The contained value is not duplicated.
 - `Rc<T> share()`: the copy constructor under another name, bumping the reference count explicitly.
 - `onDrop()`: decrements the reference count.
 Drops the value at zero.
-Annotated `@internal` like every `onDrop()` (DROP-06), compiler-emitted at scope exit, never called by user code.
 
 Assigning one `Rc<T>` variable from another is a borrow per OWN-02.
 A `give(...)` move transfers the handle without bumping.
@@ -1811,8 +1808,6 @@ Each of the following is a compile-time error:
 
 Iteration reuses Java's `Iterator<T>` and `ListIterator<T>` by name.
 `Iterable<T>.iterator()` is `@readonly(InheritFrom.RECEIVER)` (MUT-17).
-Over a mutable collection the cursor holds an exclusive borrow and `next()` yields `@bound T`, so elements may be modified in place.
-Over a `@fixed` collection it holds a shared borrow and `next()` yields `@fixed @bound T`.
 There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`.
 
 The enhanced-for consumes exactly this.
@@ -2179,7 +2174,6 @@ The operator sugar LAT-07 is resolved with operand types, as Java resolves its o
 ### LAT-01 `T?` nullable-type suffix
 
 `T?` is the `.lat` spelling of the nullable type `@Nullable T` (NULL-02).
-The two spellings denote the same type.
 The nullability rules NULL-01 through NULL-10 are stated on the type and apply identically to either spelling.
 
 ### LAT-02 Safe call `?.`
@@ -2279,7 +2273,6 @@ var h = give(s.head);     // head is a public component field, moved out
 var t = give(s.tail);     // tail moved out; s fully destructed
 ```
 
-Destruction reads the component as a field, never through the canonical accessor, which returns a borrow (OWN-18).
 A record declared in a `.java` source keeps private components (DES-01).
 
 The `give`-of-a-component spelling is pure sugar (LAT-00).

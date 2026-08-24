@@ -27,6 +27,9 @@ It uses the vocabulary of the Java Language Specification: variable, value, clas
 A rule reads as a plain statement of what is permitted or what is an error ("A `final` variable may be assigned only once", "A parameter may be annotated `@fixed`", "It is a compile-time error to ..."), not as a description of a mechanism acting on the program.
 It is written for a reader fluent in Java, so it states a Java term rather than explaining it, and never restates what the JLS already specifies.
 It carries no rationale ("because...", "so that...", "this keeps X small", "deliberately") and no history ("previously", "the old rule", "we decided").
+A prohibition is written "It is a compile-time error to ...", not "The compiler must reject ...".
+A rule states what holds and stops there.
+It does not spell out the inverse a reader derives from it, so a rule that says a mode is inferred does not add that it is not declared, and one that says a list is closed does not add that nothing else is on it.
 Stating what a rule entails is normative and belongs in the spec, while stating why the rule is right belongs in `doc/laterita-reasoning.md`.
 The `spec-reasoning-auditor` agent checks a spec change against this rule and reports violations.
 
