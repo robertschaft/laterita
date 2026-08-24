@@ -487,7 +487,6 @@ It is a compile-time error to assign an immutable value to a mutable variable.
 An immutable variable may be assigned a value of either kind, a mutable one as `@fixed C` (MUT-30).
 
 `@fixed` on a variable whose declared type is immutable has no effect.
-`String s` and `@fixed String s` declare the same variable.
 A `@fixed` annotation that has no effect is permitted wherever `@fixed` is applicable.
 
 ### MUT-40 Local variables
@@ -580,7 +579,7 @@ Only an effectively final local variable may be captured by a closure (CLO-01).
 ### MUT-70 A parameter that does not need to be mutable is reported
 
 The compiler reports a mutable parameter (MUT-31) that the method body has no mutating use of (MUT-60), and names `@fixed` as the correction.
-The report is a warning and the declaration compiles as written.
+The report is a warning.
 
 Where the declared type of the parameter is a type parameter, the bound is used (TARG-03).
 The rule does not apply to a parameter whose declared type is an immutable class (MUT-31), nor to an override (HIER-05).
@@ -896,7 +895,6 @@ Every variable triggers the drop of its value when the variable leaves scope.
 The drop sequence is specified by DROP-05.
 The cleanup hook is `onDrop()`, an `@internal` method (DROP-06) a `final` class may implement (DROP-09).
 A class with no implementation contributes no body to its drop sequence.
-No syntactic opt-in is required at the call site.
 
 ```java
 {
@@ -951,14 +949,12 @@ final class TimerScope {                  // final: required to implement onDrop
 ### DROP-06 `@internal` forbids user invocation
 
 The annotation `@internal` declares that a method may be invoked only by compiler-emitted call sites.
-User code cannot invoke an `@internal` method directly (`x.onDrop()`).
-Doing so is a compile-time error.
+It is a compile-time error for user code to invoke one directly (`x.onDrop()`).
 
 `onDrop()` is the only `@internal` method introduced by this specification.
 The compiler emits its invocations at scope exits (DROP-01), on destruction paths (DROP-04), on exception unwind (EXC-02), and as part of the drop sequence (DROP-05).
 
 `@internal` is reserved for compiler-orchestrated hooks.
-It is not a general-purpose access-control level.
 
 ### DROP-07 Exceptions from `onDrop()` terminate the body, not the drop sequence
 
@@ -1174,7 +1170,6 @@ The rules below define nullability semantics independent of spelling.
 ### NULL-01 Types are non-nullable by default
 
 A type `T` that is not annotated `@Nullable` excludes the null state.
-A variable of type `T` always holds a valid value after initialization, and methods on `T` may be invoked without a null check.
 
 ### NULL-02 Nullable types
 
@@ -1388,7 +1383,6 @@ Such a closure is a mut-call value (CLO-03).
 ### CLO-02 Capture mode is inferred
 
 The compiler infers a closure's capture mode from the body.
-The user does not declare it.
 
 ### CLO-03 Call mode and variable mode
 
@@ -1442,7 +1436,6 @@ The lambda's capture mode (CLO-01) fixes the receiver mode of its synthesized SA
 A lambda is a value of a functional-interface type of call mode `M` if and only if its own call mode is `≤ M` (CLO-03).
 
 Assignability concerns the value only.
-Whether the variable that receives the value can invoke its SAM is the separate question settled by CLO-03.
 
 ```java
 interface Doubler { int apply(int x); }   // mut-call
@@ -1715,7 +1708,6 @@ Only the following operations require `@unsafe` context:
 5. Foreign function calls (FFI / native).
 
 This list is closed.
-No other operation is gated by `@unsafe`.
 
 ### UNS-03 Unsafe-typed fields force private + `@unsafe`
 
@@ -1748,7 +1740,7 @@ Assigning one `Rc<T>` variable from another is a borrow per OWN-02.
 A `give(...)` move transfers the handle without bumping.
 `share()` is the only operation that bumps.
 
-A cycle of `Rc<T>` handles whose strong references form a closed loop is not reclaimed: no handle's reference count can reach zero, and the cycle leaks.
+A cycle of `Rc<T>` handles whose strong references form a closed loop is not reclaimed, since no handle's reference count can reach zero.
 Programs that may form cycles must use `WeakReference<T>` (STD-03) for the back-edge to break the cycle.
 
 ### STD-02 `Arc<T>`
@@ -1803,7 +1795,6 @@ Standard-library types declaring `@local` include:
 
 A class with any transitively `@local` field must carry an explicit `@local` annotation, either `@local` (inherit thread-affinity) or `@local(false)` (assert encapsulation).
 Failure to declare one is a compile-time error.
-The choice is the author's, not the compiler's.
 A class with no `@local` fields is non-`@local` by default.
 It may be annotated `@local` to opt in for thread-affine resources whose affinity isn't visible to the type system (OS handles, GPU contexts, etc.).
 
@@ -1822,14 +1813,13 @@ Iteration reuses Java's `Iterator<T>` and `ListIterator<T>` by name.
 `Iterable<T>.iterator()` is `@readonly(InheritFrom.RECEIVER)` (MUT-17).
 Over a mutable collection the cursor holds an exclusive borrow and `next()` yields `@bound T`, so elements may be modified in place.
 Over a `@fixed` collection it holds a shared borrow and `next()` yields `@fixed @bound T`.
-There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`, not separate methods.
+There is one cursor type and one factory: the read and update forms are the two monomorphizations of the same `iterator()`.
 
 The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-40).
 A loop body with no mutating use of the loop variable leaves the receiver effectively fixed (MUT-60, MUT-17).
 
 Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `listIterator()`, which always holds an exclusive borrow rather than an inherited one.
-An enhanced-for never reaches `ListIterator`.
 `ListIterator<T>.remove()` returns the removed element owned rather than `void` (OWN-07).
 `Collection<T>.removeIf(Predicate<T> p)` is unchanged from `java.util.Collection.removeIf`.
 `Iterator<T>.remove()` is `broken()` by default (UNR-01), and `ListIterator<T>` overrides it with the working form.
@@ -2051,7 +2041,7 @@ There is no runtime API for enumerating fields or methods, looking up members by
 The compiler is not required to emit per-type metadata for these purposes, and standard-library APIs equivalent to `java.lang.reflect.*`, `java.lang.Class` member-access methods, `Proxy.newProxyInstance`, or `ServiceLoader`'s runtime classpath scan are not provided.
 
 Use cases traditionally served by reflection are served by compile-time code generation (annotation processors, compiler plugins): serializers, ORM mappers, dependency-injection wiring, validators, mocks, test discovery, and SPI registries are all generated at build time from the types and annotations that exist in source.
-Stack traces (EXC-04) and exception types remain available, this rule constrains type and member introspection, not error reporting.
+Stack traces (EXC-04) and exception types remain available.
 
 ### COMP-06 Source file extensions
 

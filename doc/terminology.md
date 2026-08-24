@@ -18,7 +18,7 @@ A new handle is produced by `share()`, and the value is freed when the last hand
 See `STD-02`.
 
 ### bare
-Carrying none of the annotations under discussion, rather than carrying no annotation at all, so a parameter that is bare on one axis may still be annotated on another.
+Carrying none of the annotations under discussion.
 
 ### bitwise copy
 A field-for-field copy of a value's representation, running no user-written code.
@@ -371,7 +371,7 @@ See `MUT-10`.
 
 ### `WeakReference<T>`
 A non-owning reference to a value held by `Rc<T>` or `Arc<T>`.
-It does not contribute to the count and does not keep the value alive, and `get()` returns a strong handle or `null`, rather than the value itself, which `java.lang.ref.WeakReference.get()` returns.
+It does not contribute to the count, and `get()` returns a strong handle or `null`, rather than the value itself, which `java.lang.ref.WeakReference.get()` returns.
 See `STD-03`.
 
 ---
