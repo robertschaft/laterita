@@ -252,14 +252,10 @@ String prefixOf(@bound String text, String pattern) {
 }
 ```
 
-### OWN-20 Owned/borrowed mismatch is an error
+### OWN-20 A marked source cannot accompany an owned return
 
-The compiler reports an error when:
-
-- the body returns a borrow but the signature declares no `@bound` source, or
-- the body returns an owned value but the signature declares a `@bound` source.
-
-The diagnostic identifies the contributing source the body actually uses.
+A body that returns an owned value from a signature declaring a `@bound` source is a compile-time error.
+The diagnostic identifies the declared source and suggests removing `@bound`.
 
 ### OWN-21 A `@take @borrow` parameter caps `this` at its source
 
