@@ -1460,7 +1460,7 @@ Doubler pure     = (x) -> x * 2;                           // read lambda → sh
 A functional-interface parameter has two annotation axes, the *call-mode prefix* on the functional-interface type (FN-01: `@readonly`, bare, or `@consuming`) and the *variable-mode* annotations on the parameter (`@take`, `@fixed`, `@bound`).
 Both follow HIER-05's unified override-variance table.
 
-On the call-mode axis an override may *strengthen* the parameter's call mode, from `@readonly` to bare to `@consuming` (CLO-04).
+On the call-mode axis an override may *strengthen* the parameter's call mode, from `@readonly` to bare to `@consuming` (CLO-03).
 
 The variable-mode annotations on such a parameter (`@take`, `@fixed`, `@bound`) follow HIER-05 directly: they govern how the override's variable holds the functional-interface value, not which closures fit the parameter.
 
