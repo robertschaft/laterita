@@ -1008,17 +1008,22 @@ final class Logger {
 
 ### UNR-01 `broken()` declares a path unreachable
 
-`Intrinsics.broken()` (declared in `laterita.lang.Intrinsics` and normally statically imported as `broken`) declares that the enclosing path must not be reachable.
-The optional overload `Intrinsics.broken(String reason)` attaches an explanatory message.
-It is a compile-time error if the call can be reached on a path the compiler cannot prove dead.
+`Intrinsics.broken()`, and the overload `Intrinsics.broken(String reason)`, declare that the enclosing path must not be reachable.
 
-The call has return type `Nothing` (the bottom type): it is a divergence point, code following it in the same block is unreachable, and the enclosing function need not produce a value of its declared return type when control flow ends in `broken()`.
+```java
+public static <T> T broken();                 // laterita.lang.Intrinsics
+public static <T> T broken(String reason);
+```
+
+Both throw `UnsupportedOperationException`.
+It is a compile-time error if the call can be reached on a path the compiler cannot prove dead.
+The diagnostic identifies that path and reports the reason string when one was given.
 
 ```java
 class File {
     Heap<FileHandle> handle;
     @Override File clone() {
-        broken("files cannot be copied");
+        return broken("files cannot be copied");
     }
 }
 
@@ -1032,15 +1037,6 @@ class File {
 
 deepCopy(users);   // OK: User.clone() is the synthesized form
 deepCopy(files);   // ERROR: File.clone() reaches broken()
-```
-
-Diagnostics must identify the reachable path that leads to `broken()` and report the reason string when one was provided.
-
-A conditional form is expressible as an `if` guarding `broken()`.
-The compiler's standard dead-code analysis determines whether the path is reachable:
-
-```java
-if (n < 0) broken("n must be non-negative");
 ```
 
 ---
@@ -1173,7 +1169,7 @@ print(maybeName.length());        // ERROR: requires null check
 
 ### NULL-03 `null` literal
 
-The literal `null` has type `Nothing?` and is assignable to any `T?`.
+The literal `null` has the null type and is assignable to any `T?`.
 `null` is not assignable to a non-nullable type.
 
 *NULL-04, NULL-05, NULL-07: Relocated.* The safe-call (`?.`), elvis (`?:`), and null-assertion (`!!`) operators are `.lat` surface forms.

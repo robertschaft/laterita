@@ -177,7 +177,7 @@ public class ArrayList<T> implements Iterable<T> {
             //   if (lastReturned < cursor) cursor = cursor - 1;
             //   lastReturned = -1;
             //   return removed;
-            broken("TODO: ArrayList.ListItr.remove");
+            return broken("TODO: ArrayList.ListItr.remove");
         }
 
         @Override

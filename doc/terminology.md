@@ -109,8 +109,7 @@ Rewriting a `.lat` form into its Java-compatible equivalent before analysis (`LA
 Provably non-overlapping, so two borrows of one value may coexist (`OWN-04`, `OWN-05`).
 
 ### divergence point
-A path that reaches `broken()`, a static method of `laterita.lang.Intrinsics` whose return type is the bottom type `Nothing`.
-It is a compile-time error if the compiler cannot prove the path dead, and code after the call is unreachable.
+A path that reaches `broken()`, which the compiler must prove dead.
 See `UNR-01`.
 
 ### drop / `onDrop()`
@@ -234,9 +233,6 @@ An idiom rather than a language construct.
 A `record` whose sole component carries `@Delegate` generates the wrapped type's forwarding surface (`GEN-01`), has the layout and calling convention of the component alone (`NABI-01`), and has its forwarders inlined (`COMP-08`).
 The result is a distinct nominal type with no implicit widening to the component's type and no run-time overhead.
 `record Email(@Delegate @take String raw)` is a newtype by idiom.
-
-### `Nothing`
-The bottom type, which has no values and is a subtype of every type, returned by `broken()` (`UNR-01`).
 
 ### nullable type
 A type admitting `null` in addition to the values of `T`, written `@Nullable T` on the Java-compatible surface and `T?` in `.lat`.

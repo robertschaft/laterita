@@ -91,7 +91,7 @@ Write a single-abstract-method signature directly as a parameter type, with its 
 
 ```java
 <R> Stream<R> map((@take T) -> R fn);
-void          forEach((@bound Record) -> void action);
+@bound Field  select((@bound Record) -> @bound Field selector);
 ```
 
 In a `.java` file the same callback is expressed by declaring a nominal functional interface and using it in the same position.

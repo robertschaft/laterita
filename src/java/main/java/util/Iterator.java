@@ -40,8 +40,8 @@ public interface Iterator<T> {
     boolean hasNext();
 
     /**
-     * Advances and returns the next element as a borrow bound to the
-     * collection.
+     * Advances and returns the next element as a borrow bound to this
+     * cursor.
      *
      * <p>Not {@code @readonly}: it advances this cursor.
      * The returned {@code @bound T}'s mutability was settled when the cursor
