@@ -219,30 +219,76 @@ On a class declaration `@fixed class Money` says "this class cannot change" wher
 On a parameter, `void render(@fixed Scene s)` states a read-only lend, which is the meaning most call sites care about, and `fixed` names it only indirectly.
 The annotation appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
 
-Candidates carry different trade-offs.
+`@fixed` and `@readonly` (MUT-13) are also unrelated words for two halves of one idea.
+A reader who has learned what a `@fixed` parameter grants learns the receiver rule again from scratch.
 
-- `@ro` / `@readonly` names the capability directly and matches what C# (`readonly`), C++ (`const`), and D (`const`) call it.
-  It is the least ambiguous on parameters and fields.
-  `@readonly class Money` is still odd, and `@ro` is terse to the point of being unguessable.
-  `@readonly` is also taken: MUT-13 uses it as a method modifier, where it forbids receiver mutation.
-  One word for both would state two different things in the same token, what a variable may do and what a method does to its receiver.
-- `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-10 does not.
-  It reads poorly on a parameter, where the point is the lend mode, not the value-ness.
-- `@frozen` matches the "frozen view" term the spec already uses (MUT-30, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
-- `@const` is the C++/D spelling and would be immediately understood, but `const` is a reserved Java keyword, so `@const` and the keyword sit confusingly close.
+**Prior art.**
+The word other languages use for an object that may not be modified, and the word they use for a method that does not modify its receiver:
+
+| Language | Immutable value or type | Non-mutating method |
+|---|---|---|
+| C++ | `const` | `const` member function |
+| C# | `readonly` field, `readonly struct` | `readonly` member |
+| D | `immutable`, `const` | `const` method, `inout` for a receiver-inherited one |
+| TypeScript | `readonly` property, `Readonly<T>` | none |
+| Objective-C | `@property (readonly)` | none |
+| Solidity | `immutable`, `constant` | `view` |
+| Pony | `val` | `box` receiver |
+| Swift | `let` | the default, with `mutating` marking the opposite |
+| Rust | absence of `mut` | `&self` |
+| Ada, Modula-3 | `constant`, `in` parameter | `READONLY` parameter |
+| Ruby, Python, JavaScript | `freeze`, `frozen`, `Object.freeze` | none |
+| Kotlin, Scala | `val` on the assignment axis | none |
+| Javari, Checker Framework | `@Immutable` | `@ReadOnly` receiver |
+
+Two words carry both columns.
+`const` is a reserved Java keyword (JLS 3.9), so `@const` does not parse and the C++ and D spelling is unavailable at any length.
+`readonly` is the other, and C# writes it in exactly Laterita's two places: `readonly struct Point` for the class kind (MUT-10) and a `readonly` member for the receiver effect (MUT-13).
+`val` is claimed by OQ-34 for the assignment axis, and `value` by JEP 401.
+`frozen` and `view` have no Java currency, and `pure` names a stronger property than MUT-13, which permits mutation of arguments and of statics.
+
+**Candidate pairs.**
+The two annotations are read at different rates.
+The variable annotation stands in all eight positions of MUT-01, among them type arguments, where every character repeats per argument, and it outnumbers the method annotation two to one across these documents.
+The method annotation stands once per declaration, in modifier position beside `public` and `static`, where a long word costs one line and reads as prose.
+A short word for the variable against a long word for the method matches that, a shared first letter carries the reader from one to the other, and two distinct words keep the two rules distinct (MUT-01, MUT-13).
+
+- `@ro` / `@readonly`.
+  `@ro class Money` is C#'s `readonly struct`, `void render(@ro Scene s)` names the lend the call site cares about, and `Map<String, @ro Item>` stays narrow.
+  `@ro @readonly Item peek()` separates by shape at a glance.
+  `@ro` is not a word and has to be taught, once, next to the word it abbreviates.
+- `@read` / `@readonly`.
+  Pronounceable and guessable, at the cost of a verb reading on a class declaration and of `@read @readonly Item peek()`, where the two tokens differ by a suffix.
+- `@imm` / `@immutable`.
+  `@imm class Money` is the best class declaration of any candidate and matches D and the Checker Framework.
+  `@immutable int size()` says the method is immutable, where the rule is about the receiver, and no language annotates a method that way.
+- `@view` / `@viewing`.
+  Fits MUT-30, where `@fixed C` already is the frozen view, and gives the best intrinsic, `view(x)`.
+  A `@view class Money` is not a view of anything, and `@viewing` has no precedent as a receiver word.
+- `@fixed` / `@frozen`.
+  Keeps the current variable word and buys the mnemonic for the price of the method word.
+  Two near-synonyms on two different axes make the pair harder to hold apart, not easier, and the class-declaration reading above is untouched.
+
+**What rides along.**
+The variable word is also the view type `@fixed C` (MUT-30), the intrinsic `fixed(x)` (MUT-42), and the `TARG-03` type-parameter form.
+`ro(x)` reads poorly as a call, and the intrinsic may take the long word instead, as `readonly(x)`, since annotation position and expression position never collide.
+The method word is also MUT-17's `@readonly(InheritFrom.RECEIVER)` and FN-01's shared-call prefix, so a pair that leaves `@readonly` in place leaves the functional-interface surface untouched and renames one annotation.
+
+**Recommendation.**
+`@ro` in the variable positions, `@readonly` on methods, `readonly(x)` for the MUT-42 intrinsic.
+It names the capability rather than an adjacent property, it is the one word with precedent in both positions, the short form falls out of the long one, and it is the only candidate that renames nothing but `@fixed`.
 
 **The question.**
 
-- Which name does the annotation carry across all eight positions?
-- Is one name for every position the right call, or does the class declaration want a different word from the variable positions, at the cost of MUT-01's single-word property?
-- Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that a method is annotated `@readonly` (MUT-13)?
-  A variable annotation built from the same root, `@ro` against `@readonly`, would let a reader carry one idea across both.
-  The two are distinct (MUT-01, MUT-13), and a shared root must not become a shared meaning.
+- Is the pair `@ro` / `@readonly`, and does the spec state plainly that the two are distinct rules over a shared word (MUT-01, MUT-13)?
+- Is a two-letter annotation acceptable in the most-read position of the language, or does the pronounceable `@read` earn its collision with `@readonly`?
+- Does the intrinsic take the short word, `ro(x)`, or the long one, `readonly(x)`?
+- Does the class declaration keep the variable word (MUT-10), or is `@imm class Money` worth a third word on the axis, against MUT-01's single-word property?
 
 **Why it matters.**
 The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
 
-**Related codes:** MUT-01, MUT-13, MUT-30, MUT-10, TARG-03, HIER-03.
+**Related codes:** MUT-01, MUT-13, MUT-30, MUT-42, MUT-10, TARG-03, HIER-03, FN-01, OQ-34.
 
 ---
 
