@@ -451,7 +451,7 @@ The reorganization preserves every rule.
 The old codes are obsolete, and every cross-reference in the spec uses the new ones.
 
 A field, a record component, or a generic type argument that holds a borrow is spelled `@borrow`, where those positions once took `@bound`.
-`@bound` marks a borrowed value only where a source relationship is declared: on a parameter, whose source is that parameter, on a return, whose source is `this`, and on the variable that holds such a value.
+`@bound` bounds a value's lifetime only where a source relationship is declared: on a parameter, whose source is that parameter, on a return, whose source is `this`, and on the variable that holds such a value.
 Separating the two tokens makes the structural role, that a position holds a borrow whose source is fixed elsewhere, and the relational role, that a value is bound to a named source, legible where each is declared.
 A generic type argument names no source, so it is structural and takes `@borrow`.
 

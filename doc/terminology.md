@@ -34,7 +34,7 @@ See `OWN-03`.
 Declares that a field, a record component, or a generic type argument holds a borrow rather than an owned value (`TARG-01`).
 An instance of a class with any `@borrow` field can only be produced as a `@bound` value, with a lifetime intersecting each source (`LIFE-03`).
 On a parameter it is meaningful only with `@take`, where it retains the borrow and caps `this` at the parameter's source (`OWN-21`).
-It names no source, so it is the structural marker, as against `@bound`, which marks a borrowed value whose source is named.
+It names no source, so it is the structural marker, as against `@bound`, which names the source that bounds a value's lifetime.
 See `OWN-09`, `OWN-21`, `LIFE-03`, `TARG-01`.
 
 ### `@borrowCapped` (annotation on classes)

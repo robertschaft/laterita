@@ -506,7 +506,7 @@ Because the mutability marker is negative, the direction reads as *adding* `@fix
 `@take` on a parameter is the one exception: it is identity, not strength, and either dropping or adding it breaks callers using the inherited type.
 Class-level `@fixed` (HIER-03) is the same shape at the class level, where an immutable subclass of a mutable parent drops the receiver demand for inherited mutating methods.
 
-On the guarantee side, `@bound` on the return is covariant in strength: an override may return owned where the base promised a value bound to `this` (the per-OWN-18 meaning of `@bound` on a return).
+On the guarantee side, `@bound` on the return is covariant in strength: an override may return an unconstrained value where the base promised one bounded by `this` (OWN-18).
 Owned is a stronger guarantee: a value the caller may freely move or hold past the receiver's lifetime.
 Callers using the inherited type continue treating the result as receiver-bound and remain sound.
 The reverse (returning a receiver-bound value where the base promised owned) would silently constrain a value the caller intended to move or store.
@@ -516,12 +516,12 @@ The call-mode row inverts the surface direction for the same underlying principl
 
 ## Lifetimes (LIFE-01 through LIFE-05)
 
-### Why mark-borrow on returns (OWN-16, OWN-17, OWN-18)
+### Why a lifetime-bounded return is marked (OWN-17, OWN-18)
 
-A bare return type means owned.
-Borrowed returns are explicitly declared with `@bound`.
-The inverse (owned-marked, borrowed-default) would mark the common case: constructors, factories, computed values, query results all return owned values, so marking owned adds visual noise to most signatures.
-`@bound` carves out the case where production is actually a view into an input.
+A bare return type carries no lifetime constraint.
+A return whose lifetime depends on an input is declared with `@bound`.
+The inverse, marking the unconstrained case, would mark the common one: a constructor, a factory, a computed value, and a query result all return values that depend on nothing, so marking them adds visual noise to most signatures.
+`@bound` carves out the case where the result's lifetime rides on an input.
 
 Body-driven inference (keep the signature silent, let the compiler look through to the implementation) was rejected: it collapses under separate compilation, and it hides the contract from the caller, who would have to read the body to know what the return is good for.
 The signature is the API.
@@ -1358,7 +1358,7 @@ A marker-interface bound such as `T extends Owned` is rejected: ownership is not
 
 ### Why a bare borrow return binds to its container (TARG-07)
 
-A bare `T` return means owned (OWN-16), but a borrowed type argument turns it into a borrow with no declared source, which OWN-19 rejects.
+A bare `T` return declares no source, but a borrowed type argument gives the return a lifetime that depends on one, which OWN-19 requires to be declared.
 The return must therefore name a source.
 Binding it to the container, rather than to the removed element's own origin, is sound because the container's lifetime already intersects every element source (LIFE-03), and it avoids per-element source tracking.
 The cost is precision: a value pulled out cannot be kept past the container, where Rust's element-typed lifetime would allow it.

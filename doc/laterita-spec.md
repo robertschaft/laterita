@@ -107,7 +107,7 @@ public static <T> T give(@take T t) { return t; }   // laterita.lang.Intrinsics
 ```
 
 normally statically imported.
-`give(x)` consumes `x` via `@take` and returns its owned value (OWN-16).
+`give(x)` consumes `x` via `@take` and returns its owned value.
 A stored result (`var b = give(a);`) lives on in the new owner.
 A statement-form result (`give(x);`) drops at the semicolon, running its `onDrop()` immediately.
 
@@ -210,15 +210,9 @@ c.close();                  // OK: c owned, consumed by close()
 c.use();                    // ERROR: c consumed
 ```
 
-### OWN-16 An un-`@bound` return is owned
-
-A return type without `@bound` means the function returns an owned value.
-`return x;` of an owner moves it.
-`return give(x);` is accepted as the explicit form.
-
 ### OWN-17 `@bound` on a parameter binds the return to that parameter
 
-`@bound` on a parameter declares that the function returns a borrow whose source is that parameter.
+`@bound` on a parameter declares that the return's lifetime is bounded by that parameter.
 Valid only on a non-`void` return.
 
 ```java
@@ -229,7 +223,7 @@ String firstWord(@bound String s) {              // returned borrow bound to s
 
 ### OWN-18 `@bound` on a return binds the return to `this`
 
-`@bound` on a return declares that the function returns a borrow whose source is `this`.
+`@bound` on a return declares that the return's lifetime is bounded by `this`.
 Valid only on instance methods (not `static`).
 
 ```java
@@ -251,11 +245,6 @@ String prefixOf(@bound String text, String pattern) {
     return text.substring(0, pattern.length());  // bound to text only, pattern unmarked
 }
 ```
-
-### OWN-20 A `@bound` source cannot accompany an owned return
-
-A body that returns an owned value from a signature declaring a `@bound` source is a compile-time error.
-The diagnostic identifies the declared source and suggests removing `@bound`.
 
 ### OWN-21 A `@take @borrow` parameter caps `this` at its source
 
@@ -840,9 +829,7 @@ Mutex<@borrow Config> bad = /* … */;                     // ERROR (TARG-06): b
 
 ### TARG-07 A bare `T` return monomorphized to a borrow binds to its container
 
-A method declared with a bare, and therefore owned, `T` return, monomorphized with a borrowed type argument, returns a `@bound` value instead of an owned one.
-For an owned type argument the return is owned (OWN-16).
-For a borrowed one the return is the borrow, bound to the receiver (OWN-18).
+A bare `T` return monomorphized with a borrowed type argument is `@bound` to the receiver (OWN-18).
 
 ```java
 class List<T> { T remove(int i); }
@@ -1283,7 +1270,7 @@ void submit(@take @consuming (@take Result) -> void onComplete) { … }
 // (@take on the variable is what lets submit invoke a once-call SAM, per CLO-03)
 
 <F extends Field> @bound F lookup(@bound Record rec, RecordKey key, (@bound Record, RecordKey) -> @bound F selector) { … }
-// @bound on the SAM parameter pairs with @bound on its return (OWN-18 / OWN-20): lambda must
+// @bound on the SAM parameter pairs with @bound on its return (OWN-17, OWN-18): lambda must
 // project from rec (e.g. rec -> rec.name), not allocate a fresh Field
 ```
 
@@ -1495,7 +1482,7 @@ The compiler tracks this per-variable and applies lifetime rules to borrowed ins
 
 ### STR-03 Slice methods return borrows
 
-Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) declare the borrow with `@bound` on the return type per OWN-18.
+Methods that return a view into the receiver's storage (e.g., `substring`, `trim`) declare `@bound` on the return type (OWN-18).
 
 ```java
 class String {
@@ -2102,7 +2089,7 @@ Combinations not listed are currently not supported and won't compile.
 | `@bound` | `METHOD` | non `void`, non `static` | Return is bound to `this` | OWN-18 |
 | `@borrow` | `TYPE_USE` | in type arguments | Type argument is a borrow, and the enclosing instance must be `@bound` | TARG-01 |
 | `@own` | `TYPE_PARAMETER` | - | Type parameter rejects a borrowed type argument (dual of `@borrow`) | TARG-06 |
-| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `METHOD` (return) | - | Variable holds a borrowed value (on an instance with a `@borrow` field or a `@borrow`-substituted type argument, OWN-09, TARG-01) | OWN-09 |
+| `@bound` | `LOCAL_VARIABLE`, `PARAMETER`, `METHOD` (return) | - | Variable's lifetime is bounded by its sources | OWN-09 |
 | `@borrowCapped` | `TYPE` | inherited by subclasses | Every `@borrow` source the instance holds must stay live until its scope exit | LIFE-04, DROP-11 |
 | `@internal` | `METHOD` | - | Callable only by compiler-emitted call sites | DROP-06 |
 | `@unsafe` | `METHOD` | - | Private method permitted to use the ops in UNS-02 | UNS-01 |
