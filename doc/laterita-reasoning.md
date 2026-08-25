@@ -507,9 +507,9 @@ Because the mutability marker is negative, the direction reads as *adding* `@fix
 Class-level `@fixed` (HIER-03) is the same shape at the class level, where an immutable subclass of a mutable parent drops the receiver demand for inherited mutating methods.
 
 On the guarantee side, `@bound` on the return is covariant in strength: an override may return an unconstrained value where the base promised one bounded by `this` (OWN-18).
-Owned is a stronger guarantee: a value the caller may freely move or hold past the receiver's lifetime.
+An unconstrained return is the stronger guarantee, since a caller expecting a value bounded by the receiver can always use one bounded by nothing.
 Callers using the inherited type continue treating the result as receiver-bound and remain sound.
-The reverse (returning a receiver-bound value where the base promised owned) would silently constrain a value the caller intended to move or store.
+The reverse, returning a receiver-bound value where the base promised an unconstrained one, would cap a value the caller intended to hold past the receiver.
 The call-mode row inverts the surface direction for the same underlying principle: strengthening a functional-interface parameter (`@readonly` to bare to `@consuming`) widens the set of closures it accepts, so every closure the base accepted remains accepted, since the annotation governs which closures are accepted rather than what the parameter variable may do.
 
 ---

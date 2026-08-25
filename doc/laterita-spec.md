@@ -663,7 +663,7 @@ interface Visitor {
 
 class CountingVisitor implements Visitor {
     @Override void visit(@fixed Node n) { ... }                // OK: adds @fixed, admits shared callers too
-    @Override String describe(Node n) { return "counting"; }   // OK: drops @bound jointly, returns owned
+    @Override String describe(Node n) { return "counting"; }   // OK: drops @bound jointly, parameter and return unconstrained
 }
 
 interface Reader { void read(@fixed Node n); }
@@ -815,7 +815,7 @@ List<@borrow Foo> c;          // add(@take @borrow Foo e): move an exclusive bor
 ### TARG-06 `@own` requires an owned type argument
 
 A type parameter declared `@own` rejects a borrowed type argument.
-`@own` is the dual of `@borrow`: `@borrow` admits a borrow in a type argument, `@own` forbids one at the type parameter.
+`@own` is the dual of `@borrow`, forbidding at the type parameter what `@borrow` admits in a type argument (TARG-01).
 It marks a type that must own its contents, the role a `'static` bound plays in Rust.
 `Arc` (STD-02) and `Mutex` (STD-09) declare their parameter `@own`.
 
@@ -1293,8 +1293,8 @@ It is HIER-05's override variance applied to the SAM, reading `B` as the base de
 (Job)         -> @bound String // type γ, the target
 
 // β flows into α:  parameter adds @fixed (contravariant) ✓
-// β flows into γ:  return owned satisfies @bound (covariant) ✓
-// γ does NOT flow into β: a @bound return cannot satisfy an owned target
+// β flows into γ:  an unconstrained return satisfies a @bound target (covariant) ✓
+// γ does NOT flow into β: a @bound return cannot satisfy an unconstrained target
 ```
 
 A lambda literal is checked against the expected functional-interface type by CLO-04.
@@ -1351,11 +1351,8 @@ CLO-03 connects them to the functional-interface type that holds the closure.
 Closures are classified by how they use captured variables:
 
 - **Read**: captured variables are immutably borrowed.
-Closure may be invoked any number of times, including from multiple threads simultaneously (subject to the `@local` rules of STD-07).
 - **Mutate**: captured variables include a mutable borrow.
-Closure may be invoked any number of times sequentially but not concurrently.
 - **Consume**: captured variables include a moved value.
-Closure may be invoked exactly once.
 
 A captured local variable must be effectively final (MUT-61).
 A closure that modifies captured state captures a mutable local variable and modifies the object through it.
@@ -1539,7 +1536,6 @@ class T[] {
 ```
 
 `splitAt` re-borrows the receiver (MUT-15), and the returned pair is `@bound` to the receiver's source (LIFE-02).
-Over a mutable receiver the halves lend mutably, and over a `@fixed` or shared receiver they lend read-only (MUT-17).
 `forEachChunkExact` skips the trailing partial chunk while `forEachChunk` keeps it.
 Each chunk passed to `body` is a mutable slice of the receiver whose borrow expires when the call returns, so successive chunks are pairwise disjoint by construction.
 Fold-style reductions express by capturing a mutable accumulator in the body lambda (CLO-01), and no dedicated reducer primitive is provided.
@@ -1641,7 +1637,6 @@ Instantiations encountered in this spec:
 - `Pair<T[], T[]>`: owned pair, returned by `splitOff`.
 The owning halves are obtained by destructing the pair, `give(p.left)` and `give(p.right)` (OWN-06).
 - `@bound Pair<@borrow T[], @borrow T[]>`: pair of borrowed halves, returned by `splitAt` (TARG-01, LIFE-02).
-Whether those halves lend mutably follows the receiver `splitAt` was called on (MUT-17).
 
 The class itself is non-`@local`.
 Heterogeneous (`L ≠ R`) instantiations are permitted.
@@ -1819,7 +1814,7 @@ The type parameter is `@own` (TARG-06).
 
 **Scoped acquisition.** `<R> R with((T) -> R action)` acquires the lock (blocking if held), invokes `action` on the protected value, releases the lock, and returns `action`'s result.
 `<R> Optional<R> tryWith((T) -> R action)` (including timed variants) is the non-blocking form: it returns an empty `Optional` if the lock cannot be acquired, otherwise runs `action` and returns its result wrapped.
-The action parameter is mut-call (FN-01, with no prefix), so the closure may capture state by mutable borrow, and a read closure fits as well (CLO-03).
+The action parameter is mut-call (FN-01, with no prefix).
 The protected `T` is reachable only as the parameter of `action`.
 There is no `unlock()` method, no externally held guard, and no way to extend the borrow beyond the call.
 
@@ -1970,7 +1965,7 @@ Catching it does not clear the interrupt flag (THR-03).
 ### THR-09 `Thread.join()`
 
 `Thread.join()` blocks the calling thread until the receiver terminates.
-It is an interruption point per THR-04: if the calling thread's interrupt flag is set while it is blocked in `join()`, it throws `InterruptedException`.
+It is an interruption point (THR-04).
 
 `join()` does not interrupt the receiver.
 To cancel and observe, call `worker.interrupt()` and then `worker.join()`.

@@ -41,7 +41,7 @@ See `OWN-09`, `OWN-21`, `LIFE-03`, `TARG-01`.
 Declares that an instance keeps its borrows live until it goes out of scope, so `onDrop()` may read them.
 See `LIFE-04`, `DROP-11`.
 
-### `@bound` (annotation on returns and parameters)
+### `@bound` (annotation on returns, parameters, and variables)
 Declares a lifetime relationship between two values.
 On a parameter it declares that the method's return is bound to that parameter (`OWN-17`).
 On a return type it declares that the return is bound to `this` (`OWN-18`).
