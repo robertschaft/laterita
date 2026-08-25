@@ -455,6 +455,23 @@ A field, a record component, or a generic type argument that holds a borrow is s
 Separating the two tokens makes the structural role, that a position holds a borrow whose source is fixed elsewhere, and the relational role, that a value is bound to a named source, legible where each is declared.
 A generic type argument names no source, so it is structural and takes `@borrow`.
 
+### `broken()` as a diverging call returning any type
+
+Rejected.
+The unreachable-path marker is an `UncompilableException`, written `throw broken(...)` (UNR-01, UNR-02).
+A call declared `static <T> T broken()` takes a different spelling in a value-returning method than in a `void` one or a constructor, so the form depends on the return type, and `javac`'s reachability analysis (JLS 14.21) does not treat the call as ending the path, leaving `javac` and Laterita disagreeing about which statements are dead.
+
+Where: UNR-01, UNR-02, reasoning "Why an exception, not a diverging call"
+
+### A bottom type as the type of a divergent expression
+
+Rejected.
+Java has no bottom type, so a `.java` source cannot declare one and `javac` cannot infer it (COMP-06).
+Divergence is a `throw`, which the JLS already treats as ending a path.
+
+Where: UNR-01, UNR-02, NULL-03, reasoning "Why an exception, not a diverging call"
+
+
 ## Resolved open questions
 
 A tombstone names the question, summarizes its resolution, and points at the spec codes and the reasoning that record the decision.

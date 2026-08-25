@@ -1006,25 +1006,42 @@ final class Logger {
 
 ## UNR Unreachability
 
-### UNR-01 `broken()` declares a path unreachable
+### UNR-01 An `UncompilableException` declares a path unreachable
 
-`Intrinsics.broken()`, and the overload `Intrinsics.broken(String reason)`, declare that the enclosing path must not be reachable.
+An expression that creates an instance of `laterita.lang.UncompilableException` declares that the enclosing path must not be reachable.
+It is a compile-time error if such an expression can be reached on a path the compiler cannot prove dead.
+The diagnostic identifies that path and reports the reason string when one was given.
+
+### UNR-02 `Broken` and the `broken()` factories
+
+`Broken` is the `UncompilableException` for a path that has no implementation, and its static factories are normally statically imported so call sites read `broken()` without a qualifier:
 
 ```java
-public static <T> T broken();                 // laterita.lang.Intrinsics
-public static <T> T broken(String reason);
+public abstract class UncompilableException          // laterita.lang
+        extends RuntimeException {
+    protected UncompilableException();
+    protected UncompilableException(String reason);
+}
+
+public final class Broken extends UncompilableException {
+    public static Broken broken();
+    public static Broken broken(String reason);
+}
 ```
 
-Both throw `UnsupportedOperationException`.
-It is a compile-time error if the call can be reached on a path the compiler cannot prove dead.
-The diagnostic identifies that path and reports the reason string when one was given.
+A creation is written in `throw` position:
 
 ```java
 class File {
     Heap<FileHandle> handle;
     @Override File clone() {
-        return broken("files cannot be copied");
+        throw broken("files cannot be copied");
     }
+}
+
+void withdraw(int amount) {
+    if (amount < 0) throw broken("amount must be non-negative");
+    ...
 }
 
 <T> List<T> deepCopy(List<T> source) {
@@ -1094,7 +1111,7 @@ The compiler synthesizes one when none is provided.
 The synthesized form chains `super(source)` and copies each field: primitives bitwise, owned object fields via the field's `clone()` method (`source.field.clone()`).
 A user-provided copy constructor with the same signature suppresses synthesis.
 
-If a field's `clone()` reaches `broken()` (UNR-01), the enclosing class's auto-generated copy constructor reaches `broken()` transitively and is rejected at compile time.
+If a field's `clone()` reaches an `UncompilableException` (UNR-01), the enclosing class's auto-generated copy constructor reaches it transitively and is rejected at compile time.
 
 ```java
 class User {
@@ -1122,9 +1139,9 @@ class CachedFile extends File {
 
 class SecretKey {
     byte[] material;
-    // Class-level opt-out via broken() clone (OBJ-02).
+    // Class-level opt-out via a broken clone() (OBJ-02).
     @Override SecretKey clone() {
-        broken("secret keys must not be copied");
+        throw broken("secret keys must not be copied");
     }
 }
 ```
@@ -1134,7 +1151,7 @@ class SecretKey {
 Every class has a public `Self clone()` method, synthesized as `return new Self(this);` when not provided by the user.
 The call dispatches virtually to the actual class's `clone()`.
 
-A class opts out of copying by overriding `clone()` with a body that reaches `broken()`, as in `SecretKey` above.
+A class opts out of copying by overriding `clone()` with a body that reaches an `UncompilableException` (UNR-01), as in `SecretKey` above.
 
 ---
 
@@ -1745,7 +1762,7 @@ Used as a building block for `Arc<T>`, `Mutex<T>`, lazy initializers, etc.
 
 Raw heap-allocation primitive.
 Provides allocation, dereference, and free (UNS-02).
-`Heap<T>.clone()` reaches `broken()` (UNR-01).
+`Heap<T>.clone()` reaches an `UncompilableException` (UNR-01).
 Wrapper types built on `Heap<T>` (e.g. `Rc<T>`, `Arc<T>`, owned containers) define their own `clone()`.
 
 ### STD-07 `@local` marker
@@ -1794,7 +1811,7 @@ for (var x : fixed(list)) {   // shared borrow, so a nested read of `list` still
 Structural modification (`remove`, `set`, `add`) lives on `ListIterator<T>`, obtained from `listIterator()`, which always holds an exclusive borrow rather than an inherited one.
 `ListIterator<T>.remove()` returns the removed element owned rather than `void` (OWN-07).
 `Collection<T>.removeIf(Predicate<T> p)` is unchanged from `java.util.Collection.removeIf`.
-`Iterator<T>.remove()` is `broken()` by default (UNR-01), and `ListIterator<T>` overrides it with the working form.
+`Iterator<T>.remove()` reaches an `UncompilableException` by default (UNR-01), and `ListIterator<T>` overrides it with the working form.
 
 Holding a cursor borrows the collection per OWN-03: an inherited-mutable cursor or a `ListIterator` is an exclusive borrow, a `@fixed` cursor a shared one.
 Concurrent modification through any other path is rejected at compile time, so `ConcurrentModificationException` is not part of Laterita's runtime semantics and `modCount`-style guards are not required.
@@ -2043,7 +2060,7 @@ The compiler may apply any semantics-preserving combination of inlining, constan
 
 ## RESV Reserved Names
 
-The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `ReentrantLock`, `LockGuard`, `Condition`, `PoisonedException`.
+The following names are introduced by this specification and must be provided by the standard library: `Rc`, `Arc`, `WeakReference`, `Cell`, `Heap`, `Mutex`, `ReentrantLock`, `LockGuard`, `Condition`, `PoisonedException`, `UncompilableException`, `Broken`.
 The `Thread` type and `InterruptedException` are reused from the Java standard library per THR-01 and THR-08.
 `java.util.Objects.requireNonNull` is reused as the `.java`-mode null assertion per LAT-04.
 Anonymous functional interfaces are structural per FN-01 and require no named standard-library interfaces.
@@ -2103,12 +2120,11 @@ An anonymous functional-interface type expression (FN-01, `.lat`-only) encodes a
 These are the same annotations the table lists, and the form needs no separate `TYPE_USE` registration.
 
 The annotations are declared in `laterita.lang.annotation`.
-Standard-library static methods that carry Laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `broken()` without a qualifier:
+Standard-library static methods that carry Laterita-specific semantics live on `laterita.lang.Intrinsics` and are normally statically imported so call sites read `give(x)` and `fixed(x)` without a qualifier:
 
 | Intrinsic | Meaning | Spec rule |
 |---|---|---|
 | `Intrinsics.give(x)` | Explicitly removes ownership from `x` | OWN-07 |
-| `Intrinsics.broken(reason?)` | Compilation fails if an execution path would lead to this statement | UNR-01 |
 | `Intrinsics.fixed(x)` | Returns a `@fixed` borrow of `x` | MUT-42 |
 
 To `javac` the annotations are ordinary annotations and the intrinsics ordinary static method calls, the Laterita compiler attaches the additional semantics specified in the rules above.
