@@ -241,7 +241,7 @@ class Cache {
 }
 ```
 
-### OWN-19 Unmarked sources cannot contribute to a returned borrow
+### OWN-19 Only a `@bound` source may contribute to a returned borrow
 
 A body that returns a borrow tied to a source not marked `@bound` is a compile-time error.
 The diagnostic identifies the source and suggests adding `@bound`.
@@ -252,7 +252,7 @@ String prefixOf(@bound String text, String pattern) {
 }
 ```
 
-### OWN-20 A marked source cannot accompany an owned return
+### OWN-20 A `@bound` source cannot accompany an owned return
 
 A body that returns an owned value from a signature declaring a `@bound` source is a compile-time error.
 The diagnostic identifies the declared source and suggests removing `@bound`.
@@ -264,7 +264,7 @@ The cap is part of the signature: from the call onward the parameter's source is
 The form is meaningful only on instance methods: a retained borrow may be stored only into a `@borrow` field of `this`, and on a `static` method the form is rejected.
 Storing a borrow into a `@borrow` field of `this` requires this parameter form, and the assignment itself additionally requires a mutable receiver (MUT-22), but declaring the parameter does not: a non-mutating method may declare `@take @borrow` and merely narrow the caller's `this`.
 A `@borrow` parameter without `@take` retains nothing and is an ordinary borrow parameter (OWN-13).
-A constructor needs no marked parameter: the borrows it stores are the initial sources of OWN-09.
+A constructor needs no `@take @borrow` parameter: the borrows it stores are the initial sources of OWN-09.
 
 ```java
 class Cursor {
@@ -777,7 +777,7 @@ var counts = new Box<Counter>();
 counts.get().inc();                           // OK: the argument is mutable, so the usage is
 ```
 
-### TARG-04 Stacked borrow markers collapse to one borrow
+### TARG-04 Stacked `@bound` and `@borrow` collapse to one borrow
 
 `@bound` and `@borrow` are variable-mode markers, not type constructors.
 They carry no "layer" to stack.
@@ -1525,7 +1525,7 @@ void store(@take String s);             // requires `.clone()` on a literal
 
 ### STR-08 Default receiver mode of `String` methods is borrow
 
-Methods declared on `String` borrow the receiver unless the signature marks otherwise.
+Methods declared on `String` borrow the receiver unless the signature declares otherwise.
 Methods that consume the receiver are marked `@consuming`.
 
 ---
@@ -1932,7 +1932,7 @@ Any interruption point reached after the flag is set throws `InterruptedExceptio
 ### THR-04 Interruption points
 
 An **interruption point** is a program location at which the running thread reacts to its own interrupt flag.
-The standard reaction is to throw `InterruptedException` from a standard-library blocking operation (`Thread.join`, `Thread.sleep`, `Object.wait`, `BlockingQueue.take`, IO read/write, and others marked as such in their standard-library definitions).
+The standard reaction is to throw `InterruptedException` from a standard-library blocking operation (`Thread.join`, `Thread.sleep`, `Object.wait`, `BlockingQueue.take`, IO read/write, and others identified as such in their standard-library definitions).
 
 User code may also create an interruption point by polling `Thread.currentThread().isInterrupted()` or the static `Thread.interrupted()` (THR-03) and using the result to alter control flow, for example, exiting an otherwise non-terminating loop.
 
