@@ -1373,7 +1373,7 @@ Folding a bound widening into the same marker would tie a body-side abbreviation
 Because `@ro` only withdraws a capability, it requires nothing of its holder, the opposite of the bare form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-15).
 
 That leaves nothing for a third marker to do.
-A positive marker on a bound (`T extends @mut Counter`) restates what a mutable bound already means, and a third "either kind" marker (`<@fixable T extends Counter>`) asks the argument's own mutability to reach the body, which the check-once discipline forbids: a body proved sound against one bound cannot also be proved sound against a stronger reading of the same parameter.
+A positive marker on a bound (`T extends @mut Counter`) restates what a mutable bound already means, and a third "either kind" marker (`<@eitherKind T extends Counter>`) asks the argument's own mutability to reach the body, which the check-once discipline forbids: a body proved sound against one bound cannot also be proved sound against a stronger reading of the same parameter.
 Mutability polymorphism is a per-method property, where MUT-17 already carries it and where the receiver supplies the answer, not a per-type-parameter one.
 
 ### Why `@take` needs no degradation for borrows (TARG-05)

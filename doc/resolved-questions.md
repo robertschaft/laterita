@@ -435,7 +435,7 @@ The annotation would restate the bound it is attached to.
 
 Where: TARG-03, MUT-30, HIER-04, reasoning "Why the bound decides admission and the argument decides mutability"
 
-### A third, either-kind type-parameter annotation (`<@fixable T extends Counter>`)
+### A third, either-kind type-parameter annotation (`<@eitherKind T extends Counter>`)
 
 Rejected.
 A generic body is checked once against its bound, so it cannot also be proved sound against a stronger reading of the same parameter.
