@@ -193,8 +193,7 @@ It runs therefore exactly one of the special operations that are normally only p
 After the call returns, the caller's receiver is consumed.
 Subsequent uses are rejected.
 
-`@consuming` is a method modifier and may be combined with `@readonly` (MUT-13).
-The combination is callable on a `@ro` receiver, which an unmarked `@consuming` method is not.
+`@consuming` may be combined with `@readonly` (MUT-13) to make it callable on a `@ro` receiver.
 `@consuming` calls require an owned receiver and no `give(...)` wrapper.
 
 ```java
@@ -539,7 +538,7 @@ One such class serves as a mutable cursor when constructed from a mutable enclos
 
 A mutable local variable (MUT-40) is *effectively read-only* if none of its uses is a mutating use.
 A *mutating use* is a call to a mutating method on the variable, an assignment through it, passing it to a mutable parameter, or returning it through a mutable return type (MUT-31).
-A call to a `@readonly(InheritFrom.RECEIVER)` method (MUT-17) is a mutating use only if the borrow it returns has one.
+A call to a `@readonly(InheritFrom.RECEIVER)` method (MUT-17) is a mutating use.
 
 An effectively read-only local variable borrows its source as a shared borrow.
 A local variable with a mutating use borrows its source as a mutable borrow (OWN-02, OWN-03).
@@ -1800,7 +1799,7 @@ There is one cursor type and one factory: the read and update forms are the two 
 
 The enhanced-for consumes exactly this.
 `for (var x : source)` desugars to `var it = source.iterator(); while (it.hasNext()) { var x = it.next(); ... }` with no cursor selection, and the loop variable inherits its mutability from `next()` (MUT-40).
-A loop body with no mutating use of the loop variable leaves the receiver effectively read-only (MUT-60, MUT-17).
+The desugared `iterator()` call is a mutating use of the source (MUT-60).
 
 ```java
 for (var x : readonly(list)) {   // shared borrow, so a nested read of `list` still compiles
@@ -2336,7 +2335,9 @@ The component accessor is the only path back to the wrapped value, and no implic
 
 ### GEN-02 `@Getter` and `@Setter`
 
-`@Getter` on a field, or on the class for all fields, generates a `public @readonly(InheritFrom.RECEIVER)` bean accessor: `getFieldName()` (`isFieldName()` for a `boolean`) returning `@bound T` (OWN-18), a borrow of the field with the mutability of the receiver (MUT-17).
+`@Getter` on a field, or on the class for all fields, generates a bean accessor returning a borrow of that field (OWN-18).
+For a mutable field it is `public @readonly(InheritFrom.RECEIVER) @bound T getFieldName()` (MUT-17), and for a `@ro` field `public @readonly @bound @ro T getFieldName()`.
+The accessor of a `boolean` field is named `isFieldName()`.
 `@Getter(lazy = true)` on a final field generates a memoized accessor that computes the value once on first call.
 
 `@Setter` requires a mutable class (MUT-10) and generates a setter for each non-`final` non-`static` field.

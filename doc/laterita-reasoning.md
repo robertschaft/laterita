@@ -289,9 +289,9 @@ The two bodies are identical apart from a single mutability qualifier, and the c
 `InheritFrom.RECEIVER` writes the operation once and lets the receiver's mutability flow to the result, so a single `iterator()` serves both read and in-place-update iteration and the enhanced-for needs no cursor-selection rule.
 The `Iterable`/`MutIterable` and `Iterator`/`MutIterator` splits that a two-method design forces both collapse onto it.
 
-It composes with the borrow classification of MUT-60 in the way that makes ordinary collection code compile.
-An inherited call is a mutating use of its receiver only when the borrow it returns has a mutating use, so a loop that reads its elements leaves the collection shared and nests with any other read of the same collection, while a loop that mutates an element takes the exclusive borrow it needs and no more.
-Neither shape carries an annotation.
+It composes with the borrow classification of MUT-60 through a flat rule: an inherited call is a mutating use of its receiver whatever the borrow it returns goes on to do.
+Classifying it by the returned borrow's own uses instead would leave one variable's borrow mode waiting on the next one's, and a chain of inherited calls would defer every answer to the end of the chain.
+A pass that only reads therefore asks for the shared borrow where it wants it, with `readonly(source)` (MUT-42).
 
 The mechanism has precedent in statically typed languages shaped by exactly this duplication.
 D's `inout` is a mutability wildcard that binds to an argument's actual mutability and transfers it to the return, added to stop functions being triplicated across mutable, const, and immutable.

@@ -218,7 +218,7 @@ It requires the source variable to be mutable, or the borrow to occur in a mutat
 See `OWN-03`, `OWN-13`.
 
 ### mutating use
-A use of a local variable that requires mutation: a call to a mutating method, an assignment through the variable, passing it to a mutable parameter, or returning it through a mutable return type.
+A use of a local variable that requires mutation: a call to a mutating method or to a `@readonly(InheritFrom.RECEIVER)` one, an assignment through the variable, passing it to a mutable parameter, or returning it through a mutable return type.
 A local variable with one borrows its source mutably, and one with none is effectively read-only.
 See `MUT-60`.
 
@@ -288,16 +288,11 @@ A reference-counted handle for shared ownership within one thread.
 Each holder holds its own handle, `share()` produces a new one, and the value is freed when the count reaches zero.
 See `STD-01`.
 
-### `@readonly` (annotation on methods and inner classes)
-Declares that a method does not modify its receiver, so it may be called on any receiver.
-A bare method may be called only on a mutable receiver, and only `@readonly` methods appear in the frozen view of a class.
-On a non-static inner class it makes the enclosing borrow shared.
-See `MUT-13`, `MUT-50`.
+### readonly
+`readonly()` is a static method on `laterita.lang.Intrinsics` that returns an immutable and therefore sharable borrow of its argument (`MUT-42`).
 
-### `readonly` (static method on `laterita.lang.Intrinsics`)
-Returns a shared borrow of its argument, the expression-position form of `@ro`.
-It is the mutability counterpart of `give`, and the original stays usable.
-See `MUT-42`.
+`@readonly` on a method declares that it may not modify its receiver, and is thus part of the `@ro` interface of its class (`MUT-13`, `MUT-30`).
+On a non-static inner class it makes the enclosing borrow shared (`MUT-50`).
 
 ### receiver mode
 How a method accesses `this`: read-only under `@readonly`, mutating when bare, and consuming under `@consuming`.
@@ -311,8 +306,7 @@ It covers the cases `Mutex<T>` does not, where the guarded state is spread over 
 See `STD-10`.
 
 ### `@ro` (annotation)
-Declares a variable or a type immutable.
-It is the only mutability annotation, and wherever it appears the object may not be modified through that variable.
+Declares a variable or a type read only (immutable).
 See `MUT-01`, `MUT-10`.
 
 ### safe / unsafe code
