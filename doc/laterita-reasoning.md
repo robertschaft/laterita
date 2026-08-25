@@ -33,14 +33,14 @@ A `.java`-mode Laterita source (COMP-06) is still a `.java` file: `javac` parses
 The Laterita compiler is the strict checker on top, attaching semantics to specific annotations and to unqualified calls of specific standard library static methods.
 As long as the source stays within the Java-compatible surface (COMP-06), nothing else about it has to change to remain parseable by the Java ecosystem.
 
-The cost is visual heft: `Buf f(@bound @fixed Buf b)` reads more loudly than `Buf f(fixed bound Buf b)` would have.
+The cost is visual heft: `Buf f(@bound @ro Buf b)` reads more loudly than `Buf f(ro bound Buf b)` would have.
 Annotations are the only modifier position Java reserves for third parties, so for a language whose primary value proposition is migrating Java code, that compatibility dominates the typographic preference.
 
 Expression-position concepts can't be annotations (`@give x` would not parse) so they live as static methods on `laterita.lang.Intrinsics`.
-With static import, call sites read `give(x)` and `fixed(x)` unqualified.
+With static import, call sites read `give(x)` and `readonly(x)` unqualified.
 To `javac` they are ordinary static method calls.
 
-Type inference reuses Java's `var`: a `var x = expr` is reassignable exactly as a Java `var`, and takes its declared type, `@fixed` included, from its initializer (MUT-40).
+Type inference reuses Java's `var`: a `var x = expr` is reassignable exactly as a Java `var`, and takes its declared type, `@ro` included, from its initializer (MUT-40).
 No separate keyword for type-inferred locals.
 
 ### Two source surfaces: `.lat` and `.java` (COMP-06, LAT)
@@ -97,7 +97,7 @@ Which input the result is bound to, answered by `@bound` naming the source (OWN-
 For a receiver that mode is visible as the `@readonly`-versus-plain distinction (MUT-13, MUT-15), a `@readonly` method lending `this` shared and a plain one taking it exclusively, the direct analog of Rust's `&self` versus `&mut self`.
 A design in which the only witness of shared-versus-exclusive is a private field, so that a reader of the signature cannot tell whether the returned object may mutate the borrowed source, fails OWN-00 and is rejected as a missing distinction in the signature, not patched by inspecting the implementation.
 The iterator API is the worked example.
-A single `@readonly(InheritFrom.RECEIVER) iterator()` returns one `Iterator<T>` whose borrow on the collection is read off the receiver it was called on, exclusive over a mutable collection and shared over a `@fixed` one (MUT-17), so the fact a caller must respect sits on the receiver's mutability and never only in the cursor's private fields.
+A single `@readonly(InheritFrom.RECEIVER) iterator()` returns one `Iterator<T>` whose borrow on the collection is read off the receiver it was called on, exclusive over a mutable collection and shared over a `@ro` one (MUT-17), so the fact a caller must respect sits on the receiver's mutability and never only in the cursor's private fields.
 
 ### Why methods declare consumption of `this` with `@consuming` (OWN-15)
 
@@ -122,7 +122,7 @@ The non-`@local` restriction (STAT-03) plugs the only remaining cross-thread lea
 
 ## Mutability (MUT-01 through MUT-71)
 
-### Why `@fixed` is the single mutability marker (MUT-01)
+### Why `@ro` is the single mutability marker (MUT-01)
 
 The right to modify an object is a capability that subtracts freely and cannot be added.
 Any variable can be handed on with the capability withdrawn, and no variable can acquire one the value never had, since nothing in a frozen class could honor it.
@@ -130,40 +130,55 @@ A marker shaped like that capability is negative: it may be written in every pos
 A positive marker has the opposite shape, an error case in every position and a redundant case in most, and it needs a negative companion anyway for the contexts where a default grants mutation.
 
 So Laterita spells the whole axis with one word.
-`@fixed` withdraws the right to modify the object wherever it appears, on a local variable, a field, a parameter, a return, a type argument, a type parameter, and a class declaration, and nothing grants it.
+`@ro` withdraws the right to modify the object wherever it appears, on a local variable, a field, a parameter, a return, a type argument, a type parameter, and a class declaration, and nothing grants it.
 The reader never computes which of two markers a position wants, and no position carries both.
 
 `final` is the model.
 Java already spells "this cannot change" with one word applied to the variable, absent by default, written where the author wants the restriction.
-Immutability of the object is the same shape of property on the other axis, so it takes the same shape of marker, and `final @fixed` reads as the two locks it is.
+Immutability of the object is the same shape of property on the other axis, so it takes the same shape of marker, and `final @ro` reads as the two locks it is.
 It also keeps ordinary-looking Java code meaning what a Java reader expects: a `class Point { int x; }` is mutable, and a `List<Item>` field handed to a method may be added to, exactly as in Java.
 
 The cost is that a read-only intent over a mutable class must be written.
 That cost lands on the API that publishes the guarantee, which is where a reader looks for it, and a written guarantee is stronger than a defaulted one.
 
-### Why `@fixed C` is the frozen view rather than a supertype (MUT-30, HIER-04)
+### Why the axis is spelled `@ro` and `@readonly` (MUT-01, MUT-13, MUT-42)
 
-`@fixed C` offers a subset of `C`'s surface: the methods that need no mutability and the fields read as `final` and `@fixed`.
-A value of `C` therefore satisfies every obligation a `@fixed C` variable imposes, and a `@fixed C` value satisfies fewer than a `C` variable demands.
+A variable through which the object may not be modified is read-only, and that is the word the languages carrying the same distinction use.
+C# writes `readonly` on a field and on a `readonly struct`, TypeScript on a property and in `Readonly<T>`, Objective-C on a property, and the Checker Framework as `@ReadOnly`.
+C++ and D spell it `const`, which Java reserves as a keyword (JLS 3.9), so no annotation may carry that name.
+A word taken from the assignment axis instead, `final` or `fixed`, names the property `final` already owns, and a class declaration marked with it reads as a class that cannot change rather than one whose instances offer no mutating surface.
+
+The axis is spelled at two lengths because it is read at two rates.
+The variable annotation stands in all eight positions of MUT-01, among them every type argument, where the token repeats per argument and per nesting level.
+The method modifier stands once per declaration, beside `public` and `static`, where a full word costs one line and reads as prose.
+`@ro` abbreviates the word `@readonly` spells out, so a reader who has learned either has learned the other, and they stay two tokens for the two claims they make (MUT-13).
+
+The intrinsic takes the long word, `readonly(x)` (MUT-42).
+Expression position carries no modifiers, so nothing there is mistakable for the method annotation, and a two-letter call does not read as an operation.
+
+### Why `@ro C` is the frozen view rather than a supertype (MUT-30, HIER-04)
+
+`@ro C` offers a subset of `C`'s surface: the methods that need no mutability and the fields read as `final` and `@ro`.
+A value of `C` therefore satisfies every obligation a `@ro C` variable imposes, and a `@ro C` value satisfies fewer than a `C` variable demands.
 Assignability has to follow that shape, so widening, argument passing, return covariance, and override variance can all be read off the subtyping the language already has.
 The views also have to be ordered like the types they view, or a frozen `ArrayList` would not fill a frozen `List` parameter and every read-only API over an interface would be unreachable from a subclass.
-With that ordering `@fixed Object` falls out as the top type rather than being asserted.
+With that ordering `@ro Object` falls out as the top type rather than being asserted.
 
-Calling `@fixed C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
+Calling `@ro C` an ordinary supertype of `C` would deliver the assignability and one contradiction with it.
 A supertype whose kind reached the subtype would make every class immutable through its own frozen view, and the mutable kind would have no inhabitants.
 An implemented interface is the shape that fits: it carries the members and the assignability, and it is what the frozen view actually is.
 A class takes its kind from its own declaration (MUT-10), so implementing a frozen view restricts it to a read-only surface without making it immutable.
 
 HIER-04 is the same relation read on declared class kinds, and it is what keeps MUT-15's check static.
-An immutable class satisfies `@fixed S` for each supertype `S` and not `S` itself, so a mutating method can never be reached through a widening or a cast on a value the program treats as frozen.
-Mutability originates at the construction of a mutable class and travels only through variables that carry no `@fixed`, so callability is decided from the static type and the variable alone, with no runtime tag.
+An immutable class satisfies `@ro S` for each supertype `S` and not `S` itself, so a mutating method can never be reached through a widening or a cast on a value the program treats as frozen.
+Mutability originates at the construction of a mutable class and travels only through variables that carry no `@ro`, so callability is decided from the static type and the variable alone, with no runtime tag.
 
 ### Why variable and object mutability are separate axes (MUT-40, MUT-20)
 
 A variable carries two capabilities that Java keeps apart: assigning it another value, and modifying the object it refers to.
 Laterita keeps them apart.
 `final` forbids assignment, exactly its Java meaning, so a Java local variable that is reassigned keeps working with no annotation and a Java `final` keeps its force.
-`@fixed` forbids modification.
+`@ro` forbids modification.
 Folding both onto one marker would make the common "mutable object, assigned once" pattern, `private final List<Item> items`, inexpressible without one marker undoing half of the other, and would put an annotation on every reassigned but unmodified local variable that Java writes bare.
 Keeping them separate lines each axis up with the word that already means it, and every combination is spellable with none redundant.
 
@@ -171,16 +186,16 @@ Assigning a variable modifies no object, so it needs no guard, and a variable th
 
 ### Why a local's borrow mode follows its uses (MUT-40, MUT-60)
 
-A local's mutability is a declaration fact, read exactly where a Java reader reads it: `Counter c = ...` is mutable because `Counter` is, `@fixed Counter c = ...` is not, and `String s = ...` is not because `String` is not.
+A local's mutability is a declaration fact, read exactly where a Java reader reads it: `Counter c = ...` is mutable because `Counter` is, `@ro Counter c = ...` is not, and `String s = ...` is not because `String` is not.
 A `var` local variable reads its declaration off its initializer, which is where `var` already gets everything else.
 Nothing about the local is derived from what later lines do to it, so a reader answers "can this line mutate `c`?" from `c`'s declaration and `Counter`'s, never by scanning the rest of the block.
 
 What the uses do decide is narrower and is not a mutability question at all: which *borrow* the local takes from its source.
 A mutable borrow is exclusive (OWN-03), so a local that took one merely by being of a mutable type would lock its source for its whole live range, and the ordinary shape of reading code, several names over one structure or a nested read of one collection, would stop compiling.
-MUT-60 classifies such a local as effectively fixed, so it borrows shared and coexists with any number of others, and a local variable that calls a mutating method, assigns through it, or hands the value to a mutable parameter takes the exclusive borrow on the line that needs it.
+MUT-60 classifies such a local as effectively read-only, so it borrows shared and coexists with any number of others, and a local variable that calls a mutating method, assigns through it, or hands the value to a mutable parameter takes the exclusive borrow on the line that needs it.
 That classification is not published, sits inside one body, and mirrors what the compiler already does for effective finality (MUT-20) and for closure capture modes (CLO-02).
 
-Splitting the two keeps `@fixed` on a local meaningful.
+Splitting the two keeps `@ro` on a local meaningful.
 It states and checks a restriction on the local itself rather than nudging a classification, so a later mutating use is a rejected demand on an immutable local, not a silently widened borrow.
 
 ### Why fields default to mutable (MUT-21, MUT-22)
@@ -191,7 +206,7 @@ Handing out a shared borrow into a complex object graph is safe for that reason 
 
 What a field marker adds on top is a restriction the class states about *itself*, and that is the rarer choice, so it is the written one.
 `private final List<Item> items` reads as it does in Java: the field may not be assigned again, and the list is the class's own to modify from its mutating methods.
-`final @fixed List<Item> items` is the class publishing that it never mutates the list at all, a promise Java cannot express and that is worth a word when it is true.
+`final @ro List<Item> items` is the class publishing that it never mutates the list at all, a promise Java cannot express and that is worth a word when it is true.
 Assigning a field is the orthogonal axis (MUT-22), reachable only through a mutable receiver, so an immutable class exposes no field mutation of either sort after construction and needs neither marker on its own fields (MUT-22).
 
 ### Why a parameter is always final (MUT-20)
@@ -204,17 +219,17 @@ Moving a `@take` parameter onward with `give` consumes the value and does not as
 ### Why a bare parameter lends mutably while a bare receiver does not (MUT-41, MUT-13)
 
 A parameter's mode is part of the published signature, so OWN-00 forbids inferring it the way a local's is inferred, and with a single negative marker the only available default is mutable.
-That is also the Java reading of a signature: a method handed a `List` may add to it, and a caller who wants a promise otherwise now has one to read, `@fixed`.
+That is also the Java reading of a signature: a method handed a `List` may add to it, and a caller who wants a promise otherwise now has one to read, `@ro`.
 Two consequences follow and are accepted.
-A read-only parameter whose type is a mutable class is written `@fixed`, and a bare parameter takes an exclusive borrow, so one variable cannot fill two bare parameters of the same call.
+A read-only parameter whose type is a mutable class is written `@ro`, and a bare parameter takes an exclusive borrow, so one variable cannot fill two bare parameters of the same call.
 Both are bounded by MUT-14: a borrow of an immutable class is always shared, so `String`, records, enums, and every other immutable type are untouched, and the exclusivity is felt only where a mutable surface actually exists.
 
 The receiver takes the same default, and pays a price for it.
 Every method has a receiver, so a mutating default demands a mutable receiver at every unmarked call site, and an immutable class can offer no method until each one is marked.
-That is why MUT-10 gives every method of an immutable class `@readonly` implicitly, the same way MUT-22 gives every one of its fields `final` and `@fixed`: the marker is written where a class has both kinds of method, and inferred where it can only have one.
+That is why MUT-10 gives every method of an immutable class `@readonly` implicitly, the same way MUT-22 gives every one of its fields `final` and `@ro`: the marker is written where a class has both kinds of method, and inferred where it can only have one.
 
 The alternative, a positive `@mutating` marker on the mutating minority, buys a cheaper immutable class and costs the language its one polarity.
-Every other marker in Laterita withdraws (`final`, `@fixed`, `@readonly`, `@local`), and a reader who has learned that an unmarked thing is unrestricted should not meet one position where an unmarked thing is restricted.
+Every other marker in Laterita withdraws (`final`, `@ro`, `@readonly`, `@local`), and a reader who has learned that an unmarked thing is unrestricted should not meet one position where an unmarked thing is restricted.
 The cost is real and lands on ordinary accessors, which is why MUT-71 reports every method that could carry `@readonly` and does not.
 
 ### Why methods declare their receiver effect in the signature (MUT-13)
@@ -223,7 +238,7 @@ A method's effect on its receiver answers a question Java developers have always
 Today you read the body or hope the documentation is accurate.
 With `@readonly` in the signature, the compiler knows and the caller knows.
 By MUT-15 a method that is not `@readonly` is only callable on a mutable receiver, so the marker is a visibility-like predicate on the caller's API surface, not a description of the body the caller has to reason about.
-It is a method annotation rather than a reuse of the variable annotation because the two make different claims: `@fixed` states what a *variable* may do, and `@readonly` states a *method's* effect on whatever receiver it is given.
+It is a method annotation rather than a reuse of the variable annotation because the two make different claims: `@ro` states what a *variable* may do, and `@readonly` states a *method's* effect on whatever receiver it is given.
 
 ### Why a borrow of an immutable class is always shared (MUT-14)
 
@@ -233,9 +248,9 @@ Making such borrows shared is what lets any number of readers coexist over one i
 
 ### Why mutability is transitive (MUT-15)
 
-If a shared or `@fixed` variable could call mutating methods, immutability would mean nothing.
+If a shared or `@ro` variable could call mutating methods, immutability would mean nothing.
 The transitivity rule is what makes "this object is read-only" a real guarantee, and it is what lets every other mutability default be chosen for ergonomics rather than for safety.
-It also means handing someone a `@fixed` borrow into a complex object graph is genuinely safe: they cannot change anything, anywhere, through it.
+It also means handing someone a `@ro` borrow into a complex object graph is genuinely safe: they cannot change anything, anywhere, through it.
 This is one of the largest correctness wins in the language, and it falls out of getting one rule right.
 
 ### Why `Cell<T>` is the only escape hatch (MUT-16)
@@ -251,18 +266,18 @@ A non-static inner class is a named closure over its enclosing instance, so it b
 A closure infers its capture mode from the body (CLO-02), but an inner class cannot: it is a nominal, storable type, and the borrow it takes on its enclosing instance is part of the contract a holder relies on, so OWN-00 requires that borrow's mode to sit on the declaration rather than be recovered from a body.
 That is why the mode is written on the declaration instead of inferred.
 
-The mode carries the same default as every other position, mutable unless `@fixed` withdraws it (MUT-01).
+The mode carries the same default as every other position, mutable unless `@ro` withdraws it (MUT-01).
 Marking the mutable case instead would be a positive mutability marker, the one shape this language spells nowhere else, and it would read as a grant on a declaration where every other annotation withdraws.
-The cost is that an inner class which only reads its enclosing instance locks it until `@fixed` is written, the same cost a bare parameter carries (MUT-41) and the same diagnostic points at it (MUT-70).
+The cost is that an inner class which only reads its enclosing instance locks it until `@ro` is written, the same cost a bare parameter carries (MUT-41) and the same diagnostic points at it (MUT-70).
 
 The mechanism is deliberately not new.
-The implicit enclosing reference is one of the ordinary field forms of MUT-22, `final @borrow` by default and `final @fixed @borrow` under `@fixed`, so `@bound` instances (OWN-09), exclusivity (OWN-03), and transitive reach all fall out of rules already in force.
-A write to an outer level travels the chain of enclosing references, and MUT-14 rejects it at the first link that is only shared, which is the first enclosing level that carries `@fixed`.
+The implicit enclosing reference is one of the ordinary field forms of MUT-22, `final @borrow` by default and `final @ro @borrow` under `@ro`, so `@bound` instances (OWN-09), exclusivity (OWN-03), and transitive reach all fall out of rules already in force.
+A write to an outer level travels the chain of enclosing references, and MUT-14 rejects it at the first link that is only shared, which is the first enclosing level that carries `@ro`.
 
-Folding the enclosing borrow onto the class's own `@fixed` costs one combination: a mutable inner class that always shares its enclosing instance.
-That shape is reached by constructing the inner instance from a shared receiver, either through `fixed(outer)` (MUT-42) or through the inherited form (MUT-51), so no separate marker is minted for it.
+Folding the enclosing borrow onto the class's own `@ro` costs one combination: a mutable inner class that always shares its enclosing instance.
+That shape is reached by constructing the inner instance from a shared receiver, either through `readonly(outer)` (MUT-42) or through the inherited form (MUT-51), so no separate marker is minted for it.
 
-The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@fixed Outer` or bare `Outer`, is rejected.
+The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@ro Outer` or bare `Outer`, is rejected.
 It expresses the same borrow more heavily and discards the direct-field access that is the reason to write an inner class at all.
 Declaring the borrow on the class keeps both the access and the OWN-00 guarantee.
 
@@ -286,18 +301,18 @@ Laterita is a new language and is free to open the path, and it bounds the cost 
 The form stays legible under OWN-00 because the receiver's mutability is a compile-time fact, so a caller reads which variant it gets from the receiver it supplies, and monomorphization emits the two variants like any generic with no runtime dispatch.
 The selector is a named `InheritFrom` enum rather than an untyped flag so the same inheritance can later extend to the other axes, `@own(InheritFrom.RECEIVER)` among them, without inventing a second vocabulary.
 
-### Why the assignment cases resolve as they do, and why `fixed` exists (MUT-31, MUT-42)
+### Why the assignment cases resolve as they do, and why `readonly(x)` exists (MUT-31, MUT-42)
 
 Mutability subtracts freely and cannot be added, so the four cases of MUT-31 are not policy but the only sound reading.
-`@fixed` on a mutable value is a downgrade, `@fixed` on a value that is already immutable removes nothing, and a mutable variable assigned an immutable value is the one case that has to fail, because it would have to add a capability the value never had.
+`@ro` on a mutable value is a downgrade, `@ro` on a value that is already immutable removes nothing, and a mutable variable assigned an immutable value is the one case that has to fail, because it would have to add a capability the value never had.
 Accepting the redundant case rather than rejecting it matches `final`'s treatment and lets generated or defensive code state a property without the compiler second-guessing whether it was needed.
 
-A variable's kind comes from its declared type as well as from `@fixed`, which is what keeps that failing case rare and predictable.
-`String` is immutable, so `String s` is an immutable variable and `@fixed String s` declares the same one, and a variable can only be mutable where its type could honor mutation.
-Without that reading every ordinary `String`, record, and primitive position would be a mutable variable assigned an immutable value, so the one failing case would swallow most of the language and `@fixed` would have to be written on declarations where it withdraws nothing.
+A variable's kind comes from its declared type as well as from `@ro`, which is what keeps that failing case rare and predictable.
+`String` is immutable, so `String s` is an immutable variable and `@ro String s` declares the same one, and a variable can only be mutable where its type could honor mutation.
+Without that reading every ordinary `String`, record, and primitive position would be a mutable variable assigned an immutable value, so the one failing case would swallow most of the language and `@ro` would have to be written on declarations where it withdraws nothing.
 It also carries into generics for free: a use of `T` substituted by an immutable argument is an immutable variable, with nothing generic-specific said about it (TARG-03).
 
-`fixed(x)` is the expression-position form of the same downgrade, standing to `@fixed` as `give` stands to `@take`: the annotation freezes a declaration, the intrinsic freezes an expression.
+`readonly(x)` is the expression-position form of the same downgrade, standing to `@ro` as `give` stands to `@take`: the annotation freezes a declaration, the intrinsic freezes an expression.
 It earns its place because the downgrade is most often wanted mid-expression, on the source of a loop or a call argument, where no declaration exists to annotate.
 It returns a shared borrow rather than a copy, so the original stays usable and several frozen views coexist.
 
@@ -327,17 +342,17 @@ The two exclusions fall out of the same reading.
 A parameter of immutable declared type demands nothing to withdraw (MUT-31), and an override does not choose its own parameter modes, which HIER-05 takes from the method it implements.
 
 It stays a warning because the declaration may be deliberate.
-An interface method, a hook a subclass will override with a mutating body, or a signature held stable for source compatibility all demand mutability the current body does not use, and an error would force `@fixed` onto declarations whose author has a reason not to write it.
+An interface method, a hook a subclass will override with a mutating body, or a signature held stable for source compatibility all demand mutability the current body does not use, and an error would force `@ro` onto declarations whose author has a reason not to write it.
 A warning also keeps the outside view intact: a Java library ported unchanged still compiles, and the diagnostic points at each place where the port can be improved.
 
 ### Why immutability is the marked class kind (MUT-10 through HIER-04)
 
-`@fixed` on a variable (MUT-01) answers "can *this variable* change the object?", not "can the object change *at all*?".
+`@ro` on a variable (MUT-01) answers "can *this variable* change the object?", not "can the object change *at all*?".
 A reader classifying a type wants the second answer from its declaration line, and only a class-level marker supplies it.
 
 The marker is the immutable kind rather than the mutable one for the same reason the marker on a variable is negative.
 Immutability is the promise, mutability the absence of one, and a promise is what a declaration exists to publish.
-`@fixed class Money` tells a reader and the compiler that no instance ever changes, which is a fact with consequences everywhere the type appears: no mutating method, fields `final` and `@fixed`, borrows always shared (MUT-14), and copy-for-borrow substitution permitted (MUT-12).
+`@ro class Money` tells a reader and the compiler that no instance ever changes, which is a fact with consequences everywhere the type appears: no mutating method, fields `final` and `@ro`, borrows always shared (MUT-14), and copy-for-borrow substitution permitted (MUT-12).
 An unmarked class publishes none of that and is an ordinary Java class.
 
 This runs with the Valhalla value-class proposal rather than against it, where the identity class is the unmarked default and `value class` is the opt-in, and it keeps a Laterita class declaration meaning what the same line means in Java.
@@ -356,22 +371,22 @@ Every method of an immutable interface being `@readonly` lets MUT-15's static ch
 
 ### Why the kind is declared and the default is mutable (MUT-10, HIER-02)
 
-`@fixed` on a declaration says one thing: every method there is `@readonly`.
+`@ro` on a declaration says one thing: every method there is `@readonly`.
 It is a claim about the type's own surface, not about the objects that flow through it, and nothing else needs to be inferred from it.
-An inherited kind is rejected: a subclass that could not add a mutating method would make `@fixed` a commitment across the whole hierarchy, and it would leave the frozen view of MUT-30 needing an exception, since a class implementing one would inherit immutability from it.
+An inherited kind is rejected: a subclass that could not add a mutating method would make `@ro` a commitment across the whole hierarchy, and it would leave the frozen view of MUT-30 needing an exception, since a class implementing one would inherit immutability from it.
 What a holder of an immutable type actually relies on is delivered elsewhere: the variable is immutable (MUT-01), so it reaches only `@readonly` methods, and HIER-05 stops an override taking `@readonly` away.
 
 Mutability is not a guarantee, so nothing has to inherit it and nothing does.
 An unmarked class is mutable because that is what "published no immutability promise" means, and `Object`, which publishes none, is an ordinary mutable class.
 A neutral root, a third kind belonging to one class, is rejected: it adds a case to every rule that reads a supertype's kind and buys only a different default for classes extending `Object` directly.
-`@fixed Object` names the frozen view of the root (MUT-30), which is the top type and the implicit type-parameter bound (TARG-03), so nothing is lost by the root being an ordinary class.
+`@ro Object` names the frozen view of the root (MUT-30), which is the top type and the implicit type-parameter bound (TARG-03), so nothing is lost by the root being an ordinary class.
 
 The root's own methods take the top type rather than the mutable one.
-`equals` compares, so it needs no mutability from its argument, and declaring it `equals(@fixed Object)` lets every value fill it, immutable arguments included.
+`equals` compares, so it needs no mutability from its argument, and declaring it `equals(@ro Object)` lets every value fill it, immutable arguments included.
 `equals(Object)` would demand a mutable argument for a read, which no immutable value could satisfy, so `record.equals(otherRecord)` would not compile.
 
 An immutable class extending a mutable one (HIER-03) is the useful corner the rules leave open.
-It inherits the mutable API but cannot call it (MUT-15), so `@fixed class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
+It inherits the mutable API but cannot call it (MUT-15), so `@ro class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
 
 ### Why default assignment is a borrow (OWN-02)
 
@@ -438,7 +453,7 @@ Everything in destruction's shape follows from confining the feature to that job
 Destruction is gated like a consuming move, not like a mutation.
 It ends the object's lifetime (DES-02), so any borrow of it still live at that point would outlive its source, which LIFE-01 rejects and OWN-03 already prevents while a mutable borrow holds the owner frozen.
 The gate is exclusivity, not mutability.
-Consuming an object is not writing through it, so destruction requires ownership but never mutability, and a `@fixed` owned value is taken apart exactly as a mutable one is.
+Consuming an object is not writing through it, so destruction requires ownership but never mutability, and a `@ro` owned value is taken apart exactly as a mutable one is.
 
 Per-field move state is the enabling bookkeeping.
 The compiler must know which fields are still alive at every point, both for use-after-move detection and for emitting the right drops on the destruction path and on exception unwind (DROP-04, EXC-03).
@@ -472,13 +487,13 @@ Field-granular *borrow* capture is unaffected: a Read or Mutate closure (CLO-01)
 
 ### Why ownership annotations are not part of overload identity (OWN-13)
 
-Two same-name methods that differ only in annotations Laterita introduces (`@take`, `@fixed`, `@bound` on a parameter, `@readonly`, `@consuming` on the method) are a duplicate declaration.
+Two same-name methods that differ only in annotations Laterita introduces (`@take`, `@ro`, `@bound` on a parameter, `@readonly`, `@consuming` on the method) are a duplicate declaration.
 Three reasons reinforce one answer.
 
 *The Java surface forbids it.* COMP-06 requires the Java-compatible surface to parse as annotated `.java` under `javac`, and `javac` ignores annotations when computing the overload signature.
 A rule that admitted "differs only in `@take`" overloads would be unimplementable in the surface it lives in: `javac` would reject the pair as duplicate methods before any Laterita pass saw them.
 
-*There is no caller-side disambiguator.* For `@fixed` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates: the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate.
+*There is no caller-side disambiguator.* For `@ro` and the receiver-mode annotations, a caller has no syntactic handle to pick between two same-named candidates: the choice would have to fall on a tie-breaker, and a tie-breaker that silently flips ownership behavior is exactly the invisibility the explicit annotations exist to eliminate.
 `give(...)` exists for `@take` on parameters, but lifting it into overload resolution makes resolution depend on a call-site marker whose primary job (OWN-07) is to mark a move, overloading the marker overloads the rule.
 
 *Same-name multi-shape is not the load-bearing case.* The shapes that genuinely need to coexist (borrow vs. consume on the same operation, shared-receiver vs. consuming-receiver) are better served by distinct names, because the names then read at the call site.
@@ -490,7 +505,7 @@ That is the idiom Laterita inherits, just without Rust's "type signature is the 
 #### Recommendation: mutability and `@take` are caller-side work
 
 When a method's body needs mutable access to a parameter or needs to consume it, the signature should leave the parameter bare or declare `@take`, and the caller does the work of providing it, by holding a mutable variable, by surrendering ownership with `give(...)`, or by cloning before the call.
-A method whose signature is `f(@fixed K)` should not internally clone to do something the signature didn't ask for.
+A method whose signature is `f(@ro K)` should not internally clone to do something the signature didn't ask for.
 If the body needs mutability or ownership, the signature should say so.
 
 This is non-normative, methods sometimes legitimately clone internally (defensive copies, caching layers), and the compiler should not police every internal `.clone()`.
@@ -500,11 +515,11 @@ The default mental model is the goal: *the cost the caller can read from the sig
 
 One principle drives every row of HIER-05's table: an override may **demand less** of its callers and **guarantee more** to them, never the reverse, the same shape as Java's `throws` relaxation applied uniformly across every Laterita annotation.
 
-On the demand side (parameters, receiver), an override may add `@fixed` to a parameter (override needs only shared access, and a caller holding a mutable variable still qualifies), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), add `@readonly` (override no longer needs a mutable receiver), or weaken `@consuming` to `@readonly` or drop it (the override does not need ownership of the receiver).
+On the demand side (parameters, receiver), an override may add `@ro` to a parameter (override needs only shared access, and a caller holding a mutable variable still qualifies), drop `@bound` on a parameter jointly with the return (override no longer needs a lifetime source from the caller), add `@readonly` (override no longer needs a mutable receiver), or weaken `@consuming` to `@readonly` or drop it (the override does not need ownership of the receiver).
 Reversing any of these tightens the call-site demand, so callers with the weaker form the base contract promised to accept would be rejected.
-Because the mutability marker is negative, the direction reads as *adding* `@fixed` where a positive marker would read as dropping, and the underlying move is the same one: demand less.
+Because the mutability marker is negative, the direction reads as *adding* `@ro` where a positive marker would read as dropping, and the underlying move is the same one: demand less.
 `@take` on a parameter is the one exception: it is identity, not strength, and either dropping or adding it breaks callers using the inherited type.
-Class-level `@fixed` (HIER-03) is the same shape at the class level, where an immutable subclass of a mutable parent drops the receiver demand for inherited mutating methods.
+Class-level `@ro` (HIER-03) is the same shape at the class level, where an immutable subclass of a mutable parent drops the receiver demand for inherited mutating methods.
 
 On the guarantee side, `@bound` on the return is covariant in strength: an override may return an unconstrained value where the base promised one bounded by `this` (OWN-18).
 An unconstrained return is the stronger guarantee, since a caller expecting a value bounded by the receiver can always use one bounded by nothing.
@@ -758,7 +773,7 @@ The mutable receiver is thus inert on an immutable class and supplies the cleanu
 This mirrors Rust, where a type with a non-trivial destructor cannot be `Copy`: a type that must mutate during cleanup is a mutable class, not an immutable class.
 
 Field-level rules still apply.
-The mutable receiver only unlocks what any mutable receiver gets (MUT-22, MUT-15): reassignment of non-`final` fields and mutation through fields that carry no `@fixed`, so a `final` field is no more writable in `onDrop()` than in any mutating method.
+The mutable receiver only unlocks what any mutable receiver gets (MUT-22, MUT-15): reassignment of non-`final` fields and mutation through fields that carry no `@ro`, so a `final` field is no more writable in `onDrop()` than in any mutating method.
 `onDrop()` is an ordinary method body in every respect except that its receiver mode is fixed by the teardown phase rather than declared.
 
 ### Why borrow reads in `onDrop()` are gated, and generics count as borrows (DROP-11)
@@ -1003,7 +1018,7 @@ FN-02 keeps them as distinct types, the user picks which one to use based on whe
 ### Why structural rather than nominal (FN-01)
 
 A small set of nominal closure interfaces, parallel to Java's `Function`, `BiFunction`, `Consumer`, etc., is the obvious starting point: leaving only their names to settle.
-But once parameter modes (`@take`, `@fixed`, `@bound`) enter the type system, the count explodes: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01, order of 100 nominal interfaces per arity, before counting primitive specializations.
+But once parameter modes (`@take`, `@ro`, `@bound`) enter the type system, the count explodes: a binary shape has roughly 3 input modes per parameter, several return-bound configurations, and 3 receiver modes from CLO-01, order of 100 nominal interfaces per arity, before counting primitive specializations.
 No naming convention survives that.
 
 The anonymous structural form resolves the explosion at the source.
@@ -1012,7 +1027,7 @@ The compiler compares structurally, the same way `int[]` and `String[]` are diff
 No standard library zoo, no naming committee, no question of which canonical interface a value targets.
 
 The cost is one new kind of type expression in the grammar.
-Laterita's type system is already growing modifier-bearing positions (`@take`, `@fixed`, `@bound`), so adding a type form that aggregates those positions is a smaller step than it would be in plain Java.
+Laterita's type system is already growing modifier-bearing positions (`@take`, `@ro`, `@bound`), so adding a type form that aggregates those positions is a smaller step than it would be in plain Java.
 
 The trade-off is that source-level `import` of an anonymous functional interface isn't possible: there is no name to import.
 We accept this.
@@ -1102,7 +1117,7 @@ Adopting Java's capture rule keeps every closure form expressible on both surfac
 
 A functional-interface value is an object with one method, so two questions arise for it as for any object: what does invoking the method require of the caller, and how is the object itself held?
 The first is the *call mode*, and it is nothing more than the SAM's receiver mode, so it reuses `@readonly` (MUT-13) and `@consuming` (OWN-15) with no new vocabulary.
-The second is the *variable mode*, ordinary ownership and `@fixed`, identical to every other variable.
+The second is the *variable mode*, ordinary ownership and `@ro`, identical to every other variable.
 
 Fusing the two into one three-valued mode on the variable is rejected: it made one everyday shape inexpressible, an object that *owns* a callback and invokes it many times.
 Ownership and the bound on a repeatedly-invocable closure were forced onto the same `@take` and mutability token, so "owned, multi-call" had no spelling.
@@ -1123,12 +1138,12 @@ Keeping the type-side rules (FN) and value-side rules (CLO) separate keeps the t
 
 ### Why call-mode override variance is covariant in strength (CLO-05)
 
-HIER-05 makes the mutability marker contravariant for ordinary parameters: an override may *add* `@fixed` because the override demands less of the caller.
+HIER-05 makes the mutability marker contravariant for ordinary parameters: an override may *add* `@ro` because the override demands less of the caller.
 CLO-05 carries the same principle to the call-mode axis of a functional-interface parameter, but in the *opposite syntactic direction*: an override may *strengthen* the call mode, from `@readonly` to bare to `@consuming`, and never weaken it.
 Both rules are the same principle (*an override must continue to accept every value the inherited declaration accepted*) applied to two different axes.
 
 For an ordinary parameter `Buf b`, the bare form names a capability the method reserves over the caller's value.
-Adding `@fixed` reduces what the function will do, and callers continue to work because a mutable borrow degrades to a shared one on demand.
+Adding `@ro` reduces what the function will do, and callers continue to work because a mutable borrow degrades to a shared one on demand.
 Contravariance is sound.
 
 For such a parameter, the call-mode prefix on the type determines which closures fit (CLO-04).
@@ -1139,7 +1154,7 @@ A once-call parameter adds consume closures.
 Weakening it would reject closures the inherited contract said it would accept.
 So overrides may strengthen the call mode, never weaken it.
 
-The two axes split cleanly: the call-mode prefix on the functional-interface type (FN-01) decides which closures are accepted, and the variable-mode annotations on the parameter (`@fixed`, `@take`, `@bound`) carry HIER-05 semantics, `@fixed` contravariant, `@take` invariant.
+The two axes split cleanly: the call-mode prefix on the functional-interface type (FN-01) decides which closures are accepted, and the variable-mode annotations on the parameter (`@ro`, `@take`, `@bound`) carry HIER-05 semantics, `@ro` contravariant, `@take` invariant.
 Acceptance-set widening lives where it belongs (on the type expression that determines acceptance), HIER-05's direction lives where it belongs (on the parameter annotation), and each axis follows the rule appropriate to its meaning with no inversion to memorize.
 
 ### Why closures carry capture lifetimes (CLO-06)
@@ -1180,8 +1195,8 @@ Laterita supports the whole stable set natively and unchanged, so a Java-plus-Lo
 Supporting every annotation, even the ones a `record` or immutable class already covers, is the deliberate choice: a migration that silently drops `@Data` or rejects `@Synchronized` is a migration that fails, and the cost of accepting a redundant generator is near zero.
 
 The model absorbs the apparent conflicts rather than rejecting them, because a Lombok annotation may add the Laterita annotation it implies.
-A generated setter mutates, so `@Setter` needs a class that is not `@fixed`, which is what an unmarked Java bean already is, and the bean keeps its meaning with no source edit.
-`@Value` is the one that adds a Laterita annotation: it makes the class `@fixed` (MUT-10), which is what its Lombok meaning promises, while `@Data` needs only the ordinary mutable default.
+A generated setter mutates, so `@Setter` needs a class that is not `@ro`, which is what an unmarked Java bean already is, and the bean keeps its meaning with no source edit.
+`@Value` is the one that adds a Laterita annotation: it makes the class `@ro` (MUT-10), which is what its Lombok meaning promises, while `@Data` needs only the ordinary mutable default.
 `@NonNull` is already the default and is accepted as a no-op rather than a duplicate spelling.
 `@Synchronized` reproduces its private-lock semantics through `ReentrantLock` (STD-10) instead of the absent keyword, which is what Lombok itself does on the JVM, only with an explicit lock object.
 `@SneakyThrows` is a no-op while EXC-05 keeps every exception unchecked, and regains its purpose if OQ-22 restores the checked distinction.
@@ -1248,7 +1263,7 @@ Bulk construction is `StringBuilder`'s job.
 Secret-zeroing isn't actually solved by `String.clear()` because copies have typically already flowed elsewhere: a dedicated `Secret` type that forbids copy and zeroes on drop is the right answer, outside `String`.
 The remaining motivation, narrow-domain in-place edits, does not justify a surface of mutating methods that the rest of the design pushes against.
 
-A variable or field may still be *declared* `@fixed String`, since `@fixed` is general (MUT-01) and rejecting it on one type would be a special case, but it withdraws nothing.
+A variable or field may still be *declared* `@ro String`, since `@ro` is general (MUT-01) and rejecting it on one type would be a special case, but it withdraws nothing.
 `String` has no mutating method, and reassignment comes from the variable not being `final` (MUT-20, MUT-22), not from the modification axis.
 
 ### Why default receiver mode is borrow (STR-08)
@@ -1309,14 +1324,14 @@ Callers needing a read-only fold over chunks would want a different API shape (`
 
 ### Why `MutableConsumer` is a sibling of `Consumer`, not a subtype
 
-`MutableConsumer<T>::accept(@bound T)` narrows `Consumer<T>::accept(@fixed T)`'s parameter: a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for an override that drops `@fixed` from a parameter.
+`MutableConsumer<T>::accept(@bound T)` narrows `Consumer<T>::accept(@ro T)`'s parameter: a contravariance violation if declared as a subtype, the same shape HIER-05 forbids for an override that drops `@ro` from a parameter.
 The reverse direction (`Consumer` extends `MutableConsumer`) would be sound but `Consumer` is in `java.util.function` and not modifiable.
 So the two stand as siblings.
 Lambda literals target whichever the surrounding signature names.
 
-### Why type arguments admit `@borrow` and `@fixed` but not `@take` (TARG-01, TARG-02, TARG-03)
+### Why type arguments admit `@borrow` and `@ro` but not `@take` (TARG-01, TARG-02, TARG-03)
 
-A type argument may carry `@borrow` and `@fixed`, but not `@take`.
+A type argument may carry `@borrow` and `@ro`, but not `@take`.
 
 `@take` is a parameter mode, describing a transfer of ownership *into a parameter* at a call site, and not a property a value carries.
 As a type argument it would describe nothing: `Pair<@take K, @take V>` says nothing, because there is neither a call nor a parameter.
@@ -1326,14 +1341,14 @@ Ownership of a generic structure's contents is carried by the structure's own va
 An instance that stores a `@borrow`-substituted argument can only be produced as a `@bound` value, with lifetime per LIFE-02/TARG-04, and no struct-level lifetime parameters are needed.
 
 A `T` value's mutability is not a generic-specific rule, so TARG-03 does not give one.
-An owned `T` follows its variable (MUT-40) and the type-parameter rule (TARG-03), a `@borrow` `T` is a mutable borrow unless `@fixed` makes it shared, and `@fixed` freezes a usage.
+An owned `T` follows its variable (MUT-40) and the type-parameter rule (TARG-03), a `@borrow` `T` is a mutable borrow unless `@ro` makes it shared, and `@ro` freezes a usage.
 Treating a generic as a container that holds and lends elements would over-generalize: a generic that *produces* a `T` by ownership, such as a `Generator<T>` calling a held supplier, hands the caller an owned value whose mutability is the caller's, so an immutable generator can still produce a mutable `T`.
 Rust draws the same line: a value produced through `&self` is owned by the caller, while only a `&mut` borrow of data stored in the receiver needs `&mut self`.
 
 Even the aliasing case adds no generic-specific rule.
 A mutable borrow of a held value re-borrows the whole structure (OWN-03, MUT-15), exactly the receiver-reborrow pattern `splitAt` already uses (ARR-01), so it is available only while the structure is held mutably, the same as drawing a mutable borrow from any holder.
 Through a shared structure a borrow of a held value is shared, so two coexisting shared borrows can never each draw a mutable borrow of the same held value, and a local owning its structure satisfies the exclusivity through the classification of MUT-60.
-A `@borrow` held value keeps `@fixed` as a meaningful marker that distinguishes a shared borrow from a mutable one, which is why a `@borrow` type argument may still carry it.
+A `@borrow` held value keeps `@ro` as a meaningful marker that distinguishes a shared borrow from a mutable one, which is why a `@borrow` type argument may still carry it.
 A genuinely shared structure whose held values mutate through shared borrows still uses `Cell<T>` (STD-05), with the `@unsafe` cost visible at the storage site.
 
 ### Why the bound decides admission and the argument decides mutability (TARG-03)
@@ -1343,7 +1358,7 @@ Which arguments may be substituted is the bound's question, and Java already ans
 What a usage of `T` may do is the usage's question, and after substitution a usage is an ordinary position whose declared type is the argument, so MUT-31 answers it with no generic-specific rule: `Box<Counter>` holds a mutable element, `Box<String>` an immutable one.
 
 Keeping them apart is what makes `Box<String>` compile.
-The implicit bound has to be the top type `@fixed Object`, because a mutable `Object` bound would admit only mutable arguments and reject every immutable one, and an unconstrained parameter that cannot hold a `String` is not a container.
+The implicit bound has to be the top type `@ro Object`, because a mutable `Object` bound would admit only mutable arguments and reject every immutable one, and an unconstrained parameter that cannot hold a `String` is not a container.
 A written bound then narrows admission exactly as far as the body needs: `class Registry<T extends Counter>` calls `inc()` on a `T`, so it must admit only arguments that carry `inc()`, and the mutable bound says so.
 
 The body stays checkable against the bound alone, which is what keeps OWN-00 intact for generics.
@@ -1351,10 +1366,10 @@ A body may name the bound's mutating methods and nothing else, so a bound with n
 The mutability that reaches a *caller* is a different matter and travels the ordinary routes: from the variable that holds the container (MUT-14) and, at a lending method, from `@readonly(InheritFrom.RECEIVER)` (MUT-17).
 That is why an unconstrained `Box<T>` can lend a mutable `Counter` while its own body could not have mutated one.
 
-`@fixed` at the declaration is then a pure abbreviation, mirroring how `@own` (TARG-06) is a pure restriction: `class Foo<@fixed T extends B>` writes `@fixed T` at each usage and leaves `B` alone, so a value-only container states its intent once instead of at ten usages.
+`@ro` at the declaration is then a pure abbreviation, mirroring how `@own` (TARG-06) is a pure restriction: `class Foo<@ro T extends B>` writes `@ro T` at each usage and leaves `B` alone, so a value-only container states its intent once instead of at ten usages.
 Keeping the two orthogonal is what makes all six combinations of "what is admitted" and "what a usage may do" spellable, including the two a welded marker loses: a bound that admits both kinds with usages following the argument, and a mutable bound with every usage frozen.
-Folding a bound widening into the same marker would tie a body-side abbreviation to a caller-side admission rule, leaving "admits only mutable arguments, usages frozen" unspellable and making `class Foo<@fixed T>` admit arguments a reader deduced from the bound.
-Because `@fixed` only withdraws a capability, it requires nothing of its holder, the opposite of the bare form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-15).
+Folding a bound widening into the same marker would tie a body-side abbreviation to a caller-side admission rule, leaving "admits only mutable arguments, usages frozen" unspellable and making `class Foo<@ro T>` admit arguments a reader deduced from the bound.
+Because `@ro` only withdraws a capability, it requires nothing of its holder, the opposite of the bare form, whose mutable borrow of a held value needs an exclusive holder (OWN-03, MUT-15).
 
 That leaves nothing for a third marker to do.
 A positive marker on a bound (`T extends @mut Counter`) restates what a mutable bound already means, and a third "either kind" marker (`<@fixable T extends Counter>`) asks the argument's own mutability to reach the body, which the check-once discipline forbids: a body proved sound against one bound cannot also be proved sound against a stronger reading of the same parameter.
@@ -1420,11 +1435,11 @@ Folding the segmented-slice representation into `T[]` itself (closer to (c), but
 The pair shape rides on a single general-purpose `Pair<L, R>` class (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 (`Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow T[], @borrow T[]>` for the in-thread borrowed return), so any future API returning a two-tuple can reuse the same class rather than minting a new domain type.
 
 `Pair` is a class rather than a record because `splitAt` must hand back halves that can be mutated independently, and a record cannot carry that.
-A record is immutable by construction (MUT-11), so its fields are `@fixed` (MUT-22) and every borrow drawn through it is shared (MUT-14).
+A record is immutable by construction (MUT-11), so its fields are `@ro` (MUT-22) and every borrow drawn through it is shared (MUT-14).
 Keeping records uniformly immutable is worth more than reusing the record syntax for one standard library type, so the pair is an ordinary mutable class whose components take the mutability their producer supplies.
 
 Which mutability that is comes from `@readonly(InheritFrom.RECEIVER)` on `splitAt` (MUT-17), the same mechanism that collapses read and update iteration onto one `iterator()` (STD-08).
-A mutable receiver yields a pair lending mutable halves and a `@fixed` receiver one lending read-only halves, so a second pair type buys nothing.
+A mutable receiver yields a pair lending mutable halves and a `@ro` receiver one lending read-only halves, so a second pair type buys nothing.
 The `.java` mirror still spells the two forms separately (`splitAt` and `splitMutableAt`, ARR-02), because a static method has no receiver whose mutability a return could inherit.
 Extending `InheritFrom` onto the `@bound` parameter would carry the instance form's single declaration into the mirror, but it would add an inheritance axis to the language for one signature, where two names cost nothing and follow the `splitAt` / `splitOff` precedent already set by OWN-13.
 Making the components `public final` fields rather than record components also lets `splitOff`'s owning halves be destructed on the `.java` surface (OWN-06), where the record form reached them only through the `.lat`-only component spelling of LAT-08.

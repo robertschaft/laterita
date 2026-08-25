@@ -33,11 +33,11 @@ public interface Iterable<T> {
      *
      * <p>{@code @readonly(InheritFrom.RECEIVER)}: the cursor inherits this
      * collection's mutability (MUT-17).
-     * Over a mutable collection it is a mutable cursor holding an
-     * exclusive borrow, and {@code next()} lends {@code @bound T}.
-     * Over a {@code @fixed} collection it is a read cursor holding a shared
-     * borrow, and {@code next()} lends {@code @fixed @bound T}, so several
-     * coexist (OWN-03).
+     * Over a mutable collection it is a mutable cursor holding an exclusive
+     * borrow, and {@code next()} lends {@code @bound T}.
+     * Over a {@code @ro} collection it is a read cursor holding a shared
+     * borrow, and {@code next()} lends {@code @ro @bound T}, so several coexist
+     * (OWN-03).
      * There is no separate mutable factory: the two forms are the
      * monomorphizations of this one method.
      */

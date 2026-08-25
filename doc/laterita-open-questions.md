@@ -31,7 +31,7 @@ Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 - What mutability does a pattern variable carry?
 MUT-40 reads a local variable's mutability off its declared type, and for `var` off its initializer, but a pattern variable has neither a written type nor an initializer.
-The candidates are the component's declared type, the mutability of the matched value, and an explicit `@fixed` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
+The candidates are the component's declared type, the mutability of the matched value, and an explicit `@ro` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
 
 **Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
 A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
@@ -161,19 +161,19 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 
 **Related codes:** MUT-40, MUT-20, GEN-14, LAT-00.
 
-## OQ-36 Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
+## OQ-36 Ownership and mutability introspection (`isMutable`, `isReadonly`, `isOwned`)
 
 **Surfaced when:** specifying MUT-17 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
 **The issue.**
 Ownership, borrow, and mutability are compile-time properties of a variable (OWN-01, OWN-03, MUT-01).
 Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-17-style inherited path explicitly.
-Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
+Laterita currently offers no way to ask in source whether a value is mutable, read-only, owned, or borrowed.
 
 **The question.**
 
-- Is there a standard set of predicates over a variable: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
-- Are they intrinsics in the manner of `give` and `fixed`, or ordinary methods, and what is the surface spelling?
+- Is there a standard set of predicates over a variable: `isMutable(x)`, `isReadonly(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
+- Are they intrinsics in the manner of `give` and `readonly`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the declared mode of the variable, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
 What is the result for a generic `T` whose mode is itself inherited (MUT-17)?
@@ -205,90 +205,6 @@ Does it subsume the build-time annotation processing that already replaces seria
 A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogramming layer to replace the runtime reflection it drops, folds the OQ-36 predicates into zero-cost constants, and provides the substrate for the build-time code generation the language already relies on.
 
 **Related codes:** COMP-02, RESV, OQ-36, GH #14.
-
----
-
-## OQ-38 The surface name of `@fixed`
-
-**Surfaced when:** settling MUT-01 on a single negative annotation, which fixes the shape of the word but not the word itself.
-
-**The issue.**
-`@fixed` reads well against `final` on a local (`final @fixed List<Item> items` is two locks named by two words) and it is short.
-It is less good elsewhere.
-On a class declaration `@fixed class Money` says "this class cannot change" where the intended reading is "instances of this class expose no mutation", and a reader coming from Java hears `fixed` as the assignment property `final` already owns.
-On a parameter, `void render(@fixed Scene s)` states a read-only lend, which is the meaning most call sites care about, and `fixed` names it only indirectly.
-The annotation appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
-
-`@fixed` and `@readonly` (MUT-13) are also unrelated words for two halves of one idea.
-A reader who has learned what a `@fixed` parameter grants learns the receiver rule again from scratch.
-
-**Prior art.**
-The word other languages use for an object that may not be modified, and the word they use for a method that does not modify its receiver:
-
-| Language | Immutable value or type | Non-mutating method |
-|---|---|---|
-| C++ | `const` | `const` member function |
-| C# | `readonly` field, `readonly struct` | `readonly` member |
-| D | `immutable`, `const` | `const` method, `inout` for a receiver-inherited one |
-| TypeScript | `readonly` property, `Readonly<T>` | none |
-| Objective-C | `@property (readonly)` | none |
-| Solidity | `immutable`, `constant` | `view` |
-| Pony | `val` | `box` receiver |
-| Swift | `let` | the default, with `mutating` marking the opposite |
-| Rust | absence of `mut` | `&self` |
-| Ada, Modula-3 | `constant`, `in` parameter | `READONLY` parameter |
-| Ruby, Python, JavaScript | `freeze`, `frozen`, `Object.freeze` | none |
-| Kotlin, Scala | `val` on the assignment axis | none |
-| Javari, Checker Framework | `@Immutable` | `@ReadOnly` receiver |
-
-Two words carry both columns.
-`const` is a reserved Java keyword (JLS 3.9), so `@const` does not parse and the C++ and D spelling is unavailable at any length.
-`readonly` is the other, and C# writes it in exactly Laterita's two places: `readonly struct Point` for the class kind (MUT-10) and a `readonly` member for the receiver effect (MUT-13).
-`val` is claimed by OQ-34 for the assignment axis, and `value` by JEP 401.
-`frozen` and `view` have no Java currency, and `pure` names a stronger property than MUT-13, which permits mutation of arguments and of statics.
-
-**Candidate pairs.**
-The two annotations are read at different rates.
-The variable annotation stands in all eight positions of MUT-01, among them type arguments, where every character repeats per argument, and it outnumbers the method annotation two to one across these documents.
-The method annotation stands once per declaration, in modifier position beside `public` and `static`, where a long word costs one line and reads as prose.
-A short word for the variable against a long word for the method matches that, a shared first letter carries the reader from one to the other, and two distinct words keep the two rules distinct (MUT-01, MUT-13).
-
-- `@ro` / `@readonly`.
-  `@ro class Money` is C#'s `readonly struct`, `void render(@ro Scene s)` names the lend the call site cares about, and `Map<String, @ro Item>` stays narrow.
-  `@ro @readonly Item peek()` separates by shape at a glance.
-  `@ro` is not a word and has to be taught, once, next to the word it abbreviates.
-- `@read` / `@readonly`.
-  Pronounceable and guessable, at the cost of a verb reading on a class declaration and of `@read @readonly Item peek()`, where the two tokens differ by a suffix.
-- `@imm` / `@immutable`.
-  `@imm class Money` is the best class declaration of any candidate and matches D and the Checker Framework.
-  `@immutable int size()` says the method is immutable, where the rule is about the receiver, and no language annotates a method that way.
-- `@view` / `@viewing`.
-  Fits MUT-30, where `@fixed C` already is the frozen view, and gives the best intrinsic, `view(x)`.
-  A `@view class Money` is not a view of anything, and `@viewing` has no precedent as a receiver word.
-- `@fixed` / `@frozen`.
-  Keeps the current variable word and buys the mnemonic for the price of the method word.
-  Two near-synonyms on two different axes make the pair harder to hold apart, not easier, and the class-declaration reading above is untouched.
-
-**What rides along.**
-The variable word is also the view type `@fixed C` (MUT-30), the intrinsic `fixed(x)` (MUT-42), and the `TARG-03` type-parameter form.
-`ro(x)` reads poorly as a call, and the intrinsic may take the long word instead, as `readonly(x)`, since annotation position and expression position never collide.
-The method word is also MUT-17's `@readonly(InheritFrom.RECEIVER)` and FN-01's shared-call prefix, so a pair that leaves `@readonly` in place leaves the functional-interface surface untouched and renames one annotation.
-
-**Recommendation.**
-`@ro` in the variable positions, `@readonly` on methods, `readonly(x)` for the MUT-42 intrinsic.
-It names the capability rather than an adjacent property, it is the one word with precedent in both positions, the short form falls out of the long one, and it is the only candidate that renames nothing but `@fixed`.
-
-**The question.**
-
-- Is the pair `@ro` / `@readonly`, and does the spec state plainly that the two are distinct rules over a shared word (MUT-01, MUT-13)?
-- Is a two-letter annotation acceptable in the most-read position of the language, or does the pronounceable `@read` earn its collision with `@readonly`?
-- Does the intrinsic take the short word, `ro(x)`, or the long one, `readonly(x)`?
-- Does the class declaration keep the variable word (MUT-10), or is `@imm class Money` worth a third word on the axis, against MUT-01's single-word property?
-
-**Why it matters.**
-The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
-
-**Related codes:** MUT-01, MUT-13, MUT-30, MUT-42, MUT-10, TARG-03, HIER-03, FN-01, OQ-34.
 
 ---
 

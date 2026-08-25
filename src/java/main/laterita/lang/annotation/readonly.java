@@ -18,7 +18,7 @@ import java.lang.annotation.Target;
  * <p>A {@code @readonly} method may not:
  * <ul>
  *   <li>reassign the receiver's non-{@code final} fields,</li>
- *   <li>mutate through its fields that carry no {@code @fixed},</li>
+ *   <li>mutate through its fields that carry no {@code @ro},</li>
  *   <li>return mutable borrows of its fields,</li>
  *   <li>call a mutating method on {@code this}.</li>
  * </ul>

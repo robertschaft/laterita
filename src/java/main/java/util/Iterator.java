@@ -46,7 +46,7 @@ public interface Iterator<T> {
      * <p>Not {@code @readonly}: it advances this cursor.
      * The returned {@code @bound T}'s mutability was settled when the cursor
      * was created: {@code @bound T} for a cursor built from a mutable
-     * collection, {@code @fixed @bound T} for one built from a {@code @fixed}
+     * collection, {@code @ro @bound T} for one built from a {@code @ro}
      * collection.
      */
     @bound T next();

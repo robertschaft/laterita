@@ -66,7 +66,7 @@ Distinct from the mode of the variable that holds the value.
 See `CLO-03`.
 
 ### `Cell<T>`
-The interior-mutability primitive, permitting the contents to be modified through a `@fixed` variable.
+The interior-mutability primitive, permitting the contents to be modified through a `@ro` variable.
 Every operation on it requires an `@unsafe` method (`UNS-02`).
 See `STD-05`, `MUT-16`.
 
@@ -127,7 +127,7 @@ See `DROP-01`, `DROP-09`.
 The per-field record of whether a destructed value still owns each of its fields, kept by the compiler so that it emits an `onDrop()` call only for the fields still owned at that point.
 See `DROP-04`.
 
-### effectively fixed
+### effectively read-only
 A mutable local variable with no mutating use.
 It borrows its source as a shared borrow, so several such variables over one value may coexist.
 See `MUT-60`.
@@ -137,19 +137,14 @@ The property that at most one mutable borrow of a value exists at a time, and th
 It is what makes a data race and an invalidated iterator compile-time errors.
 See `OWN-03`.
 
-### `@fixed` (annotation)
-Declares a variable or a type immutable.
-It is the only mutability annotation, and wherever it appears the object may not be modified through that variable.
-See `MUT-01`, `MUT-10`.
-
 ### flow-sensitive
 Analysed per path through a method rather than once per declaration.
 Ownership, borrow state, and null narrowing are tracked this way, so a variable's state may differ between two branches.
 See `OWN-02`, `LIFE-01`, `NULL-06`.
 
 ### frozen view
-`@fixed C`, the interface containing only the `@readonly` methods of `C`.
-A value of type `C` may be assigned to a variable of type `@fixed C`, and not the reverse.
+`@ro C`, the interface containing only the `@readonly` methods of `C`.
+A value of type `C` may be assigned to a variable of type `@ro C`, and not the reverse.
 See `MUT-30`.
 
 ### functional interface
@@ -224,7 +219,7 @@ See `OWN-03`, `OWN-13`.
 
 ### mutating use
 A use of a local variable that requires mutation: a call to a mutating method, an assignment through the variable, passing it to a mutable parameter, or returning it through a mutable return type.
-A local variable with one borrows its source mutably, and one with none is effectively fixed.
+A local variable with one borrows its source mutably, and one with none is effectively read-only.
 See `MUT-60`.
 
 ### `Mutex<T>`
@@ -276,7 +271,7 @@ One declaration covers the owned, the borrowed, and the mixed case, driven by wh
 See `ARR-04`.
 
 ### parameter mode
-How a parameter receives its argument: bare borrows it mutably, `@fixed` borrows it shared, `@take` receives ownership, and `@take @fixed` receives ownership frozen.
+How a parameter receives its argument: bare borrows it mutably, `@ro` borrows it shared, `@take` receives ownership, and `@take @ro` receives ownership frozen.
 See `OWN-13`, `MUT-41`.
 
 ### poisoned
@@ -299,9 +294,14 @@ A bare method may be called only on a mutable receiver, and only `@readonly` met
 On a non-static inner class it makes the enclosing borrow shared.
 See `MUT-13`, `MUT-50`.
 
+### `readonly` (static method on `laterita.lang.Intrinsics`)
+Returns a shared borrow of its argument, the expression-position form of `@ro`.
+It is the mutability counterpart of `give`, and the original stays usable.
+See `MUT-42`.
+
 ### receiver mode
 How a method accesses `this`: read-only under `@readonly`, mutating when bare, and consuming under `@consuming`.
-The receiver variable's own mode must support it, so a `@fixed` variable cannot call a mutating method.
+The receiver variable's own mode must support it, so a `@ro` variable cannot call a mutating method.
 See `MUT-13`, `MUT-15`, `OWN-15`.
 
 ### `ReentrantLock`
@@ -309,6 +309,11 @@ A reentrant mutual-exclusion primitive owning no data.
 It is modelled on `java.util.concurrent.locks.ReentrantLock`, except that `lock()` returns a `LockGuard` whose `onDrop()` releases the lock, so an unreleased lock is not expressible.
 It covers the cases `Mutex<T>` does not, where the guarded state is spread over several fields or where the coordination guards no data at all.
 See `STD-10`.
+
+### `@ro` (annotation)
+Declares a variable or a type immutable.
+It is the only mutability annotation, and wherever it appears the object may not be modified through that variable.
+See `MUT-01`, `MUT-10`.
 
 ### safe / unsafe code
 Safe code obeys every ownership and lifetime rule and is checked in full.
@@ -380,14 +385,14 @@ See `OWN-07`.
 
 ### value class (reserved)
 Reserved for a notion stricter than an immutable class, in the spirit of an identity-free inline type.
-A `@fixed` class is an immutable class and not a value class, and the term is not used for one.
+A `@ro` class is an immutable class and not a value class, and the term is not used for one.
 See `MUT-10`.
 
 ### variable modifiers
-`@bound`, `@borrow`, `@fixed`, `@take`, and `@own`, each admitted in the positions its rule names.
+`@bound`, `@borrow`, `@ro`, `@take`, and `@own`, each admitted in the positions its rule names.
 `@bound` on a parameter or a return (`OWN-17`, `OWN-18`).
 `@borrow` on a field, a record component, a generic type argument, and a parameter carrying `@take` (`OWN-09`, `TARG-01`, `OWN-21`).
-`@fixed` on a local variable, a field, a parameter, a return, a type argument, a type-parameter declaration, and a class or interface declaration (`MUT-01`, `TARG-03`).
+`@ro` on a local variable, a field, a parameter, a return, a type argument, a type-parameter declaration, and a class or interface declaration (`MUT-01`, `TARG-03`).
 `@take` on a parameter (`OWN-13`), and nowhere else (`OWN-10`, `TARG-02`).
 `@own` on a type-parameter declaration (`TARG-06`).
 
@@ -411,7 +416,7 @@ A hand-written member shadows a generated one when their names and erased parame
 An anonymous functional interface's is named `apply` (`FN-01`).
 - **target typing**: inferring a lambda's type from the context it appears in (`CLO-04`).
 - **`var`**: a local variable whose type is inferred from its initializer and which stays assignable.
-In Laterita the inferred type carries `@fixed` when the initializer's type does (`MUT-40`).
+In Laterita the inferred type carries `@ro` when the initializer's type does (`MUT-40`).
 - **covariant / contravariant / invariant**: an override may relax a position (contravariant), tighten it (covariant), or must match it exactly (invariant).
 `HIER-05` states the direction for each annotation.
 - **copy constructor**: a constructor taking one parameter of its own class.
@@ -438,7 +443,7 @@ Each rule in the specification carries a mnemonic code, grouped by topic:
 |--------|-------|
 | `OWN` | Ownership: owned and borrowed variables, moves and borrows, `@take` / `@borrow` / `@bound`, `@consuming` |
 | `LIFE` | Lifetime intersection across borrow sources |
-| `MUT` | Mutability: `@fixed` and `@readonly`, transitivity, interior mutability |
+| `MUT` | Mutability: `@ro` and `@readonly`, transitivity, interior mutability |
 | `HIER` | Class hierarchy: inherited immutability, class kind, frozen views, override variance |
 | `TARG` | Annotations admitted in generic type arguments, and type-parameter mutability |
 | `STAT` | Static fields |
@@ -471,8 +476,8 @@ Each rule in the specification carries a mnemonic code, grouped by topic:
 | `Arc<T>` | A reference under an atomic reference count | As `Rc<T>`, and safe to hand to another thread |
 | Ownership and `give(...)` | No counterpart | Java has no ownership, so every reference is a borrow |
 | Borrow | An ordinary reference | The same access, under lifetime rules Java does not have |
-| `@fixed` | No counterpart | Java cannot say that an object may not be modified through a variable, and leaves assignment to the separate `final` |
-| `@fixed class` | Valhalla's `value class` | Both are the marked kind, and an unmarked class is an ordinary mutable class (`MUT-10`) |
+| `@ro` | No counterpart | Java cannot say that an object may not be modified through a variable, and leaves assignment to the separate `final` |
+| `@ro class` | Valhalla's `value class` | Both are the marked kind, and an unmarked class is an ordinary mutable class (`MUT-10`) |
 | `@local` | Thread confinement by convention | Java has no language-level thread affinity for a type |
 | `Cell<T>` | `AtomicReference<T>` | For interior mutability within one thread, with no atomicity and no collector |
 | `Mutex<T>` | A `synchronized` block over a guarded field | The closure-scoped API releases the lock for you and ties it to the value it protects |
