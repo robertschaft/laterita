@@ -21,7 +21,7 @@ package java.util;
 
 import laterita.lang.annotation.*;
 // broken: marks an unsupported path (UNR-01)
-import static laterita.lang.Intrinsics.broken;
+import static laterita.lang.Broken.broken;
 
 /**
  * A read-or-update cursor over a collection.
@@ -30,7 +30,7 @@ import static laterita.lang.Intrinsics.broken;
  * {@link Iterable#iterator()} receiver that produced it (MUT-17).
  * Structural {@code set} and {@code add} live on {@link ListIterator}.
  * {@code remove()} is declared here for source compatibility with
- * {@code java.util.Iterator} but is {@code broken()} by default.
+ * {@code java.util.Iterator} but is broken by default.
  *
  * @param <T> the element type
  */
@@ -54,11 +54,12 @@ public interface Iterator<T> {
     /**
      * Removes the last element returned by {@link #next()}, present for source
      * compatibility with {@code java.util.Iterator}.
-     * A plain read cursor cannot remove, so this is {@code broken()} by default
+     * A plain read cursor cannot remove, so this is broken by default
      * (STD-08): calling it is a compile error unless overridden, as
      * {@link ListIterator} does with the working form.
      */
     default T remove() {
-        broken("Iterator.remove: obtain a ListIterator to remove elements");
+        throw broken(
+                "Iterator.remove: obtain a ListIterator to remove elements");
     }
 }

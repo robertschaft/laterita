@@ -47,6 +47,11 @@ On a parameter it declares that the method's return is bound to that parameter (
 On a return type it declares that the return is bound to `this` (`OWN-18`).
 It names a source, so it is the relational marker, as against `@borrow`, which declares a borrow whose source is fixed elsewhere.
 
+### `broken()` (static methods on `laterita.lang.Broken`)
+The factories of the standard `UncompilableException`, declared `static Broken broken()` and `static Broken broken(String reason)` and normally statically imported.
+`throw broken("...")` declares the enclosing path unreachable.
+See `UNR-02`.
+
 ### buffer splitting
 Dividing a contiguous region into two non-overlapping views.
 Within one thread, `T[].splitAt` returns borrowed halves and `forEachChunk` passes borrowed chunks to a callback.
@@ -67,7 +72,7 @@ See `STD-05`, `MUT-16`.
 
 ### `clone()`
 The public copy method every class has.
-The compiler synthesizes it as `return new Self(this);` unless the class declares its own, and a class forbids copying by declaring one that reaches `broken()`.
+The compiler synthesizes it as `return new Self(this);` unless the class declares its own, and a class forbids copying by declaring one that reaches an `UncompilableException` (`UNR-01`).
 See `OBJ-02`.
 
 ### closure
@@ -109,7 +114,7 @@ Rewriting a `.lat` form into its Java-compatible equivalent before analysis (`LA
 Provably non-overlapping, so two borrows of one value may coexist (`OWN-04`, `OWN-05`).
 
 ### divergence point
-A path that reaches `broken()`, which the compiler must prove dead.
+A path that constructs an `UncompilableException`, which the compiler must prove dead.
 See `UNR-01`.
 
 ### drop / `onDrop()`
@@ -363,6 +368,12 @@ See `MUT-14`, `MUT-15`.
 Refining a variable's type along a path, most often from `T?` to `T` after a null check.
 See `NULL-06`.
 
+### `UncompilableException`
+The exception type whose construction declares a path unreachable, an abstract `RuntimeException` in `laterita.lang`.
+It is a compile-time error to construct one on a path the compiler cannot prove dead, so a Laterita program never throws one.
+A subclass names a narrower reason in its own type, and `Broken` is the standard one.
+See `UNR-01`, `UNR-02`.
+
 ### use-after-move
 The error of using a variable after its value has been moved elsewhere, which the compiler rejects statically.
 See `OWN-07`.
@@ -435,7 +446,7 @@ Each rule in the specification carries a mnemonic code, grouped by topic:
 | `DROP` | Scope-exit cleanup and `onDrop()` |
 | `OBJ` | Copying and `clone()` |
 | `DES` | Destruction: taking an owned object apart field by field |
-| `UNR` | Unreachable paths and `broken()` |
+| `UNR` | Unreachable paths and `UncompilableException` |
 | `STR` | String ownership and slicing |
 | `ARR` | Array methods, indexing, and the `laterita.lang.Arrays` surface |
 | `FN` | Functional interfaces, including the anonymous form |

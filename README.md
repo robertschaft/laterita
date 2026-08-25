@@ -28,7 +28,7 @@ When a variable goes out of scope the compiler runs its `onDrop()`.
 There is no tracing collector, no finalizer, and no pause.
 
 - **No new keywords.**
-Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@fixed`, `@readonly`, `@take`, `@bound`, `@local`, and a few more) and through the static methods of `laterita.lang.Intrinsics` (`give(x)`, `fixed(x)`, `broken()`).
+Mutability, ownership, lifetimes, and cleanup are expressed entirely through annotations (`@fixed`, `@readonly`, `@take`, `@bound`, `@local`, and a few more) and through the static methods of `laterita.lang.Intrinsics` (`give(x)`, `fixed(x)`) and of `laterita.lang.Broken` (`broken()`).
 The core language is annotated Java that `javac` parses unchanged.
 
 - **Immutability is explicit and transitive.**

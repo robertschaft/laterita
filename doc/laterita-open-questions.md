@@ -173,7 +173,7 @@ Laterita currently offers no way to ask in source whether a value is mutable, fi
 **The question.**
 
 - Is there a standard set of predicates over a variable: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
-- Are they intrinsics in the manner of `give` and `broken`, or ordinary methods, and what is the surface spelling?
+- Are they intrinsics in the manner of `give` and `fixed`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the declared mode of the variable, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
 What is the result for a generic `T` whose mode is itself inherited (MUT-17)?

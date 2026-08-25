@@ -25,7 +25,7 @@ import laterita.lang.annotation.*;
 // give: move-out of an array slot (OWN-07)
 import static laterita.lang.Intrinsics.give;
 // broken: marks an unfinished path (UNR-01)
-import static laterita.lang.Intrinsics.broken;
+import static laterita.lang.Broken.broken;
 
 /**
  * A resizable-array implementation of a list, carrying Laterita ownership
@@ -177,7 +177,7 @@ public class ArrayList<T> implements Iterable<T> {
             //   if (lastReturned < cursor) cursor = cursor - 1;
             //   lastReturned = -1;
             //   return removed;
-            return broken("TODO: ArrayList.ListItr.remove");
+            throw broken("TODO: ArrayList.ListItr.remove");
         }
 
         @Override
@@ -185,7 +185,7 @@ public class ArrayList<T> implements Iterable<T> {
             // TODO: if (lastReturned < 0) throw new IllegalStateException();
             // Replace through the mutable enclosing borrow:
             //   elementData[lastReturned] = e;
-            broken("TODO: ArrayList.ListItr.set");
+            throw broken("TODO: ArrayList.ListItr.set");
         }
 
         @Override
@@ -194,7 +194,7 @@ public class ArrayList<T> implements Iterable<T> {
             //       from cursor, then insert e:
             //         size = size + 1; cursor = cursor + 1;
             //         lastReturned = -1;
-            broken("TODO: ArrayList.ListItr.add");
+            throw broken("TODO: ArrayList.ListItr.add");
         }
     }
 }
