@@ -149,7 +149,7 @@ C++ and D spell it `const`, which Java reserves as a keyword (JLS 3.9), so no an
 A word taken from the assignment axis instead, `final` or `fixed`, names the property `final` already owns, and a class declaration marked with it reads as a class that cannot change rather than one whose instances offer no mutating surface.
 
 The axis is spelled at two lengths because it is read at two rates.
-The variable annotation stands in all eight positions of MUT-01, among them every type argument, where the token repeats per argument and per nesting level.
+The variable annotation stands in every position MUT-01 lists, among them every type argument, where the token repeats per argument and per nesting level.
 The method modifier stands once per declaration, beside `public` and `static`, where a full word costs one line and reads as prose.
 `@ro` abbreviates the word `@readonly` spells out, so a reader who has learned either has learned the other, and they stay two tokens for the two claims they make (MUT-13).
 On a method carrying both, `@readonly` is written first, as `@ro` annotates the return type.
@@ -223,7 +223,7 @@ A parameter's mode is part of the published signature, so OWN-00 forbids inferri
 That is also the Java reading of a signature: a method handed a `List` may add to it, and a caller who wants a promise otherwise now has one to read, `@ro`.
 Two consequences follow and are accepted.
 A read-only parameter whose type is a mutable class is written `@ro`, and a bare parameter takes an exclusive borrow, so one variable cannot fill two bare parameters of the same call.
-Both are bounded by MUT-14: a borrow of an immutable class is always shared, so `String`, records, enums, and every other immutable type are untouched, and the exclusivity is felt only where a mutable surface actually exists.
+Both are bounded by MUT-14: a borrow of an immutable class is always shared, so `String`, enums, and every other immutable type are untouched, and the exclusivity is felt only where a mutable surface actually exists.
 
 The receiver takes the same default, and pays a price for it.
 Every method has a receiver, so a mutating default demands a mutable receiver at every unmarked call site, and an immutable class can offer no method until each one is marked.
@@ -264,8 +264,12 @@ Concentrating the unsafe assumption in one place is what makes the rest of the l
 ### Why a non-static inner class declares its enclosing borrow (MUT-50)
 
 A non-static inner class is a named closure over its enclosing instance, so it borrows that instance the same way a closure borrows a captured local.
-A closure infers its capture mode from the body (CLO-02), but an inner class cannot: it is a nominal, storable type, and the borrow it takes on its enclosing instance is part of the contract a holder relies on, so OWN-00 requires that borrow's mode to sit on the declaration rather than be recovered from a body.
-That is why the mode is written on the declaration instead of inferred.
+A closure infers its capture mode from the body (CLO-02), but an inner class cannot: it is a nominal, storable type, and the borrow it takes on its enclosing instance is part of the contract a holder relies on, so OWN-00 requires that borrow's mode to sit on a declaration rather than be recovered from a body.
+
+Java already names that borrow.
+A constructor of an inner class may declare a receiver parameter for the enclosing instance (JLS 8.8.1), a parameter that contributes nothing to the signature and exists to give annotations somewhere to attach.
+`@ro` written there is the ordinary parameter rule (MUT-41), so the mode is declared where every other borrow mode is declared and no annotation is minted for it.
+It also leaves the class declaration to the two claims that are already its own, the kind (MUT-10) and the method surface (MUT-19), and keeps the enclosing mode independent of both.
 
 The mode carries the same default as every other position, mutable unless `@ro` withdraws it (MUT-01).
 Marking the mutable case instead would be a positive mutability marker, the one shape this language spells nowhere else, and it would read as a grant on a declaration where every other annotation withdraws.
@@ -275,12 +279,9 @@ The mechanism is deliberately not new.
 The implicit enclosing reference is one of the ordinary field forms of MUT-22, `final @borrow` by default and `final @ro @borrow` under `@ro`, so `@bound` instances (OWN-09), exclusivity (OWN-03), and transitive reach all fall out of rules already in force.
 A write to an outer level travels the chain of enclosing references, and MUT-14 rejects it at the first link that is only shared, which is the first enclosing level that carries `@ro`.
 
-Folding the enclosing borrow onto the class's own `@ro` costs one combination: a mutable inner class that always shares its enclosing instance.
-That shape is reached by constructing the inner instance from a shared receiver, either through `readonly(outer)` (MUT-42) or through the inherited form (MUT-51), so no separate marker is minted for it.
-
-The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an explicit constructor parameter of `@ro Outer` or bare `Outer`, is rejected.
-It expresses the same borrow more heavily and discards the direct-field access that is the reason to write an inner class at all.
-Declaring the borrow on the class keeps both the access and the OWN-00 guarantee.
+The alternative of forbidding an inner class from implicitly borrowing its enclosing instance, forcing an ordinary constructor parameter of `@ro Outer` or bare `Outer`, is rejected.
+It expresses the same borrow more heavily and discards the direct field access that is the reason to write an inner class at all.
+A receiver parameter is not that parameter: the implicit borrow stays exactly as it is and only its mode is written down, so the access and the OWN-00 guarantee both hold.
 
 ### Why the receiver mode can be inherited (MUT-17)
 
@@ -310,12 +311,22 @@ Accepting the redundant case rather than rejecting it matches `final`'s treatmen
 
 A variable's kind comes from its declared type as well as from `@ro`, which is what keeps that failing case rare and predictable.
 `String` is immutable, so `String s` is an immutable variable and `@ro String s` declares the same one, and a variable can only be mutable where its type could honor mutation.
-Without that reading every ordinary `String`, record, and primitive position would be a mutable variable assigned an immutable value, so the one failing case would swallow most of the language and `@ro` would have to be written on declarations where it withdraws nothing.
+Without that reading every ordinary `String`, enum, and primitive position would be a mutable variable assigned an immutable value, so the one failing case would swallow most of the language and `@ro` would have to be written on declarations where it withdraws nothing.
 It also carries into generics for free: a use of `T` substituted by an immutable argument is an immutable variable, with nothing generic-specific said about it (TARG-03).
 
 `readonly(x)` is the expression-position form of the same downgrade, standing to `@ro` as `give` stands to `@take`: the annotation freezes a declaration, the intrinsic freezes an expression.
 It earns its place because the downgrade is most often wanted mid-expression, on the source of a loop or a call argument, where no declaration exists to annotate.
 It returns a shared borrow rather than a copy, so the original stays usable and several frozen views coexist.
+
+### Why a `record` carries no kind and an `enum` does (MUT-11)
+
+A Java record is shallowly final: its components are `final` fields, and a component of mutable type may still be modified through.
+`record Response(List<Item> items)` is an ordinary Java shape, so calling every record immutable would have MUT-14 freeze everything reachable from one and the same declaration would mean something here that it does not mean in Java.
+A record therefore takes its kind from its own declaration like any other class, and `@ro record R(...)` is available where the deeper promise is wanted, every component then reading as `@ro` (MUT-14).
+
+An enum reaches the opposite answer from the other side.
+Its constants are static fields, so STAT-01 makes each of them `final` and `@ro` and MUT-31 makes every value read from one immutable.
+No path to a mutable enum receiver exists, so the kind states what the rest of the language already delivers rather than adding a restriction of its own.
 
 ### Why primitives need no rules of their own (MUT-18, LIFE-05)
 
@@ -356,15 +367,20 @@ Immutability is the promise, mutability the absence of one, and a promise is wha
 `@ro class Money` tells a reader and the compiler that no instance ever changes, which is a fact with consequences everywhere the type appears: no mutating method, fields `final` and `@ro`, borrows always shared (MUT-14), and copy-for-borrow substitution permitted (MUT-12).
 An unmarked class publishes none of that and is an ordinary Java class.
 
+The promise holds only where no subclass can withdraw it, so `@ro` is admitted on a `final` class alone (MUT-10).
+A mutable subclass would leave `@ro Money` promising of every instance what only the parent's own declarations deliver, and each rule that reads a variable's kind off its declared type (MUT-01, MUT-12, MUT-14) would be reading a promise the run-time class need not keep.
+Requiring `final` is what makes that reading sound rather than conventional.
+
 This runs with the Valhalla value-class proposal rather than against it, where the identity class is the unmarked default and `value class` is the opt-in, and it keeps a Laterita class declaration meaning what the same line means in Java.
 The alternative of an immutable default with a positive mutability opt-in is rejected: it reverses the meaning of every bare Java class, needs a second marker for the contexts where a default grants mutation anyway, and puts the annotation on builders, collections, counters, and streams, which are the types most often written by hand.
 
 `Cell<T>` stays the interior-mutability escape hatch (MUT-16): an immutable class may hold a `Cell` field and mutate through it.
 The reference-counted handles depend on this, since `Rc<T>` and `Arc<T>` modify a reference count through `Cell` and so declare no mutating method of their own.
 
-An interface carries the annotation for the same reason a class does: it declares that the interface's own methods are all `@readonly` (MUT-10).
+An interface makes no claim about instances, since an implementor takes its kind from its own declaration, so `@ro` is not admitted on one.
+What an interface can publish is its surface: `@readonly interface I` declares every method it declares `@readonly` (MUT-19).
 It does not bind the implementor's other methods, so a mutable class may implement a value-contract interface and keep a mutable surface of its own.
-Every method of an immutable interface being `@readonly` lets MUT-15's static check use one uniform predicate over the receiver's static type, class or interface alike.
+The same annotation on a class distributes the same way, and each method reads as the `@readonly` it would carry alone.
 
 ---
 
@@ -372,10 +388,10 @@ Every method of an immutable interface being `@readonly` lets MUT-15's static ch
 
 ### Why the kind is declared and the default is mutable (MUT-10, HIER-02)
 
-`@ro` on a declaration says one thing: every method there is `@readonly`.
-It is a claim about the type's own surface, not about the objects that flow through it, and nothing else needs to be inferred from it.
-An inherited kind is rejected: a subclass that could not add a mutating method would make `@ro` a commitment across the whole hierarchy, and it would leave the frozen view of MUT-30 needing an exception, since a class implementing one would inherit immutability from it.
-What a holder of an immutable type actually relies on is delivered elsewhere: the variable is immutable (MUT-01), so it reaches only `@readonly` methods, and HIER-05 stops an override taking `@readonly` away.
+The two claims a type declaration can make are spelled apart.
+`@readonly` on a class or interface says every method it declares is `@readonly` (MUT-19) and says nothing about the objects that flow through it, so a subtype may add mutating methods of its own and the frozen view of MUT-30 needs no exception: a class implementing one is restricted to a read-only surface without becoming immutable.
+`@ro` on a `final` class says every instance is immutable (MUT-10), which no subtype is in a position to withdraw.
+One marker for both would have to reach subclasses to keep the instance claim and must not reach them to leave the frozen view alone.
 
 Mutability is not a guarantee, so nothing has to inherit it and nothing does.
 An unmarked class is mutable because that is what "published no immutability promise" means, and `Object`, which publishes none, is an ordinary mutable class.
@@ -384,10 +400,10 @@ A neutral root, a third kind belonging to one class, is rejected: it adds a case
 
 The root's own methods take the top type rather than the mutable one.
 `equals` compares, so it needs no mutability from its argument, and declaring it `equals(@ro Object)` lets every value fill it, immutable arguments included.
-`equals(Object)` would demand a mutable argument for a read, which no immutable value could satisfy, so `record.equals(otherRecord)` would not compile.
+`equals(Object)` would demand a mutable argument for a read, which no immutable value could satisfy, so `s.equals(t)` over two `String` values would not compile.
 
 An immutable class extending a mutable one (HIER-03) is the useful corner the rules leave open.
-It inherits the mutable API but cannot call it (MUT-15), so `@ro class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
+It inherits the mutable API but cannot call it (MUT-15), so `@ro final class ImmutableConfig extends Config` derives a frozen variant of a mutable class with no re-declaration, something Java expresses only with a runtime-throwing wrapper.
 
 ### Why default assignment is a borrow (OWN-02)
 
@@ -1435,9 +1451,9 @@ The candidate options for cross-thread split alone were all single-segment primi
 Folding the segmented-slice representation into `T[]` itself (closer to (c), but without disturbing `Arc<T>` for non-array `T`) keeps the surface small: callers see no new type for the slice, because `T[]` *is* the owning slice.
 The pair shape rides on a single general-purpose `Pair<L, R>` class (ARR-04) whose owned-vs-borrowed instantiation is driven by generic substitution per TARG-01 (`Pair<T[], T[]>` for the cross-thread owning return, `@bound Pair<@borrow T[], @borrow T[]>` for the in-thread borrowed return), so any future API returning a two-tuple can reuse the same class rather than minting a new domain type.
 
-`Pair` is a class rather than a record because `splitAt` must hand back halves that can be mutated independently, and a record cannot carry that.
-A record is immutable by construction (MUT-11), so its fields are `@ro` (MUT-22) and every borrow drawn through it is shared (MUT-14).
-Keeping records uniformly immutable is worth more than reusing the record syntax for one standard library type, so the pair is an ordinary mutable class whose components take the mutability their producer supplies.
+`Pair` is a class rather than a record because both halves must be destructible, and destruction reaches a value's parts by direct field access alone (OWN-06, DES).
+A record offers its components through accessor methods, so a returned pair could be read but never taken apart, which is what a caller of `splitAt` does with it.
+`public final` components give the direct access, and their mutability is the one their producer supplies.
 
 Which mutability that is comes from `@readonly(InheritFrom.RECEIVER)` on `splitAt` (MUT-17), the same mechanism that collapses read and update iteration onto one `iterator()` (STD-08).
 A mutable receiver yields a pair lending mutable halves and a `@ro` receiver one lending read-only halves, so a second pair type buys nothing.

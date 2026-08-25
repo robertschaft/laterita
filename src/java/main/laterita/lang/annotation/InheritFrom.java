@@ -8,7 +8,8 @@ package laterita.lang.annotation;
  * Selects where an ownership annotation takes its mode from, instead of stating
  * it outright.
  *
- * <p>Used as the value of {@code @readonly} (MUT-17, MUT-51), and reserved
+ * <p>Used as the value of {@code @readonly} (MUT-17) and of {@code @ro} on
+ * an inner class constructor's receiver parameter (MUT-51), and reserved
  * for the same role on other axes should they adopt it (for example
  * {@code @own(InheritFrom.RECEIVER)}), which is why it is a shared enum rather
  * than a bare flag.

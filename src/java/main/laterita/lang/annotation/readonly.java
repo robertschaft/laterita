@@ -29,11 +29,11 @@ import java.lang.annotation.Target;
  * On an immutable class every method is {@code @readonly} and writing it is
  * redundant (MUT-10).
  *
- * <p>On a non-static inner class the annotation states the same one level
- * out: the class holds a shared borrow of its enclosing instance rather than
- * a mutable one (MUT-50).
+ * <p>On a class or an interface the annotation distributes: every method the
+ * type declares is {@code @readonly} (MUT-19).
  *
- * <p>The {@link InheritFrom} value chooses the form (MUT-17, MUT-51).
+ * <p>The {@link InheritFrom} value chooses the form (MUT-17), and it is
+ * admitted on a method only.
  * {@link InheritFrom#NONE}, the default, is the always-read-only form above.
  * {@link InheritFrom#RECEIVER} behaves as {@code @readonly} when the receiver
  * is not mutable at the method site, and as a mutating method when it is.
