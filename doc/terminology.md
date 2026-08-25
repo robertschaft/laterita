@@ -235,6 +235,9 @@ A `record` whose sole component carries `@Delegate` generates the wrapped type's
 The result is a distinct nominal type with no implicit widening to the component's type and no run-time overhead.
 `record Email(@Delegate @take String raw)` is a newtype by idiom.
 
+### `Nothing`
+The bottom type, which has no values and is a subtype of every type, returned by `broken()` (`UNR-01`).
+
 ### nullable type
 A type admitting `null` in addition to the values of `T`, written `@Nullable T` on the Java-compatible surface and `T?` in `.lat`.
 A bare `T` in Laterita excludes `null`, unlike a Java reference type.
