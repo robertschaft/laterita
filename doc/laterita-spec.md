@@ -125,7 +125,7 @@ The field is dropped with the enclosing instance (DROP-05).
 
 `@borrow` on a field or record component declares that the field holds a borrow rather than an owned value.
 An instance of a class with any `@borrow` field can only be produced as a `@bound` value.
-`@bound` marks the value as a borrow rather than owned.
+`@bound` constrains a value's lifetime and not its ownership, which follows OWN-02.
 The producer fixes the initial sources.
 See OWN-17 and OWN-18 for returns, and LIFE-02 for intersection across multiple sources.
 
