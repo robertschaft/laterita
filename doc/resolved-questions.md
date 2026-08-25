@@ -95,7 +95,7 @@ Rejected.
 The two are independent axes.
 `final` already means that a variable may be assigned only once, and modifying the object it refers to is the separate property.
 Folding both onto one annotation makes the ordinary `private final List<Item> items` inexpressible, since one half would undo the other.
-`final` governs assignment, `@fixed` governs modification, and a parameter is always `final`.
+`final` governs assignment, `@ro` governs modification, and a parameter is always `final`.
 
 Where: MUT-40, MUT-20, MUT-41, MUT-21, MUT-22, reasoning "Why variable and object mutability are separate axes", reasoning "Why fields default to mutable"
 
@@ -111,14 +111,14 @@ Where: CLO-01, CLO-04, MUT-40, COMP-06, OQ-35, reasoning "Why a captured local m
 ### Receiver mutation declared by the mutability annotation, on the return type or on an explicit `this`
 
 Rejected.
-The mutability axis has one negative annotation and no positive one, so there is nothing to reuse: a claim to mutate the receiver has to be stated positively, and `@fixed` in modifier position states the opposite.
+The mutability axis has one negative annotation and no positive one, so there is nothing to reuse: a claim to mutate the receiver has to be stated positively, and `@ro` in modifier position states the opposite.
 Nor can the receiver take the mutable default the way a parameter does: every method has a receiver, so that default would demand a mutable receiver at every call and leave an immutable class with no callable method at all.
 A marker on an explicit `this` forces every mutating method to spell out a `(Self this)` parameter.
 The receiver takes the mutable default like a parameter, and `@readonly` withdraws it.
 
 Where: MUT-41, MUT-13, reasoning "Why a bare parameter lends mutably while a bare receiver does not", reasoning "Why methods declare their receiver effect in the signature"
 
-### One three-valued mode annotation on a functional-interface variable (`@fixed`, bare, `@take`)
+### One three-valued mode annotation on a functional-interface variable (`@ro`, bare, `@take`)
 
 Rejected.
 Combining ownership of the functional-interface value with the right to invoke its single abstract method makes "owns a callback and invokes it many times" inexpressible.
@@ -146,7 +146,7 @@ Where: ARR-02, MUT-17, OWN-13, reasoning "Why the cross-thread story splits in t
 ### A `record` as the general-purpose pair type (`record Pair<L, R>(L left, R right)`)
 
 Rejected.
-A record is immutable by construction, so its components are `final` and `@fixed` and every half borrowed through it is shared, which is what `splitAt` must not produce.
+A record is immutable by construction, so its components are `final` and `@ro` and every half borrowed through it is shared, which is what `splitAt` must not produce.
 `Pair` is an ordinary mutable class with `public final` components, and a record stays uniformly immutable.
 
 Where: ARR-04, MUT-11, MUT-17, reasoning "Why the cross-thread story splits in two (ARR-01, ARR-02)"
@@ -227,8 +227,8 @@ Where: OWN-15, reasoning "Why methods declare consumption of `this` with `@consu
 ### Ownership annotations as part of the overload signature
 
 Rejected.
-`javac` ignores annotations when it computes the overload signature, so two same-name methods differing only in `@take`, `@fixed`, `@bound`, `@readonly`, or `@consuming` are a duplicate declaration, and the rule is unimplementable on the surface it would live in.
-There is no caller-side disambiguator for a `@fixed` or receiver-mode overload either, and a tie-breaker that silently flipped ownership behavior is exactly the invisibility these annotations exist to eliminate.
+`javac` ignores annotations when it computes the overload signature, so two same-name methods differing only in `@take`, `@ro`, `@bound`, `@readonly`, or `@consuming` are a duplicate declaration, and the rule is unimplementable on the surface it would live in.
+There is no caller-side disambiguator for a `@ro` or receiver-mode overload either, and a tie-breaker that silently flipped ownership behavior is exactly the invisibility these annotations exist to eliminate.
 An API needing several shapes of one operation declares distinct method names, as `splitAt` and `splitOff` do.
 
 Where: OWN-13, ARR-01, reasoning "Why ownership annotations are not part of overload identity"
@@ -262,7 +262,7 @@ Where: FN-01, OQ-29, reasoning "Why the anonymous form spells call mode with `@r
 
 Rejected.
 It conflates the variable's mutability with the receiver mode of the single abstract method, which are separate axes, and it makes an owned functional-interface variable invocable many times inexpressible.
-Call mode is a prefix on the type expression, and `@fixed` keeps its ordinary meaning on the variable.
+Call mode is a prefix on the type expression, and `@ro` keeps its ordinary meaning on the variable.
 
 Where: FN-01, CLO-03, CLO-05, OQ-29
 
@@ -346,14 +346,14 @@ Rejected.
 It reverses the meaning of every bare Java class, so ordinary-looking Java source would mean something else in Laterita.
 It still needs a negative companion for the contexts where a default grants mutation, leaving two words on an axis that one word covers.
 It also puts the annotation on builders, collections, counters, and streams, which are the classes most often written by hand.
-Mutable is the default kind, and `@fixed` is the only annotation.
+Mutable is the default kind, and `@ro` is the only annotation.
 
-Where: MUT-01, MUT-10, HIER-02, reasoning "Why `@fixed` is the single mutability marker", reasoning "Why immutability is the marked class kind"
+Where: MUT-01, MUT-10, HIER-02, reasoning "Why `@ro` is the single mutability marker", reasoning "Why immutability is the marked class kind"
 
 ### A positive receiver-mutation annotation on methods (`@mutating`)
 
 Rejected.
-It leaves one position in the language where a bare declaration is restricted rather than unrestricted, against `final`, `@fixed`, `@readonly`, and `@local`, which all withdraw.
+It leaves one position in the language where a bare declaration is restricted rather than unrestricted, against `final`, `@ro`, `@readonly`, and `@local`, which all withdraw.
 It also separates the receiver from the parameter beside it, since a bare parameter lends mutably while a bare receiver would not.
 The receiver takes the mutable default and `@readonly` withdraws it, at the cost of a marker on an ordinary accessor, which MUT-71 reports.
 
@@ -364,15 +364,25 @@ Where: MUT-13, MUT-41, MUT-71, HIER-05, reasoning "Why methods declare their rec
 Rejected.
 Mutability may be withdrawn freely and never added, so a positive annotation has an error case in every position and a redundant case in most, while a negative one may always be written and never has to fail.
 With mutable as the default, no position needs to add mutability, so a positive annotation has no work to do.
-`@fixed` is the whole axis.
+`@ro` is the whole axis.
 
-Where: MUT-01, MUT-30, MUT-31, reasoning "Why `@fixed` is the single mutability marker"
+Where: MUT-01, MUT-30, MUT-31, reasoning "Why `@ro` is the single mutability marker"
+
+### `@const`, `@immutable`, `@frozen`, or `@fixed` as the name of the mutability annotation
+
+Rejected.
+`const` is a reserved Java keyword (JLS 3.9), so `@const` does not parse, and the C++ and D spelling is unavailable at any length.
+`@immutable` and `@frozen` name a state of the value rather than the capability a position withdraws, and neither offers a method modifier a reader could pair with it.
+`@fixed` names the assignment axis `final` already owns, and `@fixed class Money` is read as a class that cannot change.
+The axis is `@ro` on variables and types and `@readonly` on methods, with `readonly(x)` in expression position.
+
+Where: MUT-01, MUT-13, MUT-42, reasoning "Why the axis is spelled `@ro` and `@readonly`"
 
 ### A neutral `Object` belonging to neither class kind
 
 Rejected.
 A third kind held by one class adds a case to every rule that reads a supertype's kind, and buys only a different default for a class extending `Object` directly.
-`Object` is an ordinary mutable class, and `@fixed Object` names its frozen view, which is the top type and the implicit type-parameter bound.
+`Object` is an ordinary mutable class, and `@ro Object` names its frozen view, which is the top type and the implicit type-parameter bound.
 
 Where: HIER-02, MUT-30, TARG-03, reasoning "Why the kind is declared and the default is mutable"
 
@@ -384,20 +394,20 @@ A local variable's borrow mode is classified from its uses precisely because it 
 
 Where: OWN-00, MUT-60, MUT-41, MUT-21, reasoning "Why a local's borrow mode follows its uses", reasoning "Why a bare parameter lends mutably while a bare receiver does not"
 
-### `@fixed C` as a supertype of `C`, carrying the immutable kind down to it
+### `@ro C` as a supertype of `C`, carrying the immutable kind down to it
 
 Rejected.
 It would make every class immutable through its own frozen view.
-`@fixed C` is an interface that every mutable `C` implements, and a class takes its kind from its own declaration alone.
+`@ro C` is an interface that every mutable `C` implements, and a class takes its kind from its own declaration alone.
 
-Where: MUT-30, MUT-10, HIER-04, reasoning "Why `@fixed C` is the frozen view rather than a supertype"
+Where: MUT-30, MUT-10, HIER-04, reasoning "Why `@ro C` is the frozen view rather than a supertype"
 
-### `@fixed` on a type-parameter declaration widening the bound
+### `@ro` on a type-parameter declaration widening the bound
 
 Rejected.
 It combines two independent decisions in one annotation: which type arguments the parameter accepts, which is the bound's job, and what a use of the parameter may do, which is the annotation's.
-The combined form has no spelling for "accepts only mutable type arguments, uses them frozen", and it makes `class Foo<@fixed T>` accept type arguments a reader would not deduce from the bound.
-`@fixed` annotates each use and leaves the bound alone.
+The combined form has no spelling for "accepts only mutable type arguments, uses them frozen", and it makes `class Foo<@ro T>` accept type arguments a reader would not deduce from the bound.
+`@ro` annotates each use and leaves the bound alone.
 
 Where: TARG-03, MUT-30, reasoning "Why the bound decides admission and the argument decides mutability"
 
@@ -405,7 +415,7 @@ Where: TARG-03, MUT-30, reasoning "Why the bound decides admission and the argum
 
 Rejected.
 `Object` is mutable, and a mutable bound admits only mutable type arguments, so an unconstrained `class Box<T>` would reject `Box<String>`.
-The implicit bound is the top type `@fixed Object`, which admits every type argument, as Java's implicit `Object` bound does.
+The implicit bound is the top type `@ro Object`, which admits every type argument, as Java's implicit `Object` bound does.
 
 Where: TARG-03, MUT-30, HIER-02, reasoning "Why the bound decides admission and the argument decides mutability"
 
@@ -420,12 +430,12 @@ Where: MUT-18, MUT-12, MUT-31, OQ-33, reasoning "Why primitives need no rules of
 ### A positive mutability annotation on a type-parameter bound (`<T extends @mut Counter>`)
 
 Rejected.
-A mutable bound already accepts only mutable type arguments, since the frozen view `@fixed C` is not a subtype of `C` and fails the bound.
+A mutable bound already accepts only mutable type arguments, since the frozen view `@ro C` is not a subtype of `C` and fails the bound.
 The annotation would restate the bound it is attached to.
 
 Where: TARG-03, MUT-30, HIER-04, reasoning "Why the bound decides admission and the argument decides mutability"
 
-### A third, either-kind type-parameter annotation (`<@fixable T extends Counter>`)
+### A third, either-kind type-parameter annotation (`<@eitherKind T extends Counter>`)
 
 Rejected.
 A generic body is checked once against its bound, so it cannot also be proved sound against a stronger reading of the same parameter.
@@ -603,7 +613,7 @@ The same coordination patterns are expressible through three standard-library ty
 ### OQ-33 Primitive types in the ownership and mutability rules
 
 Resolved by MUT-18: a primitive type carries no mutable surface, so it is immutable, every primitive position is immutable (MUT-31), and the copy substitution of MUT-12 makes a primitive parameter, return, or field a value copy.
-`@fixed`, `@bound`, `@borrow`, and `@take` on a primitive are redundant rather than rejected, and a `@borrow` field of primitive type does not make its instance `@bound`.
+`@ro`, `@bound`, `@borrow`, and `@take` on a primitive are redundant rather than rejected, and a `@borrow` field of primitive type does not make its instance `@bound`.
 A bare `int x` parameter is therefore a copy and not an out-parameter.
 The dedicated primitive rule set is rejected, as recorded above.
 
@@ -612,3 +622,10 @@ The dedicated primitive rule set is rejected, as recorded above.
 Resolved by CLO-01: a captured local variable must be effectively final, exactly as `javac` requires of a lambda (JLS 15.27.2), so a closure cannot assign a captured variable on either surface, and a mutate closure modifies the object through a mutable capture instead.
 The `.lat`-only generated-holder desugaring is rejected, as recorded above.
 With no other holder of such a borrow, OWN-03 keeps one mutable-borrow form, mutation through the value, together with the rule that a live borrow of `x` excludes assigning `x`.
+
+### OQ-38 The surface name of the mutability annotation
+
+Resolved by `@ro` in the variable and type positions (MUT-01), `@readonly` on methods (MUT-13), and `readonly(x)` as the MUT-42 intrinsic.
+The annotation names the capability a position withdraws, which is what C# spells `readonly` on a field and on a `readonly struct`, and the two lengths match the two rates at which the axis is read.
+One root carries a reader across both rules, and the two spellings keep the rules apart.
+The names drawn from the assignment axis and from the `const` family are rejected, as recorded above.

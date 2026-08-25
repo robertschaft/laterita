@@ -24,7 +24,7 @@ Currently the spec in doc is work in progress and needs to mature.
 
 `doc/laterita-spec.md` states rules, not arguments for them.
 It uses the vocabulary of the Java Language Specification: variable, value, class, instance, field, method, parameter, modifier, annotated, declared, assigned, subtype.
-A rule reads as a plain statement of what is permitted or what is an error ("A `final` variable may be assigned only once", "A parameter may be annotated `@fixed`", "It is a compile-time error to ..."), not as a description of a mechanism acting on the program.
+A rule reads as a plain statement of what is permitted or what is an error ("A `final` variable may be assigned only once", "A parameter may be annotated `@ro`", "It is a compile-time error to ..."), not as a description of a mechanism acting on the program.
 It is written for a reader fluent in Java, so it states a Java term rather than explaining it, and never restates what the JLS already specifies.
 It carries no rationale ("because...", "so that...", "this keeps X small", "deliberately") and no history ("previously", "the old rule", "we decided").
 A prohibition is written "It is a compile-time error to ...", not "The compiler must reject ...".

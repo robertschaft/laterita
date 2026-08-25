@@ -31,7 +31,7 @@ Which of these is the rule?
 - Do guards (`case P when cond`) re-borrow across the guard expression?
 - What mutability does a pattern variable carry?
 MUT-40 reads a local variable's mutability off its declared type, and for `var` off its initializer, but a pattern variable has neither a written type nor an initializer.
-The candidates are the component's declared type, the mutability of the matched value, and an explicit `@fixed` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
+The candidates are the component's declared type, the mutability of the matched value, and an explicit `@ro` on the pattern variable, with MUT-60's borrow-mode classification following whichever is chosen.
 
 **Naming.** The verb *deconstruct* and the noun *deconstruction* are reserved for the record-pattern feature in this question.
 A JEP 440 record deconstruction pattern reads a value through its named components, and the borrow-or-move choice listed above is exactly what such a pattern must decide.
@@ -161,19 +161,19 @@ Lombok makes `val x = ...` compile by shipping `val` as an importable type that 
 
 **Related codes:** MUT-40, MUT-20, GEN-14, LAT-00.
 
-## OQ-36 Ownership and mutability introspection (`isMutable`, `isFixed`, `isOwned`)
+## OQ-36 Ownership and mutability introspection (`isMutable`, `isReadonly`, `isOwned`)
 
 **Surfaced when:** specifying MUT-17 receiver-inherited mutation, where an operation already branches implicitly on the compile-time mutability of its receiver, and generic code may want to branch on the same facts by hand.
 
 **The issue.**
 Ownership, borrow, and mutability are compile-time properties of a variable (OWN-01, OWN-03, MUT-01).
 Generic or library code sometimes needs to observe them, to specialize an algorithm, assert an expectation, or drive a MUT-17-style inherited path explicitly.
-Laterita currently offers no way to ask in source whether a value is mutable, fixed, owned, or borrowed.
+Laterita currently offers no way to ask in source whether a value is mutable, read-only, owned, or borrowed.
 
 **The question.**
 
-- Is there a standard set of predicates over a variable: `isMutable(x)`, `isFixed(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
-- Are they intrinsics in the manner of `give` and `fixed`, or ordinary methods, and what is the surface spelling?
+- Is there a standard set of predicates over a variable: `isMutable(x)`, `isReadonly(x)`, `isOwned(x)`, `isBorrowed(x)`, and perhaps `isBound(x)`?
+- Are they intrinsics in the manner of `give` and `readonly`, or ordinary methods, and what is the surface spelling?
 - Do they observe only the declared mode of the variable, or can they narrow flow-sensitively the way a null check narrows (NULL-06)?
 - Their answers are compile-time constants, so are they necessarily compile-time-evaluated (OQ-37)?
 What is the result for a generic `T` whose mode is itself inherited (MUT-17)?
@@ -205,44 +205,6 @@ Does it subsume the build-time annotation processing that already replaces seria
 A `@Macro`/`@Runtime` split gives Laterita a principled compile-time metaprogramming layer to replace the runtime reflection it drops, folds the OQ-36 predicates into zero-cost constants, and provides the substrate for the build-time code generation the language already relies on.
 
 **Related codes:** COMP-02, RESV, OQ-36, GH #14.
-
----
-
-## OQ-38 The surface name of `@fixed`
-
-**Surfaced when:** settling MUT-01 on a single negative annotation, which fixes the shape of the word but not the word itself.
-
-**The issue.**
-`@fixed` reads well against `final` on a local (`final @fixed List<Item> items` is two locks named by two words) and it is short.
-It is less good elsewhere.
-On a class declaration `@fixed class Money` says "this class cannot change" where the intended reading is "instances of this class expose no mutation", and a reader coming from Java hears `fixed` as the assignment property `final` already owns.
-On a parameter, `void render(@fixed Scene s)` states a read-only lend, which is the meaning most call sites care about, and `fixed` names it only indirectly.
-The annotation appears in eight positions (MUT-01), so the name is read far more often than it is written and a wrong connotation compounds.
-
-Candidates carry different trade-offs.
-
-- `@ro` / `@readonly` names the capability directly and matches what C# (`readonly`), C++ (`const`), and D (`const`) call it.
-  It is the least ambiguous on parameters and fields.
-  `@readonly class Money` is still odd, and `@ro` is terse to the point of being unguessable.
-  `@readonly` is also taken: MUT-13 uses it as a method modifier, where it forbids receiver mutation.
-  One word for both would state two different things in the same token, what a variable may do and what a method does to its receiver.
-- `@value` names the intent on a class (`@value class Money`) and lines up with Java's own value-class vocabulary (JEP 401), which is a liability as much as an asset: a reader may take it to promise the identity and flattening semantics of a Valhalla value class, which MUT-10 does not.
-  It reads poorly on a parameter, where the point is the lend mode, not the value-ness.
-- `@frozen` matches the "frozen view" term the spec already uses (MUT-30, HIER-03) and carries no Java baggage, at the cost of a word Java developers do not have.
-- `@const` is the C++/D spelling and would be immediately understood, but `const` is a reserved Java keyword, so `@const` and the keyword sit confusingly close.
-
-**The question.**
-
-- Which name does the annotation carry across all eight positions?
-- Is one name for every position the right call, or does the class declaration want a different word from the variable positions, at the cost of MUT-01's single-word property?
-- Is there a pair that reads as a pair, the way `@mut` and `@mutating` once did, now that a method is annotated `@readonly` (MUT-13)?
-  A variable annotation built from the same root, `@ro` against `@readonly`, would let a reader carry one idea across both.
-  The two are distinct (MUT-01, MUT-13), and a shared root must not become a shared meaning.
-
-**Why it matters.**
-The name is the most-read token of the mutability system, and it is cheap to change now and expensive once sources exist.
-
-**Related codes:** MUT-01, MUT-13, MUT-30, MUT-10, TARG-03, HIER-03.
 
 ---
 

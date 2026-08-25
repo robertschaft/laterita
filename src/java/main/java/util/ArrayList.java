@@ -20,7 +20,7 @@
  */
 package java.util;
 
-// @fixed, @bound, @borrow, @take, @readonly, InheritFrom, ...
+// @ro, @bound, @borrow, @take, @readonly, InheritFrom, ...
 import laterita.lang.annotation.*;
 // give: move-out of an array slot (OWN-07)
 import static laterita.lang.Intrinsics.give;
@@ -41,9 +41,9 @@ import static laterita.lang.Broken.broken;
  * <p>Iteration is a single method.
  * {@link #iterator()} is {@code @readonly(InheritFrom.RECEIVER)} (MUT-17), so
  * the cursor inherits the list's mutability: over a mutable list it lends
- * {@code @bound T} and holds an exclusive borrow, over a {@code @fixed} list
- * (e.g. {@code fixed(list)}) it lends {@code @fixed @bound T} and holds a
- * shared borrow so several coexist.
+ * {@code @bound T} and holds an exclusive borrow, over a {@code @ro} list (e.g.
+ * {@code readonly(list)}) it lends {@code @ro @bound T} and holds a shared
+ * borrow so several coexist.
  * The enhanced-for consumes exactly this, with no cursor selection.
  * Structural modification ({@code remove}/{@code set}/{@code add}) is the
  * separate {@link #listIterator()}, which a for-each never reaches.
@@ -97,7 +97,7 @@ public class ArrayList<T> implements Iterable<T> {
      * <p>Class-level {@code @readonly(InheritFrom.RECEIVER)} (MUT-50, MUT-51):
      * the borrow it holds on the enclosing {@code ArrayList} is inherited from
      * the {@code this} that constructs it, so it is exclusive when built from a
-     * mutable list and shared when built from a {@code @fixed} one.
+     * mutable list and shared when built from a {@code @ro} one.
      * The class is mutable, which covers its own {@link #cursor} field.
      * The absence of {@code @readonly} on {@link #next()} is the ordinary
      * receiver mutation of advancing that cursor.
@@ -119,8 +119,7 @@ public class ArrayList<T> implements Iterable<T> {
             // TODO: if (cursor >= size) throw new NoSuchElementException();
             // Element mutability is inherited from the enclosing borrow
             // (MUT-17):
-            // @bound T over a mutable list, @fixed @bound T over a
-            // @fixed one.
+            // @bound T over a mutable list, @ro @bound T over a @ro one.
             var element = elementData[cursor];
             cursor = cursor + 1;    // mutates this cursor, never the list
             return element;
