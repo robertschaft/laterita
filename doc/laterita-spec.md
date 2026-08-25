@@ -252,7 +252,6 @@ A `@take @borrow` parameter receives a borrow and retains it.
 The cap is part of the signature: from the call onward the parameter's source is a source of `this` (LIFE-02, LIFE-03), whether or not the body actually stores the borrow.
 The form is meaningful only on instance methods: a retained borrow may be stored only into a `@borrow` field of `this`, and on a `static` method the form is rejected.
 Storing a borrow into a `@borrow` field of `this` requires this parameter form, and the assignment itself additionally requires a mutable receiver (MUT-22), but declaring the parameter does not: a non-mutating method may declare `@take @borrow` and merely narrow the caller's `this`.
-A `@borrow` parameter without `@take` retains nothing and is an ordinary borrow parameter (OWN-13).
 A constructor needs no `@take @borrow` parameter: the borrows it stores are the initial sources of OWN-09.
 
 ```java
@@ -1389,7 +1388,7 @@ Variable mode follows the ordinary variable rules with no special case (OWN-02, 
 Storing, moving, or borrowing a functional-interface value is governed by the variable mode alone, so a value may be held in a variable from which its SAM cannot be invoked.
 Consuming a once-call value held in a field is a destruction (OWN-06).
 
-A once-call functional-interface value cannot be a `@bound` source: the call that would produce the return consumes it.
+A once-call functional-interface value cannot be a `@bound` source.
 
 ```java
 // The returned closure borrows `fn` and `first`,
@@ -1688,8 +1687,6 @@ Only the following operations require `@unsafe` context:
 4. Lifetime extension or transmute.
 5. Foreign function calls (FFI / native).
 
-This list is closed.
-
 ### UNS-03 Unsafe-typed fields force private + `@unsafe`
 
 A class field whose declared type is an unsafe primitive (e.g., `Heap<T>`, `Cell<T>`) must be private.
@@ -1720,7 +1717,7 @@ Assigning one `Rc<T>` variable from another is a borrow per OWN-02.
 A `give(...)` move transfers the handle without bumping.
 `share()` is the only operation that bumps.
 
-A cycle of `Rc<T>` handles whose strong references form a closed loop is not reclaimed, since no handle's reference count can reach zero.
+A cycle of `Rc<T>` handles whose strong references form a closed loop is not reclaimed.
 Programs that may form cycles must use `WeakReference<T>` (STD-03) for the back-edge to break the cycle.
 
 ### STD-02 `Arc<T>`
@@ -1871,7 +1868,6 @@ A `LockGuard` cannot be borrowed across threads (STD-07).
 `LockGuard.onDrop()` releases one acquisition of the bound lock: at full release (no outstanding guards on the same thread), the lock becomes available to other threads.
 
 `LockGuard` exposes nothing beyond its existence and its `@internal` `onDrop` (DROP-06).
-Its only role is to make scope exit equivalent to lock release.
 
 ### STD-12 `Condition`
 
@@ -2066,7 +2062,7 @@ The identifier `onDrop` is reserved as the language-orchestrated lifecycle hook 
 **Laterita requires no new keywords or constructs.** The ownership, lifetime, mutability, cleanup, and visibility concepts are expressed as annotations and static method calls.
 Some non-Java syntactic forms (`T?`, `?.`, `?:`, `!!`, `(P1,…,Pn) -> R`) and class extensions are gated to `.lat` sources per the `LAT` topic.
 Below is a list of Laterita annotations.
-Combinations not listed are currently not supported and won't compile.
+Combinations not listed are rejected.
 
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
