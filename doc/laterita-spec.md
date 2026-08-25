@@ -363,7 +363,6 @@ A method annotated `@readonly` may do none of these.
 
 `@readonly` is a method modifier.
 Its element `value` has type `InheritFrom` and defaults to `InheritFrom.NONE`, the form specified here.
-On a method that also carries `@ro`, which annotates the return type (MUT-01), `@readonly` is written first.
 On an immutable class `@readonly` has no effect (MUT-10).
 
 HIER-05 specifies override variance.

@@ -152,6 +152,7 @@ The axis is spelled at two lengths because it is read at two rates.
 The variable annotation stands in all eight positions of MUT-01, among them every type argument, where the token repeats per argument and per nesting level.
 The method modifier stands once per declaration, beside `public` and `static`, where a full word costs one line and reads as prose.
 `@ro` abbreviates the word `@readonly` spells out, so a reader who has learned either has learned the other, and they stay two tokens for the two claims they make (MUT-13).
+On a method carrying both, `@readonly` is written first, as `@ro` annotates the return type.
 
 The intrinsic takes the long word, `readonly(x)` (MUT-42).
 Expression position carries no modifiers, so nothing there is mistakable for the method annotation, and a two-letter call does not read as an operation.
