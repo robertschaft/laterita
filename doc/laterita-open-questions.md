@@ -246,9 +246,9 @@ The name is the most-read token of the mutability system, and it is cheap to cha
 
 ---
 
-## OQ-39 Per-field lifetime granularity for a `@bound` instance
+## OQ-39 The sources a `@bound` value may name
 
-**Surfaced when:** comparing the `@bound` model against Rust's struct lifetime parameters, where a struct holding two borrows can return a value tied to one of them alone.
+**Surfaced when:** comparing the `@bound` model against Rust's lifetime parameters, where a value may be tied to one named lifetime among several, and a method may return something outliving its receiver.
 
 **The issue.**
 A `@borrow` field is unconditionally a source of its instance (OWN-09), the sources intersect (LIFE-03), and a returned borrow binds to `this` (OWN-18) or to a marked parameter (OWN-17), never to a field.
@@ -272,6 +272,18 @@ use(t);            // rejected, though t reaches only input
 LIFE-02 lets an author tighten a return by removing a `@bound` marker from a parameter that does not contribute.
 No such control exists on the field side: OWN-09 admits no per-field opt-out, and OWN-21 states that a retained parameter's source becomes a source of `this` rather than of the field it lands in.
 
+The same limit read from the return side caps a lent value at the lender rather than at what the lender borrows.
+A cursor holds a borrow of its collection, so `next()` binding to `this` (OWN-18) caps every element at the cursor, where Rust's `Iterator<Item = &'a T>` ties the element to the collection.
+
+```java
+var it    = list.iterator();
+var first = it.next();
+give(it);          // cursor dropped
+use(first);        // rejected, though first reaches only `list`
+```
+
+Splitting the structure, the workaround on the field side, does not reach this case: the borrow has to escape a value that is itself dropped.
+
 **The question.**
 
 - Can a return name a `@borrow` field as its source, rather than `this`?
@@ -279,9 +291,11 @@ No such control exists on the field side: OWN-09 admits no per-field opt-out, an
 The answer decides whether direct field access is already a partial escape.
 - Is the intersection the right default even with a per-field form available, so that `@bound` on a return keeps meaning "the whole instance"?
 - Does a per-field form reintroduce the naming problem that `@bound` exists to avoid, given that a field already has a name to refer to?
+- May a return outlive `this` at all, and if so, is the field-naming form the whole answer or does the iterator case need its own?
+- What becomes of STD-08's cursor, whose elements are capped at the cursor today, and of the enhanced-for loop variable that inherits from it?
 
 **Why it matters.**
 Every long-lived structure that holds borrows of different lifetimes is capped at its shortest one, so a parser holding a long-lived buffer and a short-lived config cannot lend anything that survives the config.
-The workaround is to split the structure, which is the design pressure Rust's struct lifetime parameters exist to remove.
+On the return side the cap breaks composition over cursors: an element cannot be collected, stored, or returned past the iteration that produced it, which is what makes Rust's iterators composable.
 
-**Related codes:** OWN-09, OWN-17, OWN-18, OWN-21, LIFE-02, LIFE-03, LIFE-04, OWN-04.
+**Related codes:** OWN-09, OWN-17, OWN-18, OWN-21, LIFE-02, LIFE-03, LIFE-04, OWN-04, STD-08, TARG-07.
