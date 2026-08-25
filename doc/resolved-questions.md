@@ -115,6 +115,8 @@ The mutability axis has one negative annotation and no positive one, so there is
 Nor can the receiver take the mutable default the way a parameter does: every method has a receiver, so that default would demand a mutable receiver at every call and leave an immutable class with no callable method at all.
 A marker on an explicit `this` forces every mutating method to spell out a `(Self this)` parameter.
 The receiver takes the mutable default like a parameter, and `@readonly` withdraws it.
+This covers a method's receiver only.
+The enclosing instance of an inner class is declared on the receiver parameter of its constructor (MUT-50), one parameter per class rather than one per method.
 
 Where: MUT-41, MUT-13, reasoning "Why a bare parameter lends mutably while a bare receiver does not", reasoning "Why methods declare their receiver effect in the signature"
 
@@ -146,10 +148,10 @@ Where: ARR-02, MUT-17, OWN-13, reasoning "Why the cross-thread story splits in t
 ### A `record` as the general-purpose pair type (`record Pair<L, R>(L left, R right)`)
 
 Rejected.
-A record is immutable by construction, so its components are `final` and `@ro` and every half borrowed through it is shared, which is what `splitAt` must not produce.
-`Pair` is an ordinary mutable class with `public final` components, and a record stays uniformly immutable.
+A record reaches its components through accessor methods, and destruction reaches a value's parts by direct field access alone (OWN-06), so a returned record could be read but never taken apart.
+`Pair` is an ordinary mutable class with `public final` components.
 
-Where: ARR-04, MUT-11, MUT-17, reasoning "Why the cross-thread story splits in two (ARR-01, ARR-02)"
+Where: ARR-04, OWN-06, MUT-17, reasoning "Why the cross-thread story splits in two (ARR-01, ARR-02)"
 
 ### Separate `BoundPair` and `OwnedPair` return types for array splitting
 
@@ -377,6 +379,42 @@ Rejected.
 The axis is `@ro` on variables and types and `@readonly` on methods, with `readonly(x)` in expression position.
 
 Where: MUT-01, MUT-13, MUT-42, reasoning "Why the axis is spelled `@ro` and `@readonly`"
+
+### One class annotation for both the instance claim and the method surface
+
+Rejected.
+A claim that every instance of a class is immutable holds only if no subclass withdraws it, and a claim that a type's methods are all `@readonly` must not reach a subtype, or a class implementing the frozen view of MUT-30 would inherit immutability from it.
+One marker cannot both reach subclasses and not reach them.
+`@ro` on a `final` class carries the instance claim (MUT-10) and `@readonly` on a class or interface carries the surface claim (MUT-19).
+
+Where: MUT-10, MUT-19, MUT-30, HIER-05, reasoning "Why the kind is declared and the default is mutable"
+
+### `@ro` on a class that is not `final`, on an abstract class, or on an interface
+
+Rejected.
+Every rule that reads a variable's kind off its declared type (MUT-01, MUT-12, MUT-14) reads a promise about the instance, which a mutable subclass or implementor is free not to keep.
+A `final` class is the only declaration that can make the promise for every instance of its type.
+An abstract class and an interface state their method surface with `@readonly` instead (MUT-19).
+
+Where: MUT-10, MUT-01, MUT-19, reasoning "Why immutability is the marked class kind"
+
+### Every `record` immutable
+
+Rejected.
+A record's components are `final` fields, and a component of mutable type may still be modified through, so a record is shallowly final rather than immutable.
+Giving every record the immutable kind would have MUT-14 freeze everything reachable from one, and `record Response(List<Item> items)` would mean something in Laterita that it does not mean in Java.
+A record takes its kind from its own declaration, and `@ro record R(...)` states the deeper promise where it is wanted.
+An `enum` keeps the kind, which STAT-01 and MUT-31 already deliver for every value read from a constant.
+
+Where: MUT-11, MUT-14, MUT-10, STAT-01, reasoning "Why a `record` carries no kind and an `enum` does"
+
+### A class-level marker for the enclosing borrow of an inner class
+
+Rejected.
+The class declaration already carries the kind (MUT-10) and the method surface (MUT-19), and a third claim in the same position would need a third word for a borrow the constructor can name.
+A constructor of an inner class declares a receiver parameter for the enclosing instance (JLS 8.8.1), where `@ro` is the ordinary parameter rule (MUT-41).
+
+Where: MUT-50, MUT-51, MUT-41, reasoning "Why a non-static inner class declares its enclosing borrow"
 
 ### A neutral `Object` belonging to neither class kind
 

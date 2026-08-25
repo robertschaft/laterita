@@ -94,19 +94,21 @@ public class ArrayList<T> implements Iterable<T> {
     /**
      * The read-or-update cursor.
      *
-     * <p>Class-level {@code @readonly(InheritFrom.RECEIVER)} (MUT-50, MUT-51):
-     * the borrow it holds on the enclosing {@code ArrayList} is inherited from
-     * the {@code this} that constructs it, so it is exclusive when built from a
-     * mutable list and shared when built from a {@code @ro} one.
+     * <p>The constructor's receiver parameter carries
+     * {@code @ro(InheritFrom.RECEIVER)} (MUT-50, MUT-51): the borrow it holds
+     * on the enclosing {@code ArrayList} is inherited from the {@code this}
+     * that constructs it, so it is exclusive when built from a mutable list
+     * and shared when built from a {@code @ro} one.
      * The class is mutable, which covers its own {@link #cursor} field.
      * The absence of {@code @readonly} on {@link #next()} is the ordinary
      * receiver mutation of advancing that cursor.
      */
-    @readonly(InheritFrom.RECEIVER)
     private class Itr implements Iterator<T> {
 
         /** Index of the next element to return. */
         int cursor;
+
+        Itr(@ro(InheritFrom.RECEIVER) ArrayList<T> ArrayList.this) { }
 
         @Override
         public boolean hasNext() {
@@ -129,8 +131,8 @@ public class ArrayList<T> implements Iterable<T> {
     /**
      * The structural cursor.
      *
-     * <p>No class-level {@code InheritFrom.RECEIVER}: it takes the default
-     * enclosing borrow, mutable and exclusive, which is what licenses
+     * <p>No {@code InheritFrom.RECEIVER} on its constructor: it takes the
+     * default enclosing borrow, mutable and exclusive, which is what licenses
      * {@link #remove()} to restructure the list (MUT-50).
      */
     private class ListItr implements ListIterator<T> {

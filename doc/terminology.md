@@ -292,7 +292,7 @@ See `STD-01`.
 `readonly()` is a static method on `laterita.lang.Intrinsics` that returns an immutable and therefore sharable borrow of its argument (`MUT-42`).
 
 `@readonly` on a method declares that it may not modify its receiver, and is thus part of the `@ro` interface of its class (`MUT-13`, `MUT-30`).
-On a non-static inner class it makes the enclosing borrow shared (`MUT-50`).
+On a class or an interface it declares every method that type declares `@readonly` (`MUT-19`).
 
 ### receiver mode
 How a method accesses `this`: read-only under `@readonly`, mutating when bare, and consuming under `@consuming`.
@@ -306,8 +306,9 @@ It covers the cases `Mutex<T>` does not, where the guarded state is spread over 
 See `STD-10`.
 
 ### `@ro` (annotation)
-Declares a variable or a type read only (immutable).
-See `MUT-01`, `MUT-10`.
+Declares a variable read only (immutable), and on a `final` class declares every instance of it read only.
+On the receiver parameter of an inner class constructor it declares the enclosing instance a shared borrow.
+See `MUT-01`, `MUT-10`, `MUT-50`.
 
 ### safe / unsafe code
 Safe code obeys every ownership and lifetime rule and is checked in full.

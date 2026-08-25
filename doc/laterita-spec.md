@@ -333,19 +333,21 @@ Whether a variable is mutable is independent of whether it may be assigned (MUT-
 | return type | mutable | immutable |
 | type argument, use of a type parameter (TARG-03) | takes the mutability of the type argument | immutable |
 | type-parameter declaration (TARG-03) | each use follows the type argument | every use is `@ro` |
-| class or interface declaration (MUT-10) | mutable class | immutable class |
+| receiver parameter of an inner class constructor (MUT-50) | mutable enclosing borrow | shared enclosing borrow |
+| `final` class declaration (MUT-10) | mutable class | immutable class |
 
 ### MUT-10 Mutable and immutable classes
 
-A class, abstract class, or interface is *mutable* or *immutable*.
-A class or interface annotated `@ro` (`@ro class C`, `@ro abstract class C`, `@ro interface I`) is immutable, and one that is not is mutable.
+A class is *mutable* or *immutable*.
+A class annotated `@ro` (`@ro final class C`) is immutable, and one that is not is mutable.
+It is a compile-time error to annotate `@ro` a class that is not `final`, or an interface.
 
 A mutable class may declare methods that are not `@readonly` (MUT-13), and fields that may be assigned or modified through (MUT-21, MUT-22).
-Every method of an immutable class or interface is `@readonly`, including an inherited one (HIER-03).
+Every method of an immutable class is `@readonly`, including an inherited one (HIER-03).
 
-### MUT-11 `record` and `enum` are immutable
+### MUT-11 `enum` is immutable
 
-Every `record` and every `enum` is immutable.
+Every `enum` is immutable.
 
 ### MUT-18 Primitive types are immutable
 
@@ -353,7 +355,7 @@ Every primitive type (e.g. `boolean`, `int`, `double`) is immutable.
 
 ### MUT-12 A borrow of an immutable instance may be a copy
 
-Where the lifetime constraints are the same, the compiler may replace a borrow with a copy of the instance, or a copy with a borrow, when the declared type is a `final` immutable class, a record, an enum, or a primitive.
+Where the lifetime constraints are the same, the compiler may replace a borrow with a copy of the instance, or a copy with a borrow, when the declared type is an immutable class or a primitive.
 
 ### MUT-13 `@readonly` methods
 
@@ -391,6 +393,11 @@ x.mutate();
 var y = b.get();                 // @ro @bound Foo: b is @ro
 ```
 
+### MUT-19 `@readonly` classes and interfaces
+
+Each method declared in a class or interface annotated `@readonly` (`@readonly class C`, `@readonly interface I`) is `@readonly` (MUT-13).
+It is a compile-time error to write the `InheritFrom` element on a class or an interface.
+
 ### MUT-14 Immutability is transitive
 
 An immutable variable may not be used to modify any object reachable through it, whatever the fields on the path declare.
@@ -402,9 +409,9 @@ A borrow of a variable whose declared type is an immutable class is always share
 It is a compile-time error to call a method that is not `@readonly` unless both of the following hold:
 
 - the receiver variable is mutable, and
-- the static type of the receiver is a mutable class or a mutable interface.
+- the static type of the receiver is a mutable class or an interface.
 
-Where the static type is a mutable interface, the first condition and HIER-04 together ensure that the run-time class is mutable.
+Where the static type is an interface, the first condition and HIER-04 together ensure that the run-time class is mutable.
 A `@readonly` method may be called on any receiver.
 
 A constructor is exempt.
@@ -505,34 +512,40 @@ It returns a `@ro @bound` borrow of `in` (OWN-17).
 
 A non-static inner class holds an implicit borrow of the instance that created it.
 That borrow is a synthetic `final @borrow` field naming the enclosing instance, and it is mutable (OWN-09).
-An inner class annotated `@readonly` holds `final @ro @borrow` instead, a shared borrow of the enclosing instance.
-Such a class may be declared inside a mutable class only (MUT-10).
-`@ro` on the same declaration is independent of `@readonly` and makes the inner class itself immutable (MUT-10).
+A constructor of a non-static inner class may declare a receiver parameter naming the enclosing instance (JLS 8.8.1).
+`@ro` on that parameter makes the borrow `final @ro @borrow`, a shared borrow of the enclosing instance (MUT-41).
+An inner class whose constructors declare no such parameter, and an anonymous class, hold the mutable borrow.
+It is a compile-time error for two constructors of one inner class to declare different modes for it.
 
-A field of an outer level may be assigned only if no inner class between the assignment and that level is `@readonly`.
-The first `@readonly` level holds the level above it as a shared borrow, and it is a compile-time error to assign through that borrow (MUT-14).
+A field of an outer level may be assigned only if no enclosing borrow between the assignment and that level is `@ro`.
+The first such level holds the level above it as a shared borrow, and it is a compile-time error to assign through that borrow (MUT-14).
 
 ```java
 class Document {
     int revision;
 
-    @readonly class Appendix {
+    class Appendix {
         int page;
+
+        Appendix(@ro Document Document.this) { }
 
         class Footnote {
             void renumber() {
                 page = 2;       // OK: Footnote holds Appendix as a mutable borrow
-                // revision = 1; // ERROR: Appendix is @readonly (MUT-14)
+                // revision = 1; // ERROR: Appendix holds Document shared (MUT-14)
             }
         }
     }
 }
 ```
 
-### MUT-51 `@readonly(InheritFrom.RECEIVER)` inner classes
+### MUT-51 An inherited enclosing borrow
 
-An inner class annotated `@readonly(InheritFrom.RECEIVER)` takes the mutability of its enclosing borrow (MUT-50) from the `this` that constructs the instance.
+A receiver parameter annotated `@ro(InheritFrom.RECEIVER)` (MUT-50) takes the mutability of the enclosing borrow from the `this` that constructs the instance.
 One such class serves as a mutable cursor when constructed from a mutable enclosing instance, and as a read cursor when constructed from a shared one.
+
+The element `value` of `@ro` has type `InheritFrom` and defaults to `InheritFrom.NONE`.
+It is a compile-time error to write it anywhere but on the receiver parameter of an inner class constructor.
 
 ### MUT-60 Effectively read-only local variables
 
@@ -608,7 +621,7 @@ class Counter {
     @readonly int read() { return n; }
 }
 
-@ro class FrozenCounter extends Counter {   // @ro: immutable subclass of the mutable Counter
+@ro final class FrozenCounter extends Counter {   // immutable subclass of the mutable Counter
     FrozenCounter(int start) { super(start); }
 }
 
@@ -651,7 +664,7 @@ An override may give more.
 | `@ro` | return | ✓ | ✗ |
 | `@readonly` | method | ✗ | ✓ |
 | `@consuming` | method | ✓ (to `@readonly` or bare) | ✗ |
-| `@ro` | class | ✗ | ✓ (immutable subclass of a mutable parent, HIER-03) |
+| `@ro` | class | ✗ (an immutable class is `final`, MUT-10) | ✓ (immutable subclass of a mutable parent, HIER-03) |
 | Call mode | functional-interface parameter | ✗ | ✓ (strengthen, CLO-05) |
 
 ```java
@@ -2073,7 +2086,7 @@ Combinations not listed are rejected.
 
 | Annotation | `@Target` | Additional condition | Meaning | Spec rule |
 |---|---|---|---|---|
-| `@ro` | `TYPE` | redundant on enum and record | Class or interface is immutable | MUT-10 |
+| `@ro` | `TYPE` | `final` class, redundant on enum | Every instance of the class is immutable | MUT-10 |
 | `@ro` | `LOCAL_VARIABLE` | redundant when the declared type is an immutable class | The local variable may not be used to modify the object (assignment is the separate `final` axis) | MUT-40 |
 | `@ro` | `FIELD` | redundant in an immutable class and on a field of immutable type | The field may not be used to modify the object (assignment is MUT-22) | MUT-21 |
 | `@ro` | `PARAMETER` | redundant when the type is an immutable class | Parameter receives a shared borrow instead of a mutable one, and its absence is reported when the body never mutates through it | MUT-41, MUT-70 |
@@ -2082,8 +2095,9 @@ Combinations not listed are rejected.
 | `@ro` | `TYPE_PARAMETER` | - | `<@ro T>` writes `@ro` at every usage of `T`, leaving the bound unchanged | TARG-03 |
 | `@readonly` | `METHOD` | default `InheritFrom` | Method does not mutate its receiver, and as an anonymous functional-interface prefix applies to the synthesized `apply` (FN-01) | MUT-13, FN-01 |
 | `@readonly(InheritFrom.RECEIVER)` | `METHOD` | - | Method inherits the receiver's mutability | MUT-13, MUT-17 |
-| `@readonly` | `TYPE` | non-static inner class | Inner class holds a shared borrow of its enclosing instance | MUT-50 |
-| `@readonly(InheritFrom.RECEIVER)` | `TYPE` | only inside a mutable class | Non-static inner class inherits the mutability of its enclosing instance | MUT-50, MUT-51 |
+| `@readonly` | `TYPE` | class or interface | Every method the type declares is `@readonly` | MUT-19 |
+| `@ro` | `TYPE_USE` | receiver parameter of an inner class constructor | Enclosing instance is held as a shared borrow | MUT-50 |
+| `@ro(InheritFrom.RECEIVER)` | `TYPE_USE` | receiver parameter of an inner class constructor | Enclosing borrow inherits the mutability of the constructing `this` | MUT-51 |
 | `@consuming` | `METHOD` | - | Method consumes its receiver, and as an anonymous functional-interface prefix applies to the synthesized `apply` (FN-01) | OWN-15, FN-01 |
 | `@take` | `PARAMETER` | - | Parameter receives ownership | OWN-13 |
 | `@borrow` | `FIELD` | - | Field holds a borrow rather than an owned value, and the enclosing instance must be `@bound` | OWN-09, LIFE-03 |
@@ -2294,7 +2308,7 @@ The record keeps its `record` identity in the `.java` mirror.
 
 ### NABI-01 Single-field aggregate layout and calling convention
 
-A `final` immutable class (MUT-10) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register or registers as a value of the field's type.
+An immutable class (MUT-10) or record with exactly one field or component has the same size, alignment, and calling-convention treatment as that field or component: no wrapper, object header, or padding, passed and returned in the same register or registers as a value of the field's type.
 
 ---
 
