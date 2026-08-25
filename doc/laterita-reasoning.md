@@ -776,7 +776,7 @@ The conservative direction is the safe one: a spurious "needs `@borrowCapped`" i
 
 ## Unreachability (UNR-01, UNR-02)
 
-### Why a marker for opt-out
+### Why `broken()` for opt-out
 
 A class that can't be copied (a file handle, a single-use resource, anything wrapping `Heap<T>`) needs a way to say so.
 Three options were on the table:
@@ -785,7 +785,7 @@ Three options were on the table:
 Java's traditional approach.
 Fails late, surfaces at the wrong place, and bypasses any compile-time guarantee about which types are copyable.
 2. **Opt-in interface (`Cloneable<T>`).** Type-safe but adds bound-noise to every generic signature, and makes the dominant case ("yes I'm copyable") explicit when it should be implicit.
-3. **Compile-time opt-out via a marker.** A value whose creation declares the enclosing path unreachable.
+3. **Compile-time opt-out via `broken()`.** An exception whose construction declares the enclosing path unreachable.
 The compiler rejects calls that can reach it.
 Failure is at the actual problem site (the instantiation that triggers it).
 
@@ -794,14 +794,14 @@ Generic signatures stay clean (no `extends Cloneable<T>` bounds) and per-monomor
 
 ### Precedent
 
-The marker is essentially C++'s `= delete` generalized to any position where control flow ends.
+`broken()` is essentially C++'s `= delete` generalized to any position where control flow ends.
 C++ uses `= delete` for exactly this purpose, declaring a copy constructor (or any function) intentionally unavailable, with calls rejected at compile time.
 The C++ pattern has worked well for over a decade for the special-member-deletion use case (Rule of Zero/Three/Five).
 
 Adjacent ideas exist in other languages: Rust's `!` (never type) and `unreachable!()` macro for divergence, refinement types in Liquid Haskell, F\*, and Idris for conditional unreachability with static checking.
 The unconditional form specified here is closest to `= delete` in spirit.
 
-### Why the contract is compile-time, though the marker is an exception
+### Why the contract is compile-time, though `broken()` is an exception
 
 `throw broken(...)` is written like a runtime failure and is not one.
 UNR-01 rejects the *creation*, so a Laterita-compiled program never reaches the `throw`, and the exception type is what a `.java` source needs to stay a Java source: `javac` knows nothing of UNR-01, and every construct it does understand that ends control flow is either a `return` of a real value or a `throw`.
@@ -814,7 +814,7 @@ This is the same trade Rust makes with trait bounds, achieved here without the b
 ### Why an exception, not a diverging call
 
 A call, `static <T> T broken()` returning any type, is the alternative and is rejected.
-The marker has to appear wherever a body ends, and a call has no single spelling that covers those positions.
+`broken()` has to appear wherever a body ends, and a call has no single spelling that covers those positions.
 In a value-returning method it must be written `return broken()`, since `javac` otherwise reports a missing return statement.
 In a `void` method and in a constructor that same spelling is an error, so the author picks the spelling from the return type and a later change of return type breaks the body.
 `throw broken()` is one spelling for every return type, `void` and primitives included, for a constructor, and under an `if`.
@@ -827,16 +827,16 @@ A call also drags Java's inference into a place that has no use for it.
 `<T> T` infers `Object` in `var x = broken()`, infers a boxed type against a primitive return, and makes an overloaded call site ambiguous.
 `Broken` is a concrete type with nothing to infer.
 
-Keying UNR-01 on the type rather than on the name of a static method costs nothing and buys two things: the recognized set is open, so a library defines its own marker by subclassing `UncompilableException` and naming the reason in the type, and a marker assigned to a variable before it is thrown is recognized like any other.
+Keying UNR-01 on the type rather than on the name of a static method costs nothing and buys two things: the recognized set is open, so a library subclasses `UncompilableException` and names its own reason in the type, and an `UncompilableException` assigned to a variable before it is thrown is recognized like any other.
 
-The cost is that a `throw` is a statement, so the marker cannot sit where a value is required, in a conditional expression arm or a field initializer.
+The cost is that a `throw` is a statement, so it cannot sit where a value is required, in a conditional expression arm or a field initializer.
 Both rewrite as an `if` or a constructor body, and a field initializer that is unreachable makes every constructor of the class unreachable anyway.
 
 ### Why not a method modifier
 
 C++ uses `= delete` as a definition syntax (`Foo() = delete;`).
 An equivalent at the method-signature level is the obvious alternative.
-A marker in the body composes better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) throw broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends, not just the deleted-method case.
+Throwing `broken()` in the body composes better: it works for partial bodies (a function that's deleted only on certain paths, expressible as `if (cond) throw broken(...)`), it places the diagnostic message inline, and it generalizes to any place control flow ends, not just the deleted-method case.
 
 ---
 
@@ -866,7 +866,7 @@ A `User` class with an `Rc<Address>` field cannot call `new Rc<Address>(source.a
 It's `public` (OBJ-02), uniformly callable from any context, and dispatches virtually so subtype duplication works correctly when a field is held at a supertype.
 The call chain is `clone() → copy constructor → field.clone() → field copy constructor → ...`, with the public/protected boundary alternating cleanly: every cross-class step goes through `clone()`, every within-class step uses the copy constructor for direct field access.
 
-This also makes opt-out clean: a class that can't be copied overrides `clone()` with a body that throws a marker, and the brokenness propagates transparently through any enclosing class's auto-generated copy constructor (which calls the field's `clone()`).
+This also makes opt-out clean: a class that can't be copied overrides `clone()` with a body that throws `broken()`, and the brokenness propagates transparently through any enclosing class's auto-generated copy constructor (which calls the field's `clone()`).
 No separate "this copy constructor is broken" channel is needed.
 
 The two-layer design is what remains after ruling out three alternatives.
@@ -899,7 +899,7 @@ A future ownership wrapper, `Cow<T>` or a weak handle among them, fits the same 
 
 If a field type's `clone()` is broken (as `Heap<T>.clone()` is, per STD-06), the enclosing class's auto-generated copy constructor inherits the brokenness through the call chain.
 The compile-time error appears at the actual call site, with a path through the field.
-Same mechanism that handles a directly thrown marker, no separate "synthesis fails" rule needed.
+Same mechanism that handles a directly thrown `broken()`, no separate "synthesis fails" rule needed.
 
 ---
 
@@ -1226,7 +1226,7 @@ The signature-level markers introduced for lifetimes (`@bound` per OWN-17 / OWN-
 What the compiler tracks silently is *intra-method* flow: within a function body the per-variable owned/borrowed state is internal bookkeeping, not part of any public surface.
 
 The dominant ergonomic concern with the one-type choice is "I have a borrow here but the next position needs ownership." In Rust's two-type model the user picks the right conversion (`to_string`, `to_owned`, `String::from`, `clone`).
-In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body throws a marker, and it always returns an owned value.
+In Laterita that whole pick disappears: `clone()` is universal (OBJ-02), every type carries it unless its body throws `broken()`, and it always returns an owned value.
 The diagnostic for any owned/borrowed mismatch is therefore uniform, *"this position needs an owned String, variable is borrowed, try `.clone()`"*, and the fix is one method call.
 With `clone()` as the universal escape hatch, the type system stays out of the way of the dominant case, which is the real argument against the two-type model.
 

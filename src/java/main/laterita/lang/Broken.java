@@ -5,11 +5,12 @@
 package laterita.lang;
 
 /**
- * The marker for a path that has no implementation (UNR-02).
+ * The {@link UncompilableException} for a path that has no implementation
+ * (UNR-02).
  *
  * <p>The factories are normally statically imported, so a call site reads
  * {@code throw broken("files cannot be copied");}.
- * Reaching the creation is a compile-time error (UNR-01).
+ * Reaching the construction is a compile-time error (UNR-01).
  */
 public final class Broken extends UncompilableException {
 
@@ -23,12 +24,12 @@ public final class Broken extends UncompilableException {
         super(reason);
     }
 
-    /** Returns a marker with no reason. */
+    /** Returns a {@code Broken} with no reason. */
     public static Broken broken() {
         return new Broken();
     }
 
-    /** Returns a marker carrying {@code reason}. */
+    /** Returns a {@code Broken} carrying {@code reason}. */
     public static Broken broken(String reason) {
         return new Broken(reason);
     }

@@ -1008,8 +1008,8 @@ final class Logger {
 
 ### UNR-01 An `UncompilableException` declares a path unreachable
 
-An expression that creates an instance of `laterita.lang.UncompilableException` declares that the enclosing path must not be reachable.
-It is a compile-time error if such an expression can be reached on a path the compiler cannot prove dead.
+Constructing a `laterita.lang.UncompilableException` declares that the enclosing path must not be reachable.
+It is a compile-time error to construct one on a path the compiler cannot prove dead.
 The diagnostic identifies that path and reports the reason string when one was given.
 
 ### UNR-02 `Broken` and the `broken()` factories
@@ -1029,7 +1029,7 @@ public final class Broken extends UncompilableException {
 }
 ```
 
-A creation is written in `throw` position:
+A `broken()` call is written in `throw` position:
 
 ```java
 class File {

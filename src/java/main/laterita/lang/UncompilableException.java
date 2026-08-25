@@ -5,9 +5,9 @@
 package laterita.lang;
 
 /**
- * The supertype of the markers that declare a path unreachable (UNR-01).
+ * The supertype of the exceptions that declare a path unreachable (UNR-01).
  *
- * <p>It is a compile-time error to create an instance on a path the compiler
+ * <p>It is a compile-time error to construct one on a path the compiler
  * cannot prove dead, so a Laterita-compiled program never throws one.
  * The reason string reaches the diagnostic.
  *
@@ -23,12 +23,12 @@ public abstract class UncompilableException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    /** Creates a marker with no reason. */
+    /** Constructs one with no reason. */
     protected UncompilableException() {
         super();
     }
 
-    /** Creates a marker carrying {@code reason}. */
+    /** Constructs one carrying {@code reason}. */
     protected UncompilableException(String reason) {
         super(reason);
     }

@@ -458,7 +458,7 @@ A generic type argument names no source, so it is structural and takes `@borrow`
 ### `broken()` as a diverging call returning any type
 
 Rejected.
-The unreachable-path marker is an `UncompilableException`, written `throw broken(...)` (UNR-01, UNR-02).
+An unreachable path is declared by constructing an `UncompilableException`, written `throw broken(...)` (UNR-01, UNR-02).
 A call declared `static <T> T broken()` takes a different spelling in a value-returning method than in a `void` one or a constructor, so the form depends on the return type, and `javac`'s reachability analysis (JLS 14.21) does not treat the call as ending the path, leaving `javac` and Laterita disagreeing about which statements are dead.
 
 Where: UNR-01, UNR-02, reasoning "Why an exception, not a diverging call"

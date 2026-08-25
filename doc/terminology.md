@@ -114,7 +114,7 @@ Rewriting a `.lat` form into its Java-compatible equivalent before analysis (`LA
 Provably non-overlapping, so two borrows of one value may coexist (`OWN-04`, `OWN-05`).
 
 ### divergence point
-A path that creates an `UncompilableException`, which the compiler must prove dead.
+A path that constructs an `UncompilableException`, which the compiler must prove dead.
 See `UNR-01`.
 
 ### drop / `onDrop()`
@@ -369,8 +369,8 @@ Refining a variable's type along a path, most often from `T?` to `T` after a nul
 See `NULL-06`.
 
 ### `UncompilableException`
-The exception type whose creation declares a path unreachable, an abstract `RuntimeException` in `laterita.lang`.
-It is a compile-time error to create one on a path the compiler cannot prove dead, so a Laterita program never throws one.
+The exception type whose construction declares a path unreachable, an abstract `RuntimeException` in `laterita.lang`.
+It is a compile-time error to construct one on a path the compiler cannot prove dead, so a Laterita program never throws one.
 A subclass names a narrower reason in its own type, and `Broken` is the standard one.
 See `UNR-01`, `UNR-02`.
 
