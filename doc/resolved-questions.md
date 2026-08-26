@@ -473,6 +473,16 @@ The annotation would restate the bound it is attached to.
 
 Where: TARG-03, MUT-30, HIER-04, reasoning "Why the bound decides admission and the argument decides mutability"
 
+### A type-parameter bound naming an array type (`<A extends @ro T[]>`)
+
+Rejected.
+Such a bound would collapse ARR-02's `splitAt` and `splitMutableAt` into one declaration, `@bound Pair<@borrow A, @borrow A> splitAt(@bound A arr, int mid)`.
+The Java grammar admits a type variable or a class or interface type as a bound and no array type (JLS 4.4), so the form does not parse, and COMP-06 requires a `.java` source to parse under `javac`.
+A `.lat` spelling is closed with it, since the form would carry semantics its `.java` mirror cannot express (LAT-00).
+`@ro` on an array type is unaffected and ARR-02 writes it on a parameter.
+
+Where: ARR-02, TARG-03, COMP-06, LAT-00, reasoning "Why the cross-thread story splits in two (ARR-01, ARR-02)"
+
 ### A third, either-kind type-parameter annotation (`<@eitherKind T extends Counter>`)
 
 Rejected.

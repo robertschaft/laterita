@@ -1458,6 +1458,8 @@ A record offers its components through accessor methods, so a returned pair coul
 Which mutability that is comes from `@readonly(InheritFrom.RECEIVER)` on `splitAt` (MUT-17), the same mechanism that collapses read and update iteration onto one `iterator()` (STD-08).
 A mutable receiver yields a pair lending mutable halves and a `@ro` receiver one lending read-only halves, so a second pair type buys nothing.
 The `.java` mirror still spells the two forms separately (`splitAt` and `splitMutableAt`, ARR-02), because a static method has no receiver whose mutability a return could inherit.
+A type parameter does not stand in for that receiver.
+Abstracting an array's own mutability would need an array type as a bound, which the Java grammar does not admit (JLS 4.4), where the mutability of a class's instances is abstracted by an ordinary bound (TARG-03).
 Extending `InheritFrom` onto the `@bound` parameter would carry the instance form's single declaration into the mirror, but it would add an inheritance axis to the language for one signature, where two names cost nothing and follow the `splitAt` / `splitOff` precedent already set by OWN-13.
 Making the components `public final` fields rather than record components also lets `splitOff`'s owning halves be destructed on the `.java` surface (OWN-06), where the record form reached them only through the `.lat`-only component spelling of LAT-08.
 
